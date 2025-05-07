@@ -5,9 +5,6 @@
 const std = @import("std");
 const Scanner = @import("wayland").Scanner;
 
-// Although this function looks imperative, note that its job is to
-// declaratively construct a build graph that will be executed by an external
-// runner.
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -18,6 +15,13 @@ pub fn build(b: *std.Build) void {
 
     const scanner = Scanner.create(b, .{});
     const wayland = b.createModule(.{ .root_source_file = scanner.result });
+
+    scanner.addCustomProtocol(b.path("protocol/river-window-management-v1.xml"));
+
+    scanner.generate("wl_compositor", 4);
+    scanner.generate("wl_shm", 1);
+    scanner.generate("wl_output", 4);
+    scanner.generate("river_window_manager_v1", 1);
 
     const exe = b.addExecutable(.{
         .name = "beansprout",

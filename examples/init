@@ -1,0 +1,5 @@
+#! /bin/sh
+
+./zig-out/bin/beansprout &
+
+/usr/bin/foot &
