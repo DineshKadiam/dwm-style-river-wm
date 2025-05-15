@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Ben Buhse <me@benbuhse.email>
 //
-// SPDX-License-Identifier: EUPL-1.2
+// SPDX-License-Identifier: GPL-3.0-or-later
 
 const std = @import("std");
 const Scanner = @import("wayland").Scanner;
