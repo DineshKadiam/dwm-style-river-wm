@@ -28,8 +28,12 @@ pub fn init(output: *Output, context: *Context, river_output_v1: *river.OutputV1
 fn outputListener(river_output_v1: *river.OutputV1, event: river.OutputV1.Event, output: *Output) void {
     assert(output.output_v1 == river_output_v1);
     switch (event) {
-        .wl_output => |ev| {
-            log.debug("initializing new river_ouput_v1 corresponding to wl_output: {d}", .{ev.name});
+        .removed => {
+            river_output_v1.destroy();
+            output.context.allocator.destroy(output);
+        },
+        .wl_output => {
+            // log.debug("initializing new river_output_v1 corresponding to wl_output: {d}", .{ev.name});
         },
         .dimensions => |ev| {
             output.width = ev.width;
@@ -39,10 +43,15 @@ fn outputListener(river_output_v1: *river.OutputV1, event: river.OutputV1.Event,
             output.x = ev.x;
             output.y = ev.y;
         },
-        else => |ev| {
-            log.debug("unhandled event: {s}", .{@tagName(ev)});
-        },
     }
+}
+
+pub fn manage(output: *Output) void {
+    _ = output;
+}
+
+pub fn render(output: *Output) void {
+    _ = output;
 }
 
 const std = @import("std");

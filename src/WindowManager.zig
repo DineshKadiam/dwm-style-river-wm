@@ -38,10 +38,23 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
             std.posix.exit(1);
         },
         .manage_start => {
-            log.debug("1", .{});
-            var it = wm.windows.iterator(.forward);
-            while (it.next()) |window| {
-                window.manage();
+            {
+                var it = wm.seats.iterator(.forward);
+                while (it.next()) |seat| {
+                    seat.manage();
+                }
+            }
+            {
+                var it = wm.outputs.iterator(.forward);
+                while (it.next()) |output| {
+                    output.manage();
+                }
+            }
+            {
+                var it = wm.windows.iterator(.forward);
+                while (it.next()) |window| {
+                    window.manage();
+                }
             }
             window_manager_v1.manageFinish();
         },
