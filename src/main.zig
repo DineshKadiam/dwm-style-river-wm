@@ -106,8 +106,6 @@ const wayland = @import("wayland");
 const river = wayland.client.river;
 const wl = wayland.client.wl;
 
-const event_loop = @import("event_loop.zig");
-const Backend = @import("Backend.zig");
 const WindowManager = @import("WindowManager.zig");
 
 const log = std.log.scoped(.main);
