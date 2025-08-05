@@ -59,10 +59,23 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
             window_manager_v1.manageFinish();
         },
         .render_start => {
-            log.debug("2", .{});
-            var it = wm.windows.iterator(.forward);
-            while (it.next()) |window| {
-                window.render();
+            {
+                var it = wm.seats.iterator(.forward);
+                while (it.next()) |seat| {
+                    seat.render();
+                }
+            }
+            {
+                var it = wm.outputs.iterator(.forward);
+                while (it.next()) |output| {
+                    output.render();
+                }
+            }
+            {
+                var it = wm.windows.iterator(.forward);
+                while (it.next()) |window| {
+                    window.render();
+                }
             }
             window_manager_v1.renderFinish();
         },

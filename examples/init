@@ -5,5 +5,5 @@
 
 echo ">>>>> before foot"
 /usr/bin/foot &
-# /usr/bin/foot &
+/usr/bin/foot &
 echo "<<<<< after foot"

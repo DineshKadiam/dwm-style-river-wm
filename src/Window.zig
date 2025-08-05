@@ -35,6 +35,15 @@ fn windowListener(river_window_v1: *river.WindowV1, event: river.WindowV1.Event,
     switch (event) {
         .closed => {
             river_window_v1.destroy();
+            {
+                var it = window.context.wm.seats.iterator(.forward);
+                while (it.next()) |seat| {
+                    if (seat.hovered == window) {
+                        seat.hovered = null;
+                    }
+                }
+            }
+            window.link.remove();
             window.context.allocator.destroy(window);
         },
         .dimensions => |ev| {
