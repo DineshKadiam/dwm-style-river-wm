@@ -17,7 +17,7 @@ pub fn init(wm: *WindowManager, context: *Context, window_manager_v1: *river.Win
     wm.* = .{
         .context = context,
         .window_manager_v1 = window_manager_v1,
-        .seats = undefined,
+        .seats = undefined, // we will initialize this shortly
         .outputs = undefined,
         .windows = undefined,
     };

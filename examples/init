@@ -1,9 +1,6 @@
 #! /bin/sh
 
-# gdb ./zig-out/bin/beansprout
 ./zig-out/bin/beansprout &
 
-echo ">>>>> before foot"
 /usr/bin/foot &
 /usr/bin/foot &
-echo "<<<<< after foot"
