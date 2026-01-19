@@ -1,26 +1,26 @@
 <?xml version="1.0" encoding="UTF-8"?>
-
-<!--
-SPDX-FileCopyrightText: 2024 The River Developers
-
-SPDX-License-Identifier: ISC
--->
-
 <protocol name="river_window_management_v1">
   <copyright>
-    Copyright 2024 The River Developers
+    SPDX-FileCopyrightText: © 2024 Isaac Freund
+    SPDX-License-Identifier: MIT
 
-    Permission to use, copy, modify, and/or distribute this software for any
-    purpose with or without fee is hereby granted, provided that the above
-    copyright notice and this permission notice appear in all copies.
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to
+    deal in the Software without restriction, including without limitation the
+    rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+    sell copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
 
-    THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
-    WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
-    MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
-    SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
-    WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION
-    OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
-    CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+    The above copyright notice and this permission notice shall be included in
+    all copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+    IN THE SOFTWARE.
   </copyright>
 
   <description summary="frame-perfect window management">
@@ -39,7 +39,7 @@ SPDX-License-Identifier: ISC
     be done by creating a new major version of the extension.
   </description>
 
-  <interface name="river_window_manager_v1" version="1">
+  <interface name="river_window_manager_v1" version="3">
     <description summary="window manager global interface">
       This global interface should only be advertised to the window manager
       process. Only one window management client may be active at a time. The
@@ -82,10 +82,10 @@ SPDX-License-Identifier: ISC
 
       The server will start a render sequence by sending new state and the
       render_start event as soon as possible whenever there is a change in
-      window dimensions or position that must be communicated with the window
-      manager. Multiple render sequences may be made consecutively without a
-      manage sequence in between, for example during interactive move/resize of
-      windows or if a window independently changes its own dimensions.
+      window dimensions that must be communicated with the window manager.
+      Multiple render sequences may be made consecutively without a manage
+      sequence in between, for example if a window independently changes its own
+      dimensions.
 
       To summarize, the main loop of this protocol is as follows:
 
@@ -104,7 +104,7 @@ SPDX-License-Identifier: ISC
       5. The client sends requests modifying rendering state (as defined above)
          followed by the render_finish request.
 
-      6. If window dimensions/positions change, loop back to step 4.
+      6. If window dimensions change, loop back to step 4.
          If state that requires a manage sequence changes or if the client makes
          a manage_dirty request, loop back to step 1.
 
@@ -117,9 +117,11 @@ SPDX-License-Identifier: ISC
 
     <enum name="error">
       <entry name="sequence_order" value="0"
-        sumary="request violates manage/render sequence ordering"/>
+        summary="request violates manage/render sequence ordering"/>
       <entry name="role" value="1"
         summary="given wl_surface already has a role"/>
+      <entry name="unresponsive" value="2"
+        summary="window manager unresponsive"/>
     </enum>
 
     <event name="unavailable">
@@ -308,7 +310,7 @@ SPDX-License-Identifier: ISC
     </request>
   </interface>
 
-  <interface name="river_window_v1" version="1">
+  <interface name="river_window_v1" version="3">
     <description summary="a logical window">
       This represents a logical window. For example, a window may correspond to
       an xdg_toplevel or Xwayland window.
@@ -326,6 +328,8 @@ SPDX-License-Identifier: ISC
         summary="proposed dimensions out of bounds"/>
       <entry name="invalid_border" value="2"
         summary="invalid arg to set_borders"/>
+      <entry name="invalid_clip_box" value="3"
+        summary="invalid arg to set_clip_box"/>
     </enum>
 
     <request name="destroy" type="destructor">
@@ -599,6 +603,8 @@ SPDX-License-Identifier: ISC
         the left edge will not extend vertically beyond the top edge of the
         window.
 
+        Borders are not drawn while the window is fullscreen.
+
         The color is defined by four 32-bit RGBA values. Unless specified in
         another protocol extension, the RGBA values use pre-multiplied alpha.
 
@@ -644,8 +650,9 @@ SPDX-License-Identifier: ISC
 
     <request name="get_decoration_above">
       <description summary="create a decoration surface above the window">
-        Create a window decoration surface above the window and assign the
-        river_decoration_v1 role to the surface.
+        Create a decoration surface and assign the river_decoration_v1 role to
+        the surface. The created decoration is placed above the window in
+        rendering order, see the description of river_decoration_v1.
 
         Providing a wl_surface which already has a role or already has a buffer
         attached or committed is a protocol error.
@@ -656,8 +663,9 @@ SPDX-License-Identifier: ISC
 
     <request name="get_decoration_below">
       <description summary="create a decoration surface below the window">
-        Create a window decoration surface below the window and assign the
-        river_decoration_v1 role to the surface.
+        Create a decoration surface and assign the river_decoration_v1 role to
+        the surface. The created decoration is placed below the window in
+        rendering order, see the description of river_decoration_v1.
 
         Providing a wl_surface which already has a role or already has a buffer
         attached or committed is a protocol error.
@@ -905,6 +913,11 @@ SPDX-License-Identifier: ISC
         shall not affect the current position and dimensions of a fullscreen
         window.
 
+        The compositor will clip window content, decoration surfaces, and
+        borders to the given output's dimensions while the window is fullscreen.
+        The effects of set_clip_box and set_content_clip_box are ignored while
+        the window is fullscreen.
+
         If the output on which a window is currently fullscreen is removed, the
         windowing state is modified as if there were an exit_fullscreen request
         made in the same manage sequence as the river_output_v1.removed event.
@@ -950,9 +963,76 @@ SPDX-License-Identifier: ISC
         state has been sent by the server.
       </description>
     </event>
+
+    <request name="set_clip_box" since="2">
+      <description summary="clip the window to a given box">
+        Clip the window, including borders and decoration surfaces, to the box
+        specified by the x, y, width, and height arguments. The x/y position of
+        the box is relative to the top left corner of the window.
+
+        The width and height arguments must be greater than or equal to 0.
+
+        Setting a clip box with 0 width or height disables clipping.
+
+        The clip box is ignored while the window is fullscreen.
+
+        Both set_clip_box and set_content_clip_box may be enabled simultaneously.
+
+        This request modifies rendering state and may only be made as part of a
+        render sequence, see the river_window_manager_v1 description.
+      </description>
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+      <arg name="width" type="int"/>
+      <arg name="height" type="int"/>
+    </request>
+
+    <event name="unreliable_pid" since="2">
+      <description summary="unreliable PID of the window's creator">
+        This event gives an unreliable PID of the process that created the
+        window. Obtaining this information is inherently racy due to PID reuse.
+        Therefore, this PID must not be used for anything security sensitive.
+
+        Note also that a single process may create multiple windows, so there is
+        not necessarily a 1-to-1 mapping from PID to window. Multiple windows
+        may have the same PID.
+
+        This event is sent once when the river_window_v1 is created and never
+        sent again.
+      </description>
+      <arg name="unreliable_pid" type="int"/>
+    </event>
+
+    <request name="set_content_clip_box" since="3">
+      <description summary="clip the window content to a given box">
+        Clip the content of the window, excluding borders and decoration
+        surfaces, to the box specified by the x, y, width, and height arguments.
+        The x/y position of the box is relative to the top left corner of the
+        window.
+
+        Borders drawn by the compositor (see set_borders) are placed around the
+        intersection of the window content (as defined by the dimensions event)
+        and the content clip box when content clipping is enabled.
+
+        The width and height arguments must be greater than or equal to 0.
+
+        Setting a box with 0 width or height disables content clipping.
+
+        The content clip box is ignored while the window is fullscreen.
+
+        Both set_clip_box and set_content_clip_box may be enabled simultaneously.
+
+        This request modifies rendering state and may only be made as part of a
+        render sequence, see the river_window_manager_v1 description.
+      </description>
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+      <arg name="width" type="int"/>
+      <arg name="height" type="int"/>
+    </request>
   </interface>
 
-  <interface name="river_decoration_v1" version="1">
+  <interface name="river_decoration_v1" version="3">
     <description summary="a window decoration">
       The rendering order of windows with decorations is follows:
 
@@ -1008,7 +1088,7 @@ SPDX-License-Identifier: ISC
     </request>
   </interface>
 
-  <interface name="river_shell_surface_v1" version="1">
+  <interface name="river_shell_surface_v1" version="3">
     <description summary="a surface for window manager UI">
       The window manager might use a shell surface to display a status bar,
       background image, desktop notifications, launcher, desktop menu, or
@@ -1055,7 +1135,7 @@ SPDX-License-Identifier: ISC
     </request>
   </interface>
 
-  <interface name="river_node_v1" version="1">
+  <interface name="river_node_v1" version="3">
     <description summary="a node in the render list">
       The render list is a list of nodes that determines the rendering order of
       the compositor. Nodes may correspond to windows or shell surfaces. The
@@ -1140,7 +1220,7 @@ SPDX-License-Identifier: ISC
     </request>
   </interface>
 
-  <interface name="river_output_v1" version="1">
+  <interface name="river_output_v1" version="3">
     <description summary="a logical output">
       An area in the compositor's logical coordinate space that should be
       treated as a single output for window management purposes. This area may
@@ -1242,7 +1322,7 @@ SPDX-License-Identifier: ISC
     </event>
   </interface>
 
-  <interface name="river_seat_v1" version="1">
+  <interface name="river_seat_v1" version="3">
     <description summary="a window management seat">
       This object represents a single user's collection of input devices. It
       allows the window manager to route keyboard input to windows, get
@@ -1363,20 +1443,6 @@ SPDX-License-Identifier: ISC
       </description>
     </event>
 
-    <event name="pointer_activity">
-      <description summary="the pointer was moved">
-        The seat's pointer was moved.
-
-        Rationale: The motivating window manager feature for this event is the
-        "always" style of focus-follows-cursor. Carrying out a full manage
-        sequence on every single pointer motion event is noisy, wasteful, and
-        unnecessary.
-
-        This event will be followed by a manage_start event after all other new
-        state has been sent by the server.
-      </description>
-    </event>
-
     <event name="window_interaction">
       <description summary="a window has been interacted with">
         A window has been interacted with beyond the pointer merely passing over
@@ -1479,47 +1545,6 @@ SPDX-License-Identifier: ISC
       </description>
     </request>
 
-    <request name="pointer_confine_to_region">
-      <description summary="prevent the pointer from leaving a region">
-        This request tells the compositor to confine the movement of the pointer
-        to a given region, preventing movement of the input device from moving
-        the pointer outside the region. In addition, the pointer continues to be
-        confined to the bounds of the outputs.
-
-        If the pointer is not inside the given region when this request is made
-        it will have no effect until the pointer is moved inside the region.
-
-        If the pointer is warped to a point outside of the region it will
-        (temporarily) escape confinement. Moving or warping the pointer back
-        inside the region will resume the confinement.
-
-        If the region argument is null the compositor will only confine the
-        cursor to the bounds of the outputs. This is also the behavior if this
-        request is never made.
-
-        The region is defined in the compositor's logical coordinate space.
-
-        This request may be useful to place bounds on an interactive pointer
-        move or resize for example.
-
-        This request modifies window management state and may only be made as
-        part of a manage sequence, see the river_window_manager_v1 description.
-      </description>
-      <arg name="region" type="object" allow-null="true" interface="wl_region"/>
-    </request>
-
-    <request name="pointer_warp">
-      <description summary="warp the pointer to a given position">
-        Warp the pointer to the given position in the compositor's logical
-        coordinate space.
-
-        This request modifies window management state and may only be made as
-        part of a manage sequence, see the river_window_manager_v1 description.
-      </description>
-      <arg name="x" type="int"/>
-      <arg name="y" type="int"/>
-    </request>
-
     <enum name="modifiers" bitfield="true">
       <description summary="a set of keyboard modifiers">
         This enum is used to describe the keyboard modifiers that must be held
@@ -1553,9 +1578,53 @@ SPDX-License-Identifier: ISC
       <arg name="button" type="uint" summary="a Linux input event code"/>
       <arg name="modifiers" type="uint" enum="modifiers"/>
     </request>
+
+    <request name="set_xcursor_theme" since="2">
+      <description summary="set the xcursor theme for the seat">
+        Set the XCursor theme for the seat. This theme is used for cursors
+        rendered by the compositor, but not necessarily for cursors rendered by
+        clients.
+
+        Note: The window manager may also wish to set the XCURSOR_THEME and
+        XCURSOR_SIZE environment variable for programs it starts.
+      </description>
+      <arg name="name" type="string"/>
+      <arg name="size" type="uint"/>
+    </request>
+
+    <event name="pointer_position" since="2">
+      <description summary="The current position of the pointer">
+        The current position of the pointer in the compositor's logical
+        coordinate space.
+
+        This state is special in that a change in pointer position alone must
+        not cause the compositor to start a manage sequence.
+
+        Assuming the seat has a pointer, this event must be sent in every manage
+        sequence unless there is no change in x/y position since the last time this
+        event was sent.
+      </description>
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+    </event>
+
+    <request name="pointer_warp" since="3">
+      <description summary="warp the pointer to a given position">
+        Warp the pointer to the given position in the compositor's logical
+        coordinate space.
+
+        If the given position is outside the bounds of all outputs, the pointer
+        will be warped to the closest point inside an output instead.
+
+        This request modifies window management state and may only be made as
+        part of a manage sequence, see the river_window_manager_v1 description.
+      </description>
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+    </request>
   </interface>
 
-  <interface name="river_pointer_binding_v1" version="1">
+  <interface name="river_pointer_binding_v1" version="3">
     <description summary="configure a pointer binding, receive trigger events">
       This object allows the window manager to configure a pointer binding and
       receive events when the binding is triggered.
