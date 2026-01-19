@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Ben Buhse <me@benbuhse.email>
+// SPDX-FileCopyrightText: 2025-2026 Ben Buhse <me@benbuhse.email>
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -7,6 +7,7 @@ const Window = @This();
 context: *Context,
 
 window_v1: *river.WindowV1,
+node_v1: *river.NodeV1,
 
 width: u31 = 0,
 height: u31 = 0,
@@ -24,6 +25,7 @@ pub fn init(window: *Window, context: *Context, river_window_v1: *river.WindowV1
     window.* = .{
         .context = context,
         .window_v1 = river_window_v1,
+        .node_v1 = river_window_v1.getNode() catch @panic("failed to get node"),
         .link = undefined, // Handled by the wl.list
     };
 
@@ -35,6 +37,8 @@ fn windowListener(river_window_v1: *river.WindowV1, event: river.WindowV1.Event,
     switch (event) {
         .closed => {
             river_window_v1.destroy();
+            window.node_v1.destroy();
+            window.context.wm.window_count -= 1;
             {
                 var it = window.context.wm.seats.iterator(.forward);
                 while (it.next()) |seat| {
@@ -47,7 +51,7 @@ fn windowListener(river_window_v1: *river.WindowV1, event: river.WindowV1.Event,
             window.context.allocator.destroy(window);
         },
         .dimensions => |ev| {
-            // Part of the protocol requires these are strictly greater-than zero
+            // The protocol requires these are strictly greather than zero.
             assert(ev.width > 0 and ev.height > 0);
             window.width = @intCast(ev.width);
             window.height = @intCast(ev.height);
@@ -62,29 +66,30 @@ fn windowListener(river_window_v1: *river.WindowV1, event: river.WindowV1.Event,
 }
 
 pub fn manage(window: *Window) void {
-    if (window.context.wm.outputs.length() == 0) {
-        window.new_width = 0;
-        window.new_height = 0;
-        window.new_x = 0;
-        window.new_y = 0;
-    }
+    // Layout has been pre-computed by WindowManager.calculatePrimaryStackLayout()
+    // Apply the computed dimensions
+    if (window.new_width > 0 and window.new_height > 0) {
+        window.window_v1.proposeDimensions(window.new_width, window.new_height);
 
-    // TODO: Remove this -- just fullscreen for now
-    if (window.width != window.context.wm.outputs.first().?.width or
-        window.height != window.context.wm.outputs.first().?.height)
-    {
-        window.width = @intCast(window.context.wm.outputs.first().?.width);
-        window.height = @intCast(window.context.wm.outputs.first().?.height);
-        log.debug("setting window width={d} and height={d}", .{ window.width, window.height });
+        // Use server-side decoration (no client-drawn title bars)
+        window.window_v1.useSsd();
+
+        // Inform the window about its tiled/fullscreen state
+        if (window.context.wm.window_count == 1) {
+            // Single window is fullscreen
+            window.window_v1.setTiled(.{ .top = false, .bottom = false, .left = false, .right = false });
+            window.window_v1.informFullscreen();
+        } else {
+            // Tiled windows - set tiled edges
+            window.window_v1.informNotFullscreen();
+            window.window_v1.setTiled(.{ .top = true, .bottom = true, .left = true, .right = true });
+        }
     }
-    window.window_v1.proposeDimensions(window.width, window.height);
-    // window.window_v1.setTiled(.{ .top = true, .bottom = true, .left = true, .right = true });
-    window.window_v1.informFullscreen();
-    // window.window_v1.informMaximized();
 }
 
 pub fn render(window: *Window) void {
-    _ = window; // TODO ???
+    // Set the window position using the pre-computed layout
+    window.node_v1.setPosition(window.new_x, window.new_y);
 }
 
 const std = @import("std");
