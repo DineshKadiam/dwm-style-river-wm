@@ -15,6 +15,7 @@ pub const Context = struct {
     shm: ?*wl.Shm = null,
 
     wm: WindowManager,
+    xkb_bindings: XkbBindings,
 
     fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, context: *Context) void {
         switch (event) {
@@ -31,11 +32,17 @@ pub const Context = struct {
                         std.posix.exit(1);
                     };
                 } else if (mem.orderZ(u8, ev.interface, river.WindowManagerV1.interface.name) == .eq) {
-                    const window_manager_v1 = registry.bind(ev.name, river.WindowManagerV1, 1) catch |e| {
-                        log.err("Failed to bind to window_manager_v: {any}", .{@errorName(e)});
+                    const window_manager_v1 = registry.bind(ev.name, river.WindowManagerV1, 3) catch |e| {
+                        log.err("Failed to bind to window_manager_v1: {any}", .{@errorName(e)});
                         std.posix.exit(1);
                     };
                     context.wm.init(context, window_manager_v1);
+                } else if (mem.orderZ(u8, ev.interface, river.XkbBindingsV1.interface.name) == .eq) {
+                    const xkb_bindings_v1 = registry.bind(ev.name, river.XkbBindingsV1, 2) catch |e| {
+                        log.err("Failed to bind to xkb_bindings_v1: {any}", .{@errorName(e)});
+                        std.posix.exit(1);
+                    };
+                    context.xkb_bindings.init(context, xkb_bindings_v1);
                 }
             },
             // We don't need .global_remove
@@ -69,6 +76,7 @@ pub fn main() !void {
         .display = wl_display,
         .registry = registry,
         .wm = undefined,
+        .xkb_bindings = undefined,
     };
 
     registry.setListener(*Context, Context.registryListener, &context);
@@ -107,5 +115,6 @@ const river = wayland.client.river;
 const wl = wayland.client.wl;
 
 const WindowManager = @import("WindowManager.zig");
+const XkbBindings = @import("XkbBindings.zig");
 
 const log = std.log.scoped(.main);

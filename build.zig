@@ -14,13 +14,16 @@ pub fn build(b: *std.Build) void {
 
     const scanner = Scanner.create(b, .{});
     const wayland = b.createModule(.{ .root_source_file = scanner.result });
+    const xkbcommon = b.dependency("xkbcommon", .{}).module("xkbcommon");
 
     scanner.addCustomProtocol(b.path("protocol/river-window-management-v1.xml"));
+    scanner.addCustomProtocol(b.path("protocol/river-xkb-bindings-v1.xml"));
 
     scanner.generate("wl_compositor", 4);
     scanner.generate("wl_shm", 1);
     scanner.generate("wl_output", 4);
-    scanner.generate("river_window_manager_v1", 1);
+    scanner.generate("river_window_manager_v1", 3);
+    scanner.generate("river_xkb_bindings_v1", 2);
 
     const exe = b.addExecutable(.{
         .name = "beansprout",
@@ -34,6 +37,7 @@ pub fn build(b: *std.Build) void {
     exe.pie = pie;
 
     exe.root_module.addImport("wayland", wayland);
+    exe.root_module.addImport("xkbcommon", xkbcommon);
 
     exe.linkLibC();
     exe.linkSystemLibrary("wayland-client");

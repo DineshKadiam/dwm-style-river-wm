@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Ben Buhse <me@benbuhse.email>
+// SPDX-FileCopyrightText: 2025-2026 Ben Buhse <me@benbuhse.email>
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -19,6 +19,7 @@ new_x: i32 = 0,
 new_y: i32 = 0,
 
 link: wl.list.Link,
+is_head: bool = false,
 
 pub fn init(window: *Window, context: *Context, river_window_v1: *river.WindowV1) void {
     window.* = .{
@@ -47,7 +48,7 @@ fn windowListener(river_window_v1: *river.WindowV1, event: river.WindowV1.Event,
             window.context.allocator.destroy(window);
         },
         .dimensions => |ev| {
-            // Part of the protocol requires these are strictly greater-than zero
+            // The protocol requires these are strictly greather than zero.
             assert(ev.width > 0 and ev.height > 0);
             window.width = @intCast(ev.width);
             window.height = @intCast(ev.height);
@@ -69,13 +70,16 @@ pub fn manage(window: *Window) void {
         window.new_y = 0;
     }
 
+    // TODO: Support multiple primaries
+    // TODO: Is this a valid way to check for the window's index?
+
     // TODO: Remove this -- just fullscreen for now
     if (window.width != window.context.wm.outputs.first().?.width or
         window.height != window.context.wm.outputs.first().?.height)
     {
         window.width = @intCast(window.context.wm.outputs.first().?.width);
         window.height = @intCast(window.context.wm.outputs.first().?.height);
-        log.debug("setting window width={d} and height={d}", .{ window.width, window.height });
+        log.debug("setting window width={d} and height={d} {}", .{ window.width, window.height, window.is_head });
     }
     window.window_v1.proposeDimensions(window.width, window.height);
     // window.window_v1.setTiled(.{ .top = true, .bottom = true, .left = true, .right = true });

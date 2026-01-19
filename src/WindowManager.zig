@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025 Ben Buhse <me@benbuhse.email>
+// SPDX-FileCopyrightText: 2025-2026 Ben Buhse <me@benbuhse.email>
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -11,6 +11,8 @@ window_manager_v1: *river.WindowManagerV1,
 seats: wl.list.Head(Seat, .link),
 outputs: wl.list.Head(Output, .link),
 windows: wl.list.Head(Window, .link),
+
+window_count: u8 = 0,
 
 pub fn init(wm: *WindowManager, context: *Context, window_manager_v1: *river.WindowManagerV1) void {
     assert(wm == &context.wm);
@@ -38,6 +40,10 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
             std.posix.exit(1);
         },
         .manage_start => {
+            if (!context.initialized) {
+                context.initialized = true;
+                context.xkb_bindings.addBinding(xkbcommon.Keysym.t, .{ .mod1 = true });
+            }
             {
                 var it = wm.seats.iterator(.forward);
                 while (it.next()) |seat| {
@@ -96,6 +102,11 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
             var window = context.allocator.create(Window) catch @panic("out-of-memory; exiting.");
             window.init(context, ev.id);
             wm.windows.append(window);
+            wm.window_count += 1;
+            if (wm.window_count == 1) {
+                window.is_head = true;
+            }
+            log.debug("window_count = {d}", .{wm.window_count});
         },
         else => |ev| {
             log.debug("unhandled event: {s}", .{@tagName(ev)});
@@ -110,10 +121,11 @@ const wayland = @import("wayland");
 const wl = wayland.client.wl;
 const river = wayland.client.river;
 
+const xkbcommon = @import("xkbcommon");
+
 const Context = @import("main.zig").Context;
 const Output = @import("Output.zig");
+const Seat = @import("Seat.zig");
 const Window = @import("Window.zig");
 
 const log = std.log.scoped(.WindowManager);
-
-const Seat = @import("Seat.zig");
