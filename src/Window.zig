@@ -66,7 +66,7 @@ fn windowListener(river_window_v1: *river.WindowV1, event: river.WindowV1.Event,
                 }
             }
             window.link.remove();
-            window.context.allocator.destroy(window);
+            utils.allocator.destroy(window);
         },
         .dimensions => |ev| {
             // The protocol requires these are strictly greather than zero.
@@ -172,6 +172,7 @@ const wayland = @import("wayland");
 const wl = wayland.client.wl;
 const river = wayland.client.river;
 
-const Context = @import("main.zig").Context;
+const utils = @import("utils.zig");
+const Context = @import("Context.zig");
 
 const log = std.log.scoped(.Window);

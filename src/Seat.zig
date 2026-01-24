@@ -28,7 +28,7 @@ fn seatListener(river_seat_v1: *river.SeatV1, event: river.SeatV1.Event, seat: *
     switch (event) {
         .removed => {
             river_seat_v1.destroy();
-            seat.context.allocator.destroy(seat);
+            utils.allocator.destroy(seat);
         },
         .wl_seat => {
             // log.debug("initializing new river_seat_v1 corresponding to wl_seat: {d}", .{ev.name});
@@ -66,7 +66,8 @@ const wayland = @import("wayland");
 const wl = wayland.client.wl;
 const river = wayland.client.river;
 
-const Context = @import("main.zig").Context;
+const utils = @import("utils.zig");
+const Context = @import("Context.zig");
 const Window = @import("Window.zig");
 
 const log = std.log.scoped(.Seat);

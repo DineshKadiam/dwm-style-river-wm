@@ -30,7 +30,7 @@ fn outputListener(river_output_v1: *river.OutputV1, event: river.OutputV1.Event,
     switch (event) {
         .removed => {
             river_output_v1.destroy();
-            output.context.allocator.destroy(output);
+            utils.allocator.destroy(output);
         },
         .wl_output => {
             // log.debug("initializing new river_output_v1 corresponding to wl_output: {d}", .{ev.name});
@@ -61,6 +61,7 @@ const wayland = @import("wayland");
 const wl = wayland.client.wl;
 const river = wayland.client.river;
 
-const Context = @import("main.zig").Context;
+const utils = @import("utils.zig");
+const Context = @import("Context.zig");
 
 const log = std.log.scoped(.Output);

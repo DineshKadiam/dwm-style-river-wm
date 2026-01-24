@@ -97,10 +97,10 @@ xkb_bindings_v1: *river.XkbBindingsV1,
 
 bindings: wl.list.Head(XkbBinding, .link),
 
-xkb_bindings_seat_v1: ?*river.XkbBindingsSeatV1 = null,
+pub fn create(context: *Context, xkb_bindings_v1: *river.XkbBindingsV1) !*XkbBindings {
+    const xkb_bindings = try utils.allocator.create(XkbBindings);
+    errdefer xkb_bindings.destroy();
 
-pub fn init(xkb_bindings: *XkbBindings, context: *Context, xkb_bindings_v1: *river.XkbBindingsV1) void {
-    assert(xkb_bindings == &context.xkb_bindings);
     xkb_bindings.* = .{
         .context = context,
         .xkb_bindings_v1 = xkb_bindings_v1,
@@ -108,21 +108,21 @@ pub fn init(xkb_bindings: *XkbBindings, context: *Context, xkb_bindings_v1: *riv
     };
 
     xkb_bindings.bindings.init();
+
+    return xkb_bindings;
 }
 
-pub fn getSeat(xkb_bindings: *XkbBindings) *river.SeatV1 {
-    const seat = xkb_bindings.context.wm.seats.first() orelse @panic("No seat available");
-    return seat.seat_v1;
+pub fn destroy(xkb_bindings: *XkbBindings) void {
+    xkb_bindings.destroy();
 }
 
-pub fn addBinding(xkb_bindings: *XkbBindings, keysym: u32, modifiers: river.SeatV1.Modifiers, command: Command) void {
-    const seat_v1 = xkb_bindings.getSeat();
-    const xkb_binding_v1 = xkb_bindings.xkb_bindings_v1.getXkbBinding(seat_v1, keysym, modifiers) catch |err| {
-        log.err("Failed to get xkb binding: {}", .{err});
+pub fn addBinding(xkb_bindings: *XkbBindings, river_seat_v1: *river.SeatV1, keysym: u32, modifiers: river.SeatV1.Modifiers, command: Command) void {
+    const xkb_binding_v1 = xkb_bindings.xkb_bindings_v1.getXkbBinding(river_seat_v1, keysym, modifiers) catch |err| {
+        log.err("Failed to get river xkb binding: {}", .{err});
         return;
     };
 
-    const xkb_binding = xkb_bindings.context.allocator.create(XkbBinding) catch @panic("out-of-memory");
+    const xkb_binding = utils.allocator.create(XkbBinding) catch @panic("out-of-memory");
     xkb_binding.init(xkb_binding_v1, command, xkb_bindings.context);
     xkb_bindings.bindings.append(xkb_binding);
 
@@ -138,7 +138,8 @@ const river = wayland.client.river;
 
 const xkbcommon = @import("xkbcommon");
 
-const Context = @import("main.zig").Context;
+const utils = @import("utils.zig");
+const Context = @import("Context.zig");
 const Seat = @import("Seat.zig");
 
 const log = std.log.scoped(.XkbBindings);

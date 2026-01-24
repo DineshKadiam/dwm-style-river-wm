@@ -16,6 +16,31 @@ windows: wl.list.Head(Window, .link),
 
 window_count: u8 = 0,
 
+pub fn create(context: *Context, window_manager_v1: *river.WindowManagerV1) !*WindowManager {
+    const wm = try utils.allocator.create(WindowManager);
+    errdefer wm.destroy();
+
+    wm.* = .{
+        .context = context,
+        .window_manager_v1 = window_manager_v1,
+        .seats = undefined, // we will initialize these shortly
+        .outputs = undefined,
+        .windows = undefined,
+    };
+
+    wm.seats.init();
+    wm.outputs.init();
+    wm.windows.init();
+
+    wm.window_manager_v1.setListener(*WindowManager, windowManagerV1Listener, wm);
+
+    return wm;
+}
+
+pub fn destroy(wm: *WindowManager) void {
+    utils.allocator.destroy(wm);
+}
+
 /// Get the next window in the list, wrapping to first if at end
 pub fn getNextWindow(wm: *WindowManager, current: *Window) ?*Window {
     var it = wm.windows.iterator(.forward);
@@ -38,23 +63,6 @@ pub fn getPrevWindow(wm: *WindowManager, current: *Window) ?*Window {
         prev = window;
     }
     return wm.windows.last();
-}
-
-pub fn init(wm: *WindowManager, context: *Context, window_manager_v1: *river.WindowManagerV1) void {
-    assert(wm == &context.wm);
-    wm.* = .{
-        .context = context,
-        .window_manager_v1 = window_manager_v1,
-        .seats = undefined, // we will initialize this shortly
-        .outputs = undefined,
-        .windows = undefined,
-    };
-
-    wm.seats.init();
-    wm.outputs.init();
-    wm.windows.init();
-
-    wm.window_manager_v1.setListener(*WindowManager, windowManagerV1Listener, wm);
 }
 
 /// Calculate primary/stack layout positions for all windows.
@@ -137,12 +145,15 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
                 // mark it as cold.
                 @branchHint(.cold);
                 context.initialized = true;
-                context.xkb_bindings.addBinding(xkbcommon.Keysym.t, .{ .mod4 = true }, .{ .spawn = &.{"foot"} });
-                context.xkb_bindings.addBinding(xkbcommon.Keysym.j, .{ .mod4 = true }, .focus_next);
-                context.xkb_bindings.addBinding(xkbcommon.Keysym.k, .{ .mod4 = true }, .focus_prev);
-                context.xkb_bindings.addBinding(xkbcommon.Keysym.f, .{ .mod4 = true }, .fullscreen);
-                context.xkb_bindings.addBinding(xkbcommon.Keysym.q, .{ .mod4 = true, .shift = true }, .close_window);
-                context.xkb_bindings.addBinding(xkbcommon.Keysym.e, .{ .mod4 = true, .shift = true }, .exit);
+
+                const seat = wm.seats.first() orelse @panic("No river_seat_v1 found");
+                const river_seat_v1 = seat.seat_v1;
+                context.xkb_bindings.addBinding(river_seat_v1, xkbcommon.Keysym.t, .{ .mod4 = true }, .{ .spawn = &.{"foot"} });
+                context.xkb_bindings.addBinding(river_seat_v1, xkbcommon.Keysym.j, .{ .mod4 = true }, .focus_next);
+                context.xkb_bindings.addBinding(river_seat_v1, xkbcommon.Keysym.k, .{ .mod4 = true }, .focus_prev);
+                context.xkb_bindings.addBinding(river_seat_v1, xkbcommon.Keysym.f, .{ .mod4 = true }, .fullscreen);
+                context.xkb_bindings.addBinding(river_seat_v1, xkbcommon.Keysym.q, .{ .mod4 = true, .shift = true }, .close_window);
+                context.xkb_bindings.addBinding(river_seat_v1, xkbcommon.Keysym.e, .{ .mod4 = true, .shift = true }, .exit);
             }
 
             {
@@ -190,19 +201,19 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
         },
         .output => |ev| {
             log.debug("3", .{});
-            var output = context.allocator.create(Output) catch @panic("out-of-memory; exiting.");
+            var output = utils.allocator.create(Output) catch @panic("out-of-memory; exiting.");
             output.init(context, ev.id);
             wm.outputs.append(output);
         },
         .seat => |ev| {
             log.debug("4", .{});
-            var seat = context.allocator.create(Seat) catch @panic("out-of-memory; exiting.");
+            var seat = utils.allocator.create(Seat) catch @panic("out-of-memory; exiting.");
             seat.init(context, ev.id);
             wm.seats.append(seat);
         },
         .window => |ev| {
             log.debug("5", .{});
-            var window = context.allocator.create(Window) catch @panic("out-of-memory; exiting.");
+            var window = utils.allocator.create(Window) catch @panic("out-of-memory; exiting.");
             window.init(context, ev.id);
             wm.windows.append(window);
             wm.window_count += 1;
@@ -223,7 +234,8 @@ const river = wayland.client.river;
 
 const xkbcommon = @import("xkbcommon");
 
-const Context = @import("main.zig").Context;
+const utils = @import("utils.zig");
+const Context = @import("Context.zig");
 const Output = @import("Output.zig");
 const Seat = @import("Seat.zig");
 const Window = @import("Window.zig");
