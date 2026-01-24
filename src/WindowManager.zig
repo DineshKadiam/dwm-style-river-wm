@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025-2026 Ben Buhse <me@benbuhse.email>
+// SPDX-FileCopyrightText: 2025 Ben Buhse <me@benbuhse.email>
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -15,6 +15,30 @@ outputs: wl.list.Head(Output, .link),
 windows: wl.list.Head(Window, .link),
 
 window_count: u8 = 0,
+
+/// Get the next window in the list, wrapping to first if at end
+pub fn getNextWindow(wm: *WindowManager, current: *Window) ?*Window {
+    var it = wm.windows.iterator(.forward);
+    while (it.next()) |window| {
+        if (window == current) {
+            return it.next() orelse wm.windows.first();
+        }
+    }
+    return wm.windows.first();
+}
+
+/// Get the previous window in the list, wrapping to last if at beginning
+pub fn getPrevWindow(wm: *WindowManager, current: *Window) ?*Window {
+    var prev: ?*Window = null;
+    var it = wm.windows.iterator(.forward);
+    while (it.next()) |window| {
+        if (window == current) {
+            return prev orelse wm.windows.last();
+        }
+        prev = window;
+    }
+    return wm.windows.last();
+}
 
 pub fn init(wm: *WindowManager, context: *Context, window_manager_v1: *river.WindowManagerV1) void {
     assert(wm == &context.wm);
@@ -36,7 +60,7 @@ pub fn init(wm: *WindowManager, context: *Context, window_manager_v1: *river.Win
 /// Calculate primary/stack layout positions for all windows.
 /// - Single window: fullscreen
 /// - Multiple windows: stack (45% left, vertically tiled), primary (55% right)
-pub fn calculatePrimaryStackLayout(wm: *WindowManager) void {
+fn calculatePrimaryStackLayout(wm: *WindowManager) void {
     const count = wm.window_count;
     if (count == 0) return;
 
@@ -50,27 +74,44 @@ pub fn calculatePrimaryStackLayout(wm: *WindowManager) void {
     var index: u8 = 0;
     var it = wm.windows.iterator(.forward);
     while (it.next()) |window| {
-        if (count == 1) {
-            // Single window: fullscreen
+        if (window.is_fullscreen) {
+            // Count doesn't matter if a window is fullscreen
             window.new_x = output_x;
             window.new_y = output_y;
             window.new_width = output_width;
             window.new_height = output_height;
+            continue;
+        }
+
+        if (count == 1) {
+            // Single window: maximize
+            // TODO: Make maximum window aspect ratio 16:10, i.e. a single window in an ultrawide
+            // monitor only takes up 16:10 area in the middle with empty space on the outsides
+            window.new_x = output_x;
+            window.new_y = output_y;
+            window.new_width = output_width;
+            window.new_height = output_height;
+
+            if (!window.is_maximized) {
+                window.pending_action = .maximize;
+            }
         } else {
             // Multiple windows: primary/stack layout
+            // TODO: Support multiple primaries
             const primary_width: u31 = @intFromFloat(@as(f32, @floatFromInt(output_width)) * PRIMARY_RATIO);
             const stack_width: u31 = output_width - primary_width;
             const stack_count = count - 1;
             const stack_height: u31 = @divFloor(output_height, stack_count);
 
             if (index == 0) {
-                // Primary window (first window) - right side
+                // TODO: Support configuring primary side
+                // Primary window - right side
                 window.new_x = output_x + @as(i32, stack_width);
                 window.new_y = output_y;
                 window.new_width = primary_width;
                 window.new_height = output_height;
             } else {
-                // Stack window - left side
+                // Stack window(s) - left side
                 const stack_index = index - 1;
                 window.new_x = output_x;
                 window.new_y = output_y + @as(i32, stack_index) * @as(i32, stack_height);
@@ -81,6 +122,17 @@ pub fn calculatePrimaryStackLayout(wm: *WindowManager) void {
                 } else {
                     window.new_height = stack_height;
                 }
+            }
+
+            // Make space for borders; this is the same for all non-fullscreen windows
+            const border_width = wm.context.config.border_width;
+            window.new_height -= 2 * border_width;
+            window.new_width -= 2 * border_width;
+            window.new_x += border_width;
+            window.new_y += border_width;
+
+            if (window.is_maximized) {
+                window.pending_action = .unmaximize;
             }
         }
         index += 1;
@@ -97,9 +149,18 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
         },
         .manage_start => {
             if (!context.initialized) {
+                // This code (should) only be run once while initializing the WM, so let's
+                // mark it as cold.
+                @branchHint(.cold);
                 context.initialized = true;
-                context.xkb_bindings.addBinding(xkbcommon.Keysym.t, .{ .mod1 = true });
+                context.xkb_bindings.addBinding(xkbcommon.Keysym.t, .{ .mod4 = true }, .{ .spawn = &.{"foot"} });
+                context.xkb_bindings.addBinding(xkbcommon.Keysym.j, .{ .mod4 = true }, .focus_next);
+                context.xkb_bindings.addBinding(xkbcommon.Keysym.k, .{ .mod4 = true }, .focus_prev);
+                context.xkb_bindings.addBinding(xkbcommon.Keysym.f, .{ .mod4 = true }, .fullscreen);
+                context.xkb_bindings.addBinding(xkbcommon.Keysym.q, .{ .mod4 = true, .shift = true }, .close_window);
+                context.xkb_bindings.addBinding(xkbcommon.Keysym.e, .{ .mod4 = true, .shift = true }, .exit);
             }
+
             {
                 var it = wm.seats.iterator(.forward);
                 while (it.next()) |seat| {
@@ -161,7 +222,6 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
             window.init(context, ev.id);
             wm.windows.append(window);
             wm.window_count += 1;
-            log.debug("window_count = {d}", .{wm.window_count});
         },
         else => |ev| {
             log.debug("unhandled event: {s}", .{@tagName(ev)});
@@ -182,5 +242,6 @@ const Context = @import("main.zig").Context;
 const Output = @import("Output.zig");
 const Seat = @import("Seat.zig");
 const Window = @import("Window.zig");
+const XkbBindings = @import("XkbBindings.zig");
 
 const log = std.log.scoped(.WindowManager);

@@ -8,7 +8,7 @@ context: *Context,
 
 seat_v1: *river.SeatV1,
 
-hovered: ?*Window,
+focused: ?*Window,
 
 link: wl.list.Link,
 
@@ -16,7 +16,7 @@ pub fn init(seat: *Seat, context: *Context, river_seat_v1: *river.SeatV1) void {
     seat.* = .{
         .context = context,
         .seat_v1 = river_seat_v1,
-        .hovered = null,
+        .focused = null,
         .link = undefined, // Handled by the wl.list
     };
 
@@ -36,7 +36,12 @@ fn seatListener(river_seat_v1: *river.SeatV1, event: river.SeatV1.Event, seat: *
         .pointer_enter => |ev| {
             const window_v1 = ev.window orelse return;
             const window: *Window = @ptrCast(@alignCast(window_v1.getUserData()));
-            seat.hovered = window;
+            seat.focused = window;
+        },
+        .window_interaction => |ev| {
+            const window_v1 = ev.window orelse return;
+            const window: *Window = @ptrCast(@alignCast(window_v1.getUserData()));
+            seat.focused = window;
         },
         else => |ev| {
             log.debug("unhandled event: {s}", .{@tagName(ev)});
@@ -45,9 +50,8 @@ fn seatListener(river_seat_v1: *river.SeatV1, event: river.SeatV1.Event, seat: *
 }
 
 pub fn manage(seat: *Seat) void {
-    if (seat.hovered) |window| {
+    if (seat.focused) |window| {
         seat.seat_v1.focusWindow(window.window_v1);
-        seat.hovered = null;
     }
 }
 

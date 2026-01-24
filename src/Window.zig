@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025-2026 Ben Buhse <me@benbuhse.email>
+// SPDX-FileCopyrightText: 2025 Ben Buhse <me@benbuhse.email>
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -19,7 +19,22 @@ new_height: u31 = 0,
 new_x: i32 = 0,
 new_y: i32 = 0,
 
+initialized: bool = false,
+
+is_fullscreen: bool = false,
+is_maximized: bool = false,
+
+// Maybe this should be separate for each type of action so it can't be overwritten ?
+pending_action: ?PendingAction = null,
+
 link: wl.list.Link,
+
+pub const PendingAction = enum {
+    enter_fullscreen,
+    exit_fullscreen,
+    maximize,
+    unmaximize,
+};
 
 pub fn init(window: *Window, context: *Context, river_window_v1: *river.WindowV1) void {
     window.* = .{
@@ -42,8 +57,8 @@ fn windowListener(river_window_v1: *river.WindowV1, event: river.WindowV1.Event,
             {
                 var it = window.context.wm.seats.iterator(.forward);
                 while (it.next()) |seat| {
-                    if (seat.hovered == window) {
-                        seat.hovered = null;
+                    if (seat.focused == window) {
+                        seat.focused = null;
                     }
                 }
             }
@@ -66,30 +81,90 @@ fn windowListener(river_window_v1: *river.WindowV1, event: river.WindowV1.Event,
 }
 
 pub fn manage(window: *Window) void {
+    defer window.pending_action = null;
+    defer window.new_width = 0;
+    defer window.new_height = 0;
+
+    if (!window.initialized) {
+        @branchHint(.unlikely);
+        window.initialized = true;
+
+        // Use server-side decoration (no client-drawn title bars)
+        // TODO: We might want a way to handle clients requesting CSD (or switching between
+        // CSD and SSD)
+        window.window_v1.useSsd();
+
+        window.window_v1.setCapabilities(.{ .fullscreen = true });
+    }
+
     // Layout has been pre-computed by WindowManager.calculatePrimaryStackLayout()
     // Apply the computed dimensions
     if (window.new_width > 0 and window.new_height > 0) {
         window.window_v1.proposeDimensions(window.new_width, window.new_height);
+    }
 
-        // Use server-side decoration (no client-drawn title bars)
-        window.window_v1.useSsd();
+    if (window.pending_action) |pending_action| {
+        switch (pending_action) {
+            .enter_fullscreen => {
+                window.window_v1.setTiled(.{});
+                // TODO: Figure out what output this Window is on?
+                const output = window.context.wm.outputs.first() orelse return;
+                window.window_v1.fullscreen(output.output_v1);
+                window.window_v1.informFullscreen();
 
-        // Inform the window about its tiled/fullscreen state
-        if (window.context.wm.window_count == 1) {
-            // Single window is fullscreen
-            window.window_v1.setTiled(.{ .top = false, .bottom = false, .left = false, .right = false });
-            window.window_v1.informFullscreen();
-        } else {
-            // Tiled windows - set tiled edges
-            window.window_v1.informNotFullscreen();
-            window.window_v1.setTiled(.{ .top = true, .bottom = true, .left = true, .right = true });
+                window.is_fullscreen = true;
+            },
+            .exit_fullscreen => {
+                window.window_v1.setTiled(.{ .top = true, .bottom = true, .left = true, .right = true });
+                window.window_v1.exitFullscreen();
+                window.window_v1.informNotFullscreen();
+
+                window.is_fullscreen = false;
+            },
+            .maximize => {
+                window.window_v1.setTiled(.{ .top = true, .bottom = true, .left = true, .right = true });
+                window.window_v1.informMaximized();
+
+                window.is_maximized = true;
+            },
+            .unmaximize => {
+                window.window_v1.setTiled(.{ .top = true, .bottom = true, .left = true, .right = true });
+                window.window_v1.informUnmaximized();
+
+                window.is_maximized = false;
+            },
         }
     }
+    // }
 }
 
 pub fn render(window: *Window) void {
     // Set the window position using the pre-computed layout
     window.node_v1.setPosition(window.new_x, window.new_y);
+
+    // Set borders
+    if (!window.is_fullscreen) {
+        const border_width = window.context.config.border_width;
+        if (window.isFocused()) {
+            const border_color_focused = window.context.config.border_color_focused;
+            window.window_v1.setBorders(.{ .top = true, .bottom = true, .left = true, .right = true }, border_width, border_color_focused.red, border_color_focused.green, border_color_focused.blue, border_color_focused.alpha);
+        } else {
+            const border_color_unfocused = window.context.config.border_color_unfocused;
+            window.window_v1.setBorders(.{ .top = true, .bottom = true, .left = true, .right = true }, border_width, border_color_unfocused.red, border_color_unfocused.green, border_color_unfocused.blue, border_color_unfocused.alpha);
+        }
+    }
+}
+
+fn isFocused(window: *Window) bool {
+    // Probably a better way to do this... keep currently focused window directly in context?
+    // Regardless, we only have one Seat so this shouldn't be awful performance-wise
+    var it = window.context.wm.seats.iterator(.forward);
+    while (it.next()) |seat| {
+        if (seat.focused == window) {
+            return true;
+        }
+    }
+    return false;
 }
 
 const std = @import("std");

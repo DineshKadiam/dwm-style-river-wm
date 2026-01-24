@@ -17,6 +17,8 @@ pub const Context = struct {
     wm: WindowManager,
     xkb_bindings: XkbBindings,
 
+    config: Config,
+
     fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, context: *Context) void {
         switch (event) {
             .global => |ev| {
@@ -77,6 +79,8 @@ pub fn main() !void {
         .registry = registry,
         .wm = undefined,
         .xkb_bindings = undefined,
+        // Hardcoded config for now
+        .config = .{ .border_width = 2, .border_color_focused = utils.parseRgbaComptime("0x89b4fa"), .border_color_unfocused = utils.parseRgbaComptime("0x1e1e2e") },
     };
 
     registry.setListener(*Context, Context.registryListener, &context);
@@ -97,6 +101,7 @@ pub fn main() !void {
     log.info("Exiting beansprout", .{});
 }
 
+// TODO: Actually use this...
 fn interfaceNotAdvertised(comptime WaylandGlobal: type) noreturn {
     log.err("{s} not advertised. Exiting", .{WaylandGlobal.interface.name});
     std.posix.exit(1);
@@ -114,6 +119,8 @@ const wayland = @import("wayland");
 const river = wayland.client.river;
 const wl = wayland.client.wl;
 
+const utils = @import("utils.zig");
+const Config = @import("Config.zig");
 const WindowManager = @import("WindowManager.zig");
 const XkbBindings = @import("XkbBindings.zig");
 
