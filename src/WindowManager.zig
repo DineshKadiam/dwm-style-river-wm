@@ -75,50 +75,50 @@ fn calculatePrimaryStackLayout(wm: *WindowManager) void {
     var it = wm.windows.iterator(.forward);
     while (it.next()) |window| {
         if (count == 1) {
-            // Single window: fullscreen
-            // TODO: Disable borders when maximized
-            window.new_x = output_x;
-            window.new_y = output_y;
-            window.new_width = output_width;
-            window.new_height = output_height;
-            window.is_maximized = true;
+            // Single window: maximize
+            window.pending_state.x = output_x;
+            window.pending_state.y = output_y;
+            window.pending_state.width = output_width;
+            window.pending_state.height = output_height;
+            window.pending_state.maximized = true;
         } else {
             // Multiple windows: primary/stack layout
-            // TODO: Support multiple primaries
+            // TODO: Support multiple windows in primary stack
             const primary_width: u31 = @intFromFloat(@as(f32, @floatFromInt(output_width)) * PRIMARY_RATIO);
             const stack_width: u31 = output_width - primary_width;
             const stack_count = count - 1;
             const stack_height: u31 = @divFloor(output_height, stack_count);
-            window.is_maximized = false;
+            window.pending_state.maximized = false;
 
             if (index == 0) {
                 // Primary window (first window) - right side
-                window.new_x = output_x + @as(i32, stack_width);
-                window.new_y = output_y;
-                window.new_width = primary_width;
-                window.new_height = output_height;
+                window.pending_state.x = output_x + @as(i32, stack_width);
+                window.pending_state.y = output_y;
+                window.pending_state.width = primary_width;
+                window.pending_state.height = output_height;
             } else {
                 // Stack window(s) - left side
                 const stack_index = index - 1;
-                window.new_x = output_x;
-                window.new_y = output_y + @as(i32, stack_index) * @as(i32, stack_height);
-                window.new_width = stack_width;
+                window.pending_state.x = output_x;
+                window.pending_state.y = output_y + @as(i32, stack_index) * @as(i32, stack_height);
+                window.pending_state.width = stack_width;
                 // Last stack window gets remaining height to avoid gaps from integer division
                 if (index == count - 1) {
-                    window.new_height = output_height - stack_index * stack_height;
+                    window.pending_state.height = output_height - stack_index * stack_height;
                 } else {
-                    window.new_height = stack_height;
+                    window.pending_state.height = stack_height;
                 }
             }
-
-            // Make space for borders; this is the same for all windows
-            // (unless we disable borders when maximized?)
-            const border_width = wm.context.config.border_width;
-            window.new_height -= 2 * border_width;
-            window.new_width -= 2 * border_width;
-            window.new_x += border_width;
-            window.new_y += border_width;
         }
+        // Make space for borders; this is the same for all windows.
+        // Borders are automatically disabled when a window is fullscreened so we don't
+        // have to worry about that.
+        const border_width = wm.context.config.border_width;
+        window.pending_state.height.? -= 2 * border_width;
+        window.pending_state.width.? -= 2 * border_width;
+        window.pending_state.x.? += border_width;
+        window.pending_state.y.? += border_width;
+
         index += 1;
     }
 }
@@ -140,8 +140,9 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
                 context.xkb_bindings.addBinding(xkbcommon.Keysym.t, .{ .mod4 = true }, .{ .spawn = &.{"foot"} });
                 context.xkb_bindings.addBinding(xkbcommon.Keysym.j, .{ .mod4 = true }, .focus_next);
                 context.xkb_bindings.addBinding(xkbcommon.Keysym.k, .{ .mod4 = true }, .focus_prev);
-                context.xkb_bindings.addBinding(xkbcommon.Keysym.q, .{ .mod4 = true, .shift = true }, XkbBindings.Command.close_window);
-                context.xkb_bindings.addBinding(xkbcommon.Keysym.e, .{ .mod4 = true, .shift = true }, XkbBindings.Command.exit);
+                context.xkb_bindings.addBinding(xkbcommon.Keysym.f, .{ .mod4 = true }, .fullscreen);
+                context.xkb_bindings.addBinding(xkbcommon.Keysym.q, .{ .mod4 = true, .shift = true }, .close_window);
+                context.xkb_bindings.addBinding(xkbcommon.Keysym.e, .{ .mod4 = true, .shift = true }, .exit);
             }
 
             {

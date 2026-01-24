@@ -8,6 +8,7 @@ pub const Command = union(enum) {
     spawn: []const []const u8,
     focus_next,
     focus_prev,
+    fullscreen,
     close_window,
     exit,
 };
@@ -70,6 +71,11 @@ const XkbBinding = struct {
                     seat.focused = context.wm.windows.last();
                 }
                 context.wm.window_manager_v1.manageDirty();
+            },
+            .fullscreen => {
+                const seat = context.wm.seats.first() orelse return;
+                const window = seat.focused orelse return;
+                window.pending_state.fullscreen = !window.fullscreen;
             },
             .close_window => {
                 const seat = context.wm.seats.first() orelse return;
