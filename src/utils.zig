@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+pub const allocator = std.heap.c_allocator;
+
 pub const RiverColor = struct {
     red: u32,
     green: u32,
