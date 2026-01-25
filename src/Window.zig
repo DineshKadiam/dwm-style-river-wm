@@ -84,12 +84,12 @@ fn windowListener(river_window_v1: *river.WindowV1, event: river.WindowV1.Event,
 }
 
 pub fn manage(window: *Window) void {
-    // Use server-side decoration (no client-drawn title bars)
-    // TODO: Probably shouldn't send this for every manage(?)
     if (!window.initialized) {
         @branchHint(.unlikely);
         window.initialized = true;
 
+        // TODO: We might want to think about paying attention to the decoration_hint event
+        //       If we do, this would need to move, I think?
         window.window_v1.useSsd();
 
         window.window_v1.setCapabilities(.{ .fullscreen = true, .maximize = true });

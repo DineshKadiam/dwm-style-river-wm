@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025-2026 Ben Buhse <me@benbuhse.email>
+// SPDX-FileCopyrightText: 2026 Ben Buhse <me@benbuhse.email>
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 

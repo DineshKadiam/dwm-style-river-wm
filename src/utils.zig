@@ -65,5 +65,19 @@ fn parseRgbaHelper(bytes: [4]u8) RiverColor {
     };
 }
 
+/// Report that the given WaylandGlobal wasn't advertised and exit the program
+pub fn interfaceNotAdvertised(comptime WaylandGlobal: type) noreturn {
+    log.err("{s} not advertised. Exiting", .{WaylandGlobal.interface.name});
+    std.posix.exit(1);
+}
+
+/// Report that the given WaylandGlobal was advertised but the support version was too low exit the program
+pub fn versionNotSupported(comptime WaylandGlobal: type, have_version: u32, need_version: u32) noreturn {
+    log.err("The compositor only advertised {s} version {d} but version {d} is required. Exiting", .{ WaylandGlobal.interface.name, have_version, need_version });
+    std.posix.exit(1);
+}
+
 const std = @import("std");
 const fmt = std.fmt;
+
+const log = std.log.scoped(.utils);

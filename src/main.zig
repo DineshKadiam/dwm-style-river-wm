@@ -33,9 +33,9 @@ pub fn main() !void {
         std.posix.exit(1);
     }
 
-    const wl_compositor = globals.wl_compositor orelse interfaceNotAdvertised(wl.Compositor);
-    const river_window_manager_v1 = globals.river_window_manager_v1 orelse interfaceNotAdvertised(river.WindowManagerV1);
-    const river_xkb_bindings_v1 = globals.river_xkb_bindings_v1 orelse interfaceNotAdvertised(river.XkbBindingsV1);
+    const wl_compositor = globals.wl_compositor orelse utils.interfaceNotAdvertised(wl.Compositor);
+    const river_window_manager_v1 = globals.river_window_manager_v1 orelse utils.interfaceNotAdvertised(river.WindowManagerV1);
+    const river_xkb_bindings_v1 = globals.river_xkb_bindings_v1 orelse utils.interfaceNotAdvertised(river.XkbBindingsV1);
 
     const context = try Context.create(
         wl_display,
@@ -62,7 +62,7 @@ fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, globals: *
     switch (event) {
         .global => |ev| {
             if (mem.orderZ(u8, ev.interface, wl.Compositor.interface.name) == .eq) {
-                if (ev.version < 4) versionNotSupported(wl.Compositor, ev.version, 4);
+                if (ev.version < 4) utils.versionNotSupported(wl.Compositor, ev.version, 4);
                 globals.wl_compositor = registry.bind(ev.name, wl.Compositor, 4) catch |e| {
                     log.err("Failed to bind to compositor: {any}", .{@errorName(e)});
                     std.posix.exit(1);
@@ -82,17 +82,6 @@ fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, globals: *
         // We don't need .global_remove
         .global_remove => {},
     }
-}
-
-// TODO: Actually use this...
-fn interfaceNotAdvertised(comptime WaylandGlobal: type) noreturn {
-    log.err("{s} not advertised. Exiting", .{WaylandGlobal.interface.name});
-    std.posix.exit(1);
-}
-
-fn versionNotSupported(comptime WaylandGlobal: type, have_version: u32, need_version: u32) noreturn {
-    log.err("The compositor only advertised {s} version {d} but version {d} is required. Exiting", .{ WaylandGlobal.interface.name, have_version, need_version });
-    std.posix.exit(1);
 }
 
 const std = @import("std");

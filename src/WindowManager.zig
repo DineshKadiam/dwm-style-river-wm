@@ -6,6 +6,8 @@ const WindowManager = @This();
 
 const PRIMARY_RATIO: f32 = 0.55;
 
+const MIN_RIVER_SEAT_V1_VERSION: u2 = 3;
+
 context: *Context,
 
 window_manager_v1: *river.WindowManagerV1,
@@ -38,6 +40,7 @@ pub fn create(context: *Context, window_manager_v1: *river.WindowManagerV1) !*Wi
 }
 
 pub fn destroy(wm: *WindowManager) void {
+    // TODO: Go through lists and destroy everything
     utils.allocator.destroy(wm);
 }
 
@@ -200,22 +203,33 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
             window_manager_v1.renderFinish();
         },
         .output => |ev| {
-            log.debug("3", .{});
+            // TODO: Support multi-output
             var output = utils.allocator.create(Output) catch @panic("out-of-memory; exiting.");
             output.init(context, ev.id);
             wm.outputs.append(output);
         },
         .seat => |ev| {
-            log.debug("4", .{});
+            // TODO: Support multi-seat (maybe ?)
+            const river_seat_v1 = ev.id;
+            const river_seat_v1_version = river_seat_v1.getVersion();
+            if (river_seat_v1_version < MIN_RIVER_SEAT_V1_VERSION) {
+                @branchHint(.cold); // If we're in here, the program is exiting anyways
+                utils.versionNotSupported(river.SeatV1, river_seat_v1_version, MIN_RIVER_SEAT_V1_VERSION);
+            }
+
             var seat = utils.allocator.create(Seat) catch @panic("out-of-memory; exiting.");
-            seat.init(context, ev.id);
+            seat.init(context, river_seat_v1);
             wm.seats.append(seat);
         },
         .window => |ev| {
-            log.debug("5", .{});
             var window = utils.allocator.create(Window) catch @panic("out-of-memory; exiting.");
             window.init(context, ev.id);
-            wm.windows.append(window);
+
+            // TODO: Allow appending window instead of prepending
+            wm.windows.prepend(window);
+            const seat = wm.seats.first() orelse @panic("Failed to get seat");
+            seat.focused = window;
+
             wm.window_count += 1;
             log.debug("window_count = {d}", .{wm.window_count});
         },
