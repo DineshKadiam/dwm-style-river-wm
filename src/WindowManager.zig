@@ -87,11 +87,11 @@ fn calculatePrimaryStackLayout(wm: *WindowManager) void {
     while (it.next()) |window| {
         if (count == 1) {
             // Single window: maximize
-            window.pending_state.x = output_x;
-            window.pending_state.y = output_y;
-            window.pending_state.width = output_width;
-            window.pending_state.height = output_height;
-            window.pending_state.maximized = true;
+            window.pending_render.x = output_x;
+            window.pending_render.y = output_y;
+            window.pending_manage.width = output_width;
+            window.pending_manage.height = output_height;
+            window.pending_manage.maximized = true;
         } else {
             // Multiple windows: primary/stack layout
             // TODO: Support multiple windows in primary stack
@@ -99,25 +99,25 @@ fn calculatePrimaryStackLayout(wm: *WindowManager) void {
             const stack_width: u31 = output_width - primary_width;
             const stack_count = count - 1;
             const stack_height: u31 = @divFloor(output_height, stack_count);
-            window.pending_state.maximized = false;
+            window.pending_manage.maximized = false;
 
             if (index == 0) {
                 // Primary window (first window) - right side
-                window.pending_state.x = output_x + @as(i32, stack_width);
-                window.pending_state.y = output_y;
-                window.pending_state.width = primary_width;
-                window.pending_state.height = output_height;
+                window.pending_render.x = output_x + @as(i32, stack_width);
+                window.pending_render.y = output_y;
+                window.pending_manage.width = primary_width;
+                window.pending_manage.height = output_height;
             } else {
                 // Stack window(s) - left side
                 const stack_index = index - 1;
-                window.pending_state.x = output_x;
-                window.pending_state.y = output_y + @as(i32, stack_index) * @as(i32, stack_height);
-                window.pending_state.width = stack_width;
+                window.pending_render.x = output_x;
+                window.pending_render.y = output_y + @as(i32, stack_index) * @as(i32, stack_height);
+                window.pending_manage.width = stack_width;
                 // Last stack window gets remaining height to avoid gaps from integer division
                 if (index == count - 1) {
-                    window.pending_state.height = output_height - stack_index * stack_height;
+                    window.pending_manage.height = output_height - stack_index * stack_height;
                 } else {
-                    window.pending_state.height = stack_height;
+                    window.pending_manage.height = stack_height;
                 }
             }
         }
@@ -125,10 +125,10 @@ fn calculatePrimaryStackLayout(wm: *WindowManager) void {
         // Borders are automatically disabled when a window is fullscreened so we don't
         // have to worry about that.
         const border_width = wm.context.config.border_width;
-        window.pending_state.height.? -= 2 * border_width;
-        window.pending_state.width.? -= 2 * border_width;
-        window.pending_state.x.? += border_width;
-        window.pending_state.y.? += border_width;
+        window.pending_manage.height.? -= 2 * border_width;
+        window.pending_manage.width.? -= 2 * border_width;
+        window.pending_render.x.? += border_width;
+        window.pending_render.y.? += border_width;
 
         index += 1;
     }
@@ -143,6 +143,7 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
             std.posix.exit(1);
         },
         .manage_start => {
+            log.debug("manage start", .{});
             if (!context.initialized) {
                 // This code (should) only be run once while initializing the WM, so let's
                 // mark it as cold.
@@ -160,12 +161,6 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
             }
 
             {
-                var it = wm.seats.iterator(.forward);
-                while (it.next()) |seat| {
-                    seat.manage();
-                }
-            }
-            {
                 var it = wm.outputs.iterator(.forward);
                 while (it.next()) |output| {
                     output.manage();
@@ -179,9 +174,17 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
                     window.manage();
                 }
             }
+            {
+                var it = wm.seats.iterator(.forward);
+                while (it.next()) |seat| {
+                    seat.manage();
+                }
+            }
             window_manager_v1.manageFinish();
+            log.debug("manage end===================", .{});
         },
         .render_start => {
+            log.debug("render start", .{});
             {
                 var it = wm.seats.iterator(.forward);
                 while (it.next()) |seat| {
@@ -201,6 +204,7 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
                 }
             }
             window_manager_v1.renderFinish();
+            log.debug("render end==================", .{});
         },
         .output => |ev| {
             // TODO: Support multi-output
@@ -228,8 +232,8 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
             // TODO - CONFIG: Allow appending window instead of prepending
             wm.windows.prepend(window);
             const seat = wm.seats.first() orelse @panic("Failed to get seat");
-            seat.pending_state.pending_focus = .{ .window = window };
-            seat.pending_state.should_warp_pointer = true;
+            seat.pending_manage.pending_focus = .{ .window = window };
+            seat.pending_manage.should_warp_pointer = true;
 
             wm.window_count += 1;
         },

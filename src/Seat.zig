@@ -10,14 +10,12 @@ seat_v1: *river.SeatV1,
 
 focused: ?*Window,
 
-/// Used to manage updates to various aspect of Seat's state
-/// Gets reset at the end of every Seat.manage() call.
-pending_state: PendingState = .{},
+/// State consumed in manage phase, reset at end of manage().
+pending_manage: PendingManage = .{},
 
 link: wl.list.Link,
 
-/// Used to manage updates to various aspect of Seat's state
-pub const PendingState = struct {
+pub const PendingManage = struct {
     pending_focus: ?PendingFocus = null,
     should_warp_pointer: bool = false,
 
@@ -51,12 +49,12 @@ fn seatListener(river_seat_v1: *river.SeatV1, event: river.SeatV1.Event, seat: *
         .pointer_enter => |ev| {
             const window_v1 = ev.window orelse return;
             const window: *Window = @ptrCast(@alignCast(window_v1.getUserData()));
-            seat.pending_state.pending_focus = .{ .window = window };
+            seat.pending_manage.pending_focus = .{ .window = window };
         },
         .window_interaction => |ev| {
             const window_v1 = ev.window orelse return;
             const window: *Window = @ptrCast(@alignCast(window_v1.getUserData()));
-            seat.pending_state.pending_focus = .{ .window = window };
+            seat.pending_manage.pending_focus = .{ .window = window };
         },
         else => |ev| {
             log.debug("unhandled event: {s}", .{@tagName(ev)});
@@ -65,32 +63,42 @@ fn seatListener(river_seat_v1: *river.SeatV1, event: river.SeatV1.Event, seat: *
 }
 
 pub fn manage(seat: *Seat) void {
-    defer seat.pending_state = .{};
+    defer seat.pending_manage = .{};
 
-    log.debug("Managing Seat, pending state={any}", .{seat.pending_state});
-
-    if (seat.pending_state.pending_focus) |pending_focus| {
+    if (seat.pending_manage.pending_focus) |pending_focus| {
         switch (pending_focus) {
             .window => |window| {
+                if (seat.focused) |focused| {
+                    // Tell the previously focused Window that it's no longer focused
+                    if (focused != window) {
+                        focused.pending_render.focused = false;
+                    }
+                }
                 seat.focused = window;
                 seat.seat_v1.focusWindow(window.window_v1);
+                window.pending_render.focused = true;
             },
             .clear_focus => {
+                if (seat.focused) |focused| {
+                    // Tell the previously focused Window that it's no longer focused
+                    focused.pending_render.focused = false;
+                }
                 seat.focused = null;
                 seat.seat_v1.clearFocus();
             },
         }
     }
 
-    if (seat.pending_state.should_warp_pointer) blk: {
+    if (seat.pending_manage.should_warp_pointer) {
         const window = seat.focused orelse {
             log.err("Trying to warp pointer without focused window.", .{});
-            break :blk;
+            return;
         };
         // TODO - CONFIG: Allow disabling this behaviour
-        // Warp pointer to center of newly-focused windows
-        const pointer_x: i32 = @divTrunc(window.x + window.width, 2);
-        const pointer_y: i32 = @divTrunc(window.y + window.height, 2);
+        // Warp pointer to center of focused window;
+        // because the x and y coords are set later, we need to check them here.
+        const pointer_x: i32 = (window.pending_render.x orelse window.x) + @divTrunc(window.width, 2);
+        const pointer_y: i32 = (window.pending_render.y orelse window.y) + @divTrunc(window.height, 2);
         seat.seat_v1.pointerWarp(pointer_x, pointer_y);
         log.debug("warped pointer to {}, {}", .{ pointer_x, pointer_y });
     }
