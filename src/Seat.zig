@@ -10,7 +10,22 @@ seat_v1: *river.SeatV1,
 
 focused: ?*Window,
 
+/// Used to manage updates to various aspect of Seat's state
+/// Gets reset at the end of every Seat.manage() call.
+pending_state: PendingState = .{},
+
 link: wl.list.Link,
+
+/// Used to manage updates to various aspect of Seat's state
+pub const PendingState = struct {
+    pending_focus: ?PendingFocus = null,
+    should_warp_pointer: bool = false,
+
+    pub const PendingFocus = union(enum) {
+        window: *Window,
+        clear_focus,
+    };
+};
 
 pub fn init(seat: *Seat, context: *Context, river_seat_v1: *river.SeatV1) void {
     seat.* = .{
@@ -36,12 +51,12 @@ fn seatListener(river_seat_v1: *river.SeatV1, event: river.SeatV1.Event, seat: *
         .pointer_enter => |ev| {
             const window_v1 = ev.window orelse return;
             const window: *Window = @ptrCast(@alignCast(window_v1.getUserData()));
-            seat.focused = window;
+            seat.pending_state.pending_focus = .{ .window = window };
         },
         .window_interaction => |ev| {
             const window_v1 = ev.window orelse return;
             const window: *Window = @ptrCast(@alignCast(window_v1.getUserData()));
-            seat.focused = window;
+            seat.pending_state.pending_focus = .{ .window = window };
         },
         else => |ev| {
             log.debug("unhandled event: {s}", .{@tagName(ev)});
@@ -50,8 +65,34 @@ fn seatListener(river_seat_v1: *river.SeatV1, event: river.SeatV1.Event, seat: *
 }
 
 pub fn manage(seat: *Seat) void {
-    if (seat.focused) |window| {
-        seat.seat_v1.focusWindow(window.window_v1);
+    defer seat.pending_state = .{};
+
+    log.debug("Managing Seat, pending state={any}", .{seat.pending_state});
+
+    if (seat.pending_state.pending_focus) |pending_focus| {
+        switch (pending_focus) {
+            .window => |window| {
+                seat.focused = window;
+                seat.seat_v1.focusWindow(window.window_v1);
+            },
+            .clear_focus => {
+                seat.focused = null;
+                seat.seat_v1.clearFocus();
+            },
+        }
+    }
+
+    if (seat.pending_state.should_warp_pointer) blk: {
+        const window = seat.focused orelse {
+            log.err("Trying to warp pointer without focused window.", .{});
+            break :blk;
+        };
+        // TODO - CONFIG: Allow disabling this behaviour
+        // Warp pointer to center of newly-focused windows
+        const pointer_x: i32 = @divTrunc(window.x + window.width, 2);
+        const pointer_y: i32 = @divTrunc(window.y + window.height, 2);
+        seat.seat_v1.pointerWarp(pointer_x, pointer_y);
+        log.debug("warped pointer to {}, {}", .{ pointer_x, pointer_y });
     }
 }
 

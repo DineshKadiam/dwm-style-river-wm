@@ -69,7 +69,7 @@ pub fn getPrevWindow(wm: *WindowManager, current: *Window) ?*Window {
 }
 
 /// Calculate primary/stack layout positions for all windows.
-/// - Single window: fullscreen
+/// - Single window: maximized
 /// - Multiple windows: stack (45% left, vertically tiled), primary (55% right)
 fn calculatePrimaryStackLayout(wm: *WindowManager) void {
     const count = wm.window_count;
@@ -149,7 +149,7 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
                 @branchHint(.cold);
                 context.initialized = true;
 
-                const seat = wm.seats.first() orelse @panic("No river_seat_v1 found");
+                const seat = wm.seats.first() orelse @panic("Failed to get seat");
                 const river_seat_v1 = seat.seat_v1;
                 context.xkb_bindings.addBinding(river_seat_v1, xkbcommon.Keysym.t, .{ .mod4 = true }, .{ .spawn = &.{"foot"} });
                 context.xkb_bindings.addBinding(river_seat_v1, xkbcommon.Keysym.j, .{ .mod4 = true }, .focus_next);
@@ -225,13 +225,13 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
             var window = utils.allocator.create(Window) catch @panic("out-of-memory; exiting.");
             window.init(context, ev.id);
 
-            // TODO: Allow appending window instead of prepending
+            // TODO - CONFIG: Allow appending window instead of prepending
             wm.windows.prepend(window);
             const seat = wm.seats.first() orelse @panic("Failed to get seat");
-            seat.focused = window;
+            seat.pending_state.pending_focus = .{ .window = window };
+            seat.pending_state.should_warp_pointer = true;
 
             wm.window_count += 1;
-            log.debug("window_count = {d}", .{wm.window_count});
         },
         else => |ev| {
             log.debug("unhandled event: {s}", .{@tagName(ev)});

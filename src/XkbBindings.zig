@@ -49,38 +49,60 @@ const XkbBinding = struct {
             .spawn => |cmd| {
                 var child = std.process.Child.init(cmd, std.heap.c_allocator);
                 _ = child.spawn() catch |err| {
-                    log.err("Failed to spawn foot: {}", .{err});
+                    log.err("Failed to spawn \"{s}\": {}", .{ cmd, err });
                 };
             },
             .focus_next => {
                 const seat = context.wm.seats.first() orelse return;
-                if (seat.focused) |current| {
-                    seat.focused = context.wm.getNextWindow(current);
-                } else {
+                const pending_focus = if (seat.focused) |current|
+                    context.wm.getNextWindow(current)
+                else
                     // No window focused, focus the first one
-                    seat.focused = context.wm.windows.first();
+                    context.wm.windows.first();
+
+                if (pending_focus) |window| {
+                    seat.pending_state.pending_focus = .{ .window = window };
+                    seat.pending_state.should_warp_pointer = true;
+                } else {
+                    seat.pending_state.pending_focus = .clear_focus;
                 }
-                context.wm.window_manager_v1.manageDirty();
+                // context.wm.window_manager_v1.manageDirty();
             },
             .focus_prev => {
                 const seat = context.wm.seats.first() orelse return;
-                if (seat.focused) |current| {
-                    seat.focused = context.wm.getPrevWindow(current);
-                } else {
+                const pending_focus = if (seat.focused) |current|
+                    context.wm.getPrevWindow(current)
+                else
                     // No window focused, focus the last one
-                    seat.focused = context.wm.windows.last();
+                    context.wm.windows.last();
+
+                if (pending_focus) |window| {
+                    seat.pending_state.pending_focus = .{ .window = window };
+                    seat.pending_state.should_warp_pointer = true;
+                } else {
+                    seat.pending_state.pending_focus = .clear_focus;
                 }
-                context.wm.window_manager_v1.manageDirty();
+                // context.wm.window_manager_v1.manageDirty();
             },
             .fullscreen => {
                 const seat = context.wm.seats.first() orelse return;
                 const window = seat.focused orelse return;
                 window.pending_state.fullscreen = !window.fullscreen;
+                // context.wm.window_manager_v1.manageDirty();
             },
             .close_window => {
                 const seat = context.wm.seats.first() orelse return;
                 if (seat.focused) |window| {
                     window.window_v1.close();
+
+                    // Move focus to previous window in stack (if one exists)
+                    if (context.wm.getPrevWindow(window)) |pending_focus| {
+                        seat.pending_state.pending_focus = .{ .window = pending_focus };
+                        seat.pending_state.should_warp_pointer = true;
+                    } else {
+                        seat.pending_state.pending_focus = .clear_focus;
+                    }
+                    // context.wm.window_manager_v1.manageDirty();
                 }
             },
             .exit => {
