@@ -8,9 +8,17 @@ pub const Command = union(enum) {
     spawn: []const []const u8,
     focus_next,
     focus_prev,
-    fullscreen,
+    toggle_fullscreen,
     close_window,
     exit,
+    // Tag management
+    set_output_tags: u32,
+    set_window_tags: u32,
+    toggle_output_tags: u32,
+    toggle_window_tags: u32,
+    spawn_tagmask: u32,
+    focus_previous_tags,
+    send_to_previous_tags,
 };
 
 const XkbBinding = struct {
@@ -94,7 +102,7 @@ const XkbBinding = struct {
                 }
                 // context.wm.window_manager_v1.manageDirty();
             },
-            .fullscreen => {
+            .toggle_fullscreen => {
                 const seat = context.wm.seats.first() orelse return;
                 const window = seat.focused orelse return;
                 window.pending_manage.fullscreen = !window.fullscreen;
@@ -109,6 +117,38 @@ const XkbBinding = struct {
             .exit => {
                 // TODO: Disabled while I'm working with river within river :P
                 // _ = std.process.Child.init(&.{"killall river"}, std.heap.c_allocator);
+            },
+            .set_output_tags => |tags| {
+                // TODO: Support multiple outputs
+                const output = context.wm.outputs.first() orelse return;
+                output.pending_manage.tags = tags;
+                context.wm.river_window_manager_v1.manageDirty();
+            },
+            .set_window_tags => |tags| {
+                const seat = context.wm.seats.first() orelse return;
+                // TODO: I don't think pending_focus should ever be set at this point?
+                // const window = seat.pending_manage.pending_focus orelse seat.focused;
+                const window = seat.focused orelse return;
+                window.pending_manage.tags = tags;
+                context.wm.river_window_manager_v1.manageDirty();
+            },
+            .toggle_output_tags => |tags| {
+                const output = context.wm.outputs.first() orelse return;
+                const old_tags = output.pending_manage.tags orelse output.tags;
+                output.pending_manage.tags = old_tags ^ tags;
+                context.wm.river_window_manager_v1.manageDirty();
+            },
+            .toggle_window_tags => |tags| {
+                const seat = context.wm.seats.first() orelse return;
+                // TODO: I don't think pending_focus should ever be set at this point?
+                // const window = seat.pending_manage.pending_focus orelse seat.focused;
+                const window = seat.focused orelse return;
+                const old_tags = window.pending_manage.tags orelse window.tags;
+                window.pending_manage.tags = old_tags ^ tags;
+                context.wm.river_window_manager_v1.manageDirty();
+            },
+            .spawn_tagmask, .focus_previous_tags, .send_to_previous_tags => {
+                @panic("Unimplemented");
             },
         }
     }

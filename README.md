@@ -10,3 +10,6 @@ SPDX-License-Identifier: EUPL-1.2
 ## TODOs
 [ ] Support multiple outputs
 [ ] Support multiple seats
+[ ] Support floating windows
+[ ] Support wallpapers
+[ ] Support a bar

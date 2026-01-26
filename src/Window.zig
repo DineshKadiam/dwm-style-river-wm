@@ -18,7 +18,11 @@ fullscreen: bool = false,
 maximized: bool = false,
 
 tags: u32 = 0x0001,
-output: ?*Output,
+// output: ?*Output,
+
+// XXX: Do I really even need to store `show`?
+//      I think I only would if I was trying not to send extraneous requests.
+show: bool = true,
 
 initialized: bool = false,
 
@@ -42,6 +46,7 @@ pub const PendingManage = struct {
     maximized: ?bool = null,
 
     tags: ?u32 = null,
+    // output: ?*Output = null,
 };
 
 pub const PendingRender = struct {
@@ -49,6 +54,8 @@ pub const PendingRender = struct {
     y: ?i32 = null,
 
     focused: ?bool = null,
+
+    show: ?bool = null,
 };
 
 pub fn create(context: *Context, river_window_v1: *river.WindowV1, output: *Output) !*Window {
@@ -59,10 +66,10 @@ pub fn create(context: *Context, river_window_v1: *river.WindowV1, output: *Outp
         .context = context,
         .river_window_v1 = river_window_v1,
         .river_node_v1 = river_window_v1.getNode() catch @panic("Failed to get node"),
+        // .output = output,
         .tags = if (output.tags != 0) output.tags else 0x0001,
         .link = undefined, // Handled by the wl.list
     };
-
 
     window.river_window_v1.setListener(*Window, windowListener, window);
 
@@ -194,6 +201,19 @@ pub fn render(window: *Window) void {
                 window.applyBorders(window.context.config.border_color_focused);
             } else {
                 window.applyBorders(window.context.config.border_color_unfocused);
+            }
+        }
+    }
+
+    // Show or hide the Window
+    if (window.pending_render.show) |show| {
+        if (show) {
+            if (!window.show) {
+                window.river_window_v1.show();
+            }
+        } else {
+            if (window.show) {
+                window.river_window_v1.hide();
             }
         }
     }

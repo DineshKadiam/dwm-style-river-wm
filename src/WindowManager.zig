@@ -104,6 +104,9 @@ fn calculatePrimaryStackLayout(wm: *WindowManager) void {
         if (output.tags & window.tags != 0x0000) {
             active_list.append(&window.active_list_node);
             active_count += 1;
+            window.pending_render.show = true;
+        } else {
+            window.pending_render.show = false;
         }
     }
 
@@ -185,9 +188,21 @@ fn manage_start(wm: *WindowManager) void {
         context.xkb_bindings.addBinding(river_seat_v1, xkbcommon.Keysym.t, .{ .mod4 = true }, .{ .spawn = &.{"foot"} });
         context.xkb_bindings.addBinding(river_seat_v1, xkbcommon.Keysym.j, .{ .mod4 = true }, .focus_next);
         context.xkb_bindings.addBinding(river_seat_v1, xkbcommon.Keysym.k, .{ .mod4 = true }, .focus_prev);
-        context.xkb_bindings.addBinding(river_seat_v1, xkbcommon.Keysym.f, .{ .mod4 = true }, .fullscreen);
+        context.xkb_bindings.addBinding(river_seat_v1, xkbcommon.Keysym.f, .{ .mod4 = true }, .toggle_fullscreen);
         context.xkb_bindings.addBinding(river_seat_v1, xkbcommon.Keysym.q, .{ .mod4 = true, .shift = true }, .close_window);
         context.xkb_bindings.addBinding(river_seat_v1, xkbcommon.Keysym.e, .{ .mod4 = true, .shift = true }, .exit);
+
+        // Tag bindings
+        comptime var i: u8 = 1;
+        comptime var buffer: [1]u8 = undefined;
+        inline while (i <= 9) : (i += 1) {
+            const tags: u32 = 1 << (i - 1);
+            buffer[0] = i + '0';
+            context.xkb_bindings.addBinding(river_seat_v1, @field(xkbcommon.Keysym, &buffer), .{ .mod4 = true }, .{ .set_output_tags = tags });
+            context.xkb_bindings.addBinding(river_seat_v1, @field(xkbcommon.Keysym, &buffer), .{ .mod4 = true, .shift = true }, .{ .set_window_tags = tags });
+            context.xkb_bindings.addBinding(river_seat_v1, @field(xkbcommon.Keysym, &buffer), .{ .mod4 = true, .ctrl = true }, .{ .toggle_output_tags = tags });
+            context.xkb_bindings.addBinding(river_seat_v1, @field(xkbcommon.Keysym, &buffer), .{ .mod4 = true, .shift = true, .ctrl = true }, .{ .toggle_window_tags = tags });
+        }
     }
 
     {
