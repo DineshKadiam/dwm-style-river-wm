@@ -40,8 +40,8 @@ const XkbBinding = struct {
         utils.allocator.destroy(xkb_binding);
     }
 
-    fn xkbBindingListener(xkb_binding_v1: *river.XkbBindingV1, event: river.XkbBindingV1.Event, xkb_binding: *XkbBinding) void {
-        assert(xkb_binding.xkb_binding_v1 == xkb_binding_v1);
+    fn xkbBindingListener(river_xkb_binding_v1: *river.XkbBindingV1, event: river.XkbBindingV1.Event, xkb_binding: *XkbBinding) void {
+        assert(xkb_binding.xkb_binding_v1 == river_xkb_binding_v1);
         switch (event) {
             .pressed => {
                 xkb_binding.executeCommand();
@@ -136,7 +136,7 @@ pub fn create(context: *Context, xkb_bindings_v1: *river.XkbBindingsV1) !*XkbBin
 }
 
 pub fn destroy(xkb_bindings: *XkbBindings) void {
-    var it = xkb_bindings.bindings.iterator(.forward);
+    var it = xkb_bindings.bindings.safeIterator(.forward);
     while (it.next()) |binding| {
         binding.link.remove();
         binding.xkb_binding_v1.destroy();
