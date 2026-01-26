@@ -6,7 +6,7 @@ const Seat = @This();
 
 context: *Context,
 
-seat_v1: *river.SeatV1,
+river_seat_v1: *river.SeatV1,
 
 focused: ?*Window,
 
@@ -25,26 +25,33 @@ pub const PendingManage = struct {
     };
 };
 
-pub fn init(seat: *Seat, context: *Context, river_seat_v1: *river.SeatV1) void {
+pub fn create(context: *Context, river_seat_v1: *river.SeatV1) !*Seat {
+    var seat = try utils.allocator.create(Seat);
+    errdefer seat.destroy();
+
     seat.* = .{
         .context = context,
-        .seat_v1 = river_seat_v1,
+        .river_seat_v1 = river_seat_v1,
         .focused = null,
         .link = undefined, // Handled by the wl.list
     };
 
-    seat.seat_v1.setListener(*Seat, seatListener, seat);
+    seat.river_seat_v1.setListener(*Seat, seatListener, seat);
+
+    return seat;
+}
+
+pub fn destroy(seat: *Seat) void {
+    seat.river_seat_v1.destroy();
+    utils.allocator.destroy(seat);
 }
 
 fn seatListener(river_seat_v1: *river.SeatV1, event: river.SeatV1.Event, seat: *Seat) void {
-    assert(seat.seat_v1 == river_seat_v1);
+    assert(seat.river_seat_v1 == river_seat_v1);
     switch (event) {
-        .removed => {
-            river_seat_v1.destroy();
-            utils.allocator.destroy(seat);
-        },
-        .wl_seat => {
-            // log.debug("initializing new river_seat_v1 corresponding to wl_seat: {d}", .{ev.name});
+        .removed => seat.destroy(),
+        .wl_seat => |ev| {
+            log.debug("initializing new river_seat_v1 corresponding to wl_seat: {d}", .{ev.name});
         },
         .pointer_enter => |ev| seat.setWindowFocus(ev.window),
         .window_interaction => |ev| seat.setWindowFocus(ev.window),
@@ -54,8 +61,9 @@ fn seatListener(river_seat_v1: *river.SeatV1, event: river.SeatV1.Event, seat: *
     }
 }
 
-fn setWindowFocus(seat: *Seat, window_v1: ?*river.WindowV1) void {
-    const wv1 = window_v1 orelse return;
+// river_window_v1 needs to be optional because ev.window is optional
+fn setWindowFocus(seat: *Seat, river_window_v1: ?*river.WindowV1) void {
+    const wv1 = river_window_v1 orelse return;
     const window: *Window = @ptrCast(@alignCast(wv1.getUserData()));
     seat.pending_manage.pending_focus = .{ .window = window };
 }
@@ -73,7 +81,7 @@ pub fn manage(seat: *Seat) void {
                     }
                 }
                 seat.focused = window;
-                seat.seat_v1.focusWindow(window.window_v1);
+                seat.river_seat_v1.focusWindow(window.river_window_v1);
                 window.pending_render.focused = true;
             },
             .clear_focus => {
@@ -82,23 +90,23 @@ pub fn manage(seat: *Seat) void {
                     focused.pending_render.focused = false;
                 }
                 seat.focused = null;
-                seat.seat_v1.clearFocus();
+                seat.river_seat_v1.clearFocus();
             },
         }
     }
 
     if (seat.pending_manage.should_warp_pointer) {
         const window = seat.focused orelse {
-            log.err("Trying to warp pointer without focused window.", .{});
+            log.err("Trying to warp-on-focus-change without a focused window.", .{});
             return;
         };
         // TODO - CONFIG: Allow disabling this behaviour
         // Warp pointer to center of focused window;
-        // because the x and y coords are set later, we need to check them here.
+        // because the x and y coords are set during render, we need to check if
+        // there are new coordinates in window.pending_render.
         const pointer_x: i32 = (window.pending_render.x orelse window.x) + @divTrunc(window.width, 2);
         const pointer_y: i32 = (window.pending_render.y orelse window.y) + @divTrunc(window.height, 2);
-        seat.seat_v1.pointerWarp(pointer_x, pointer_y);
-        log.debug("warped pointer to {}, {}", .{ pointer_x, pointer_y });
+        seat.river_seat_v1.pointerWarp(pointer_x, pointer_y);
     }
 }
 

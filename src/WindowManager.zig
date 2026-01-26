@@ -42,24 +42,20 @@ pub fn create(context: *Context, window_manager_v1: *river.WindowManagerV1) !*Wi
 pub fn destroy(wm: *WindowManager) void {
     var window_it = wm.windows.iterator(.forward);
     while (window_it.next()) |window| {
-        window.window_v1.destroy();
-        window.node_v1.destroy();
         window.link.remove();
-        utils.allocator.destroy(window);
+        window.destroy();
     }
 
     var output_it = wm.outputs.iterator(.forward);
     while (output_it.next()) |output| {
-        output.output_v1.destroy();
         output.link.remove();
-        utils.allocator.destroy(output);
+        output.destroy();
     }
 
     var seat_it = wm.seats.iterator(.forward);
     while (seat_it.next()) |seat| {
-        seat.seat_v1.destroy();
         seat.link.remove();
-        utils.allocator.destroy(seat);
+        seat.destroy();
     }
 
     utils.allocator.destroy(wm);
@@ -164,7 +160,6 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
             std.posix.exit(1);
         },
         .manage_start => {
-            log.debug("manage start", .{});
             if (!context.initialized) {
                 // This code (should) only be run once while initializing the WM, so let's
                 // mark it as cold.
@@ -172,7 +167,7 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
                 context.initialized = true;
 
                 const seat = wm.seats.first() orelse @panic("Failed to get seat");
-                const river_seat_v1 = seat.seat_v1;
+                const river_seat_v1 = seat.river_seat_v1;
                 context.xkb_bindings.addBinding(river_seat_v1, xkbcommon.Keysym.t, .{ .mod4 = true }, .{ .spawn = &.{"foot"} });
                 context.xkb_bindings.addBinding(river_seat_v1, xkbcommon.Keysym.j, .{ .mod4 = true }, .focus_next);
                 context.xkb_bindings.addBinding(river_seat_v1, xkbcommon.Keysym.k, .{ .mod4 = true }, .focus_prev);
@@ -202,10 +197,8 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
                 }
             }
             window_manager_v1.manageFinish();
-            log.debug("manage end===================", .{});
         },
         .render_start => {
-            log.debug("render start", .{});
             {
                 var it = wm.seats.iterator(.forward);
                 while (it.next()) |seat| {
@@ -225,12 +218,11 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
                 }
             }
             window_manager_v1.renderFinish();
-            log.debug("render end==================", .{});
         },
         .output => |ev| {
+            log.debug("initializing new wl_output: {d}", .{ev.id.getId()});
             // TODO: Support multi-output
-            var output = utils.allocator.create(Output) catch @panic("Out of memory");
-            output.init(context, ev.id);
+            const output = Output.create(context, ev.id) catch @panic("Out of memory");
             wm.outputs.append(output);
         },
         .seat => |ev| {
@@ -242,17 +234,17 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
                 utils.versionNotSupported(river.SeatV1, river_seat_v1_version, MIN_RIVER_SEAT_V1_VERSION);
             }
 
-            var seat = utils.allocator.create(Seat) catch @panic("Out of memory");
-            seat.init(context, river_seat_v1);
+            const seat = Seat.create(context, river_seat_v1) catch @panic("Out of memory");
             wm.seats.append(seat);
         },
         .window => |ev| {
-            var window = utils.allocator.create(Window) catch @panic("Out of memory");
-            window.init(context, ev.id);
+            const seat = wm.seats.first() orelse @panic("Failed to get seat");
+            // TODO: Support multiple outputs
+            const output = wm.outputs.first() orelse @panic("Failed to get output");
+            const window = Window.create(context, ev.id, output) catch @panic("Out of memory");
 
             // TODO - CONFIG: Allow appending window instead of prepending
             wm.windows.prepend(window);
-            const seat = wm.seats.first() orelse @panic("Failed to get seat");
             seat.pending_manage.pending_focus = .{ .window = window };
             seat.pending_manage.should_warp_pointer = true;
 

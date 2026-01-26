@@ -19,7 +19,10 @@ const XkbBinding = struct {
     context: *Context,
     link: wl.list.Link,
 
-    fn init(xkb_binding: *XkbBinding, xkb_binding_v1: *river.XkbBindingV1, command: Command, context: *Context) void {
+    fn create(xkb_binding_v1: *river.XkbBindingV1, command: Command, context: *Context) !*XkbBinding {
+        var xkb_binding = try utils.allocator.create(XkbBinding);
+        errdefer xkb_binding.destroy();
+
         xkb_binding.* = .{
             .xkb_binding_v1 = xkb_binding_v1,
             .command = command,
@@ -28,6 +31,13 @@ const XkbBinding = struct {
         };
 
         xkb_binding.xkb_binding_v1.setListener(*XkbBinding, xkbBindingListener, xkb_binding);
+
+        return xkb_binding;
+    }
+
+    fn destroy(xkb_binding: *XkbBinding) void {
+        xkb_binding.xkb_binding_v1.destroy();
+        utils.allocator.destroy(xkb_binding);
     }
 
     fn xkbBindingListener(xkb_binding_v1: *river.XkbBindingV1, event: river.XkbBindingV1.Event, xkb_binding: *XkbBinding) void {
@@ -93,7 +103,7 @@ const XkbBinding = struct {
             .close_window => {
                 const seat = context.wm.seats.first() orelse return;
                 if (seat.focused) |window| {
-                    window.window_v1.close();
+                    window.river_window_v1.close();
                 }
             },
             .exit => {
@@ -141,8 +151,7 @@ pub fn addBinding(xkb_bindings: *XkbBindings, river_seat_v1: *river.SeatV1, keys
         return;
     };
 
-    const xkb_binding = utils.allocator.create(XkbBinding) catch @panic("Out of memory");
-    xkb_binding.init(xkb_binding_v1, command, xkb_bindings.context);
+    const xkb_binding = XkbBinding.create(xkb_binding_v1, command, xkb_bindings.context) catch @panic("Out of memory");
     xkb_bindings.bindings.append(xkb_binding);
 
     xkb_binding_v1.enable();

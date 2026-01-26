@@ -6,8 +6,8 @@ const Window = @This();
 
 context: *Context,
 
-window_v1: *river.WindowV1,
-node_v1: *river.NodeV1,
+river_window_v1: *river.WindowV1,
+river_node_v1: *river.NodeV1,
 
 width: u31 = 0,
 height: u31 = 0,
@@ -16,6 +16,9 @@ y: i32 = 0,
 
 fullscreen: bool = false,
 maximized: bool = false,
+
+tags: u32 = 0x0001,
+output: ?*Output,
 
 initialized: bool = false,
 
@@ -42,23 +45,40 @@ pub const PendingRender = struct {
     focused: ?bool = null,
 };
 
-pub fn init(window: *Window, context: *Context, river_window_v1: *river.WindowV1) void {
+pub fn create(context: *Context, river_window_v1: *river.WindowV1, output: ?*Output) !*Window {
+    var window = try utils.allocator.create(Window);
+    errdefer window.destroy();
+
     window.* = .{
         .context = context,
-        .window_v1 = river_window_v1,
-        .node_v1 = river_window_v1.getNode() catch @panic("Failed to get node"),
+        .river_window_v1 = river_window_v1,
+        .river_node_v1 = river_window_v1.getNode() catch @panic("Failed to get node"),
+        .output = output,
         .link = undefined, // Handled by the wl.list
     };
 
-    window.window_v1.setListener(*Window, windowListener, window);
+    if (output) |out| {
+        window.tags = if (out.tags != 0) out.tags else 0x0001;
+    } else {
+        window.tags = 0x0001;
+    }
+
+    window.river_window_v1.setListener(*Window, windowListener, window);
+
+    return window;
+}
+
+pub fn destroy(window: *Window) void {
+    window.river_window_v1.destroy();
+    window.river_node_v1.destroy();
+
+    utils.allocator.destroy(window);
 }
 
 fn windowListener(river_window_v1: *river.WindowV1, event: river.WindowV1.Event, window: *Window) void {
-    assert(window.window_v1 == river_window_v1);
+    assert(window.river_window_v1 == river_window_v1);
     switch (event) {
         .closed => {
-            river_window_v1.destroy();
-            window.node_v1.destroy();
             window.context.wm.window_count -= 1;
             {
                 var it = window.context.wm.seats.iterator(.forward);
@@ -80,7 +100,7 @@ fn windowListener(river_window_v1: *river.WindowV1, event: river.WindowV1.Event,
                 }
             }
             window.link.remove();
-            utils.allocator.destroy(window);
+            window.destroy();
         },
         .dimensions => |ev| {
             // The protocol requires these are strictly greather than zero.
@@ -104,10 +124,10 @@ pub fn manage(window: *Window) void {
 
         // TODO: We might want to think about paying attention to the decoration_hint event
         //       If we do, this would need to move, I think?
-        window.window_v1.useSsd();
+        window.river_window_v1.useSsd();
 
-        window.window_v1.setCapabilities(.{ .fullscreen = true, .maximize = true });
-        window.window_v1.setTiled(.{ .top = true, .bottom = true, .left = true, .right = true });
+        window.river_window_v1.setCapabilities(.{ .fullscreen = true, .maximize = true });
+        window.river_window_v1.setTiled(.{ .top = true, .bottom = true, .left = true, .right = true });
     }
 
     // Any new state since the last manage event
@@ -118,7 +138,7 @@ pub fn manage(window: *Window) void {
         if (pending_manage.height) |new_height| {
             window.width = new_width;
             window.height = new_height;
-            window.window_v1.proposeDimensions(new_width, new_height);
+            window.river_window_v1.proposeDimensions(new_width, new_height);
         }
     }
 
@@ -127,19 +147,19 @@ pub fn manage(window: *Window) void {
         window.fullscreen = fullscreen;
         if (fullscreen) {
             const output = window.context.wm.outputs.first() orelse @panic("Failed to get output");
-            window.window_v1.fullscreen(output.output_v1);
-            window.window_v1.informFullscreen();
+            window.river_window_v1.fullscreen(output.river_output_v1);
+            window.river_window_v1.informFullscreen();
         } else {
-            window.window_v1.exitFullscreen();
-            window.window_v1.informNotFullscreen();
+            window.river_window_v1.exitFullscreen();
+            window.river_window_v1.informNotFullscreen();
         }
     }
     if (pending_manage.maximized) |maximized| {
         window.maximized = maximized;
         if (maximized) {
-            window.window_v1.informMaximized();
+            window.river_window_v1.informMaximized();
         } else {
-            window.window_v1.informUnmaximized();
+            window.river_window_v1.informUnmaximized();
         }
     }
 }
@@ -154,7 +174,7 @@ pub fn render(window: *Window) void {
             window.x = new_x;
             window.y = new_y;
 
-            window.node_v1.setPosition(window.x, window.y);
+            window.river_node_v1.setPosition(window.x, window.y);
         } else {
             log.err("Window.pending_render with only x set", .{});
         }
@@ -177,7 +197,7 @@ pub fn render(window: *Window) void {
 fn applyBorders(window: *Window, color: utils.RiverColor) void {
     const border_width = window.context.config.border_width;
     const all_sides = river.WindowV1.Edges{ .top = true, .bottom = true, .left = true, .right = true };
-    window.window_v1.setBorders(all_sides, border_width, color.red, color.green, color.blue, color.alpha);
+    window.river_window_v1.setBorders(all_sides, border_width, color.red, color.green, color.blue, color.alpha);
 }
 
 const std = @import("std");
@@ -189,5 +209,6 @@ const river = wayland.client.river;
 
 const utils = @import("utils.zig");
 const Context = @import("Context.zig");
+const Output = @import("Output.zig");
 
 const log = std.log.scoped(.Window);

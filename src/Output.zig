@@ -6,40 +6,50 @@ const Output = @This();
 
 context: *Context,
 
-output_v1: *river.OutputV1,
+river_output_v1: *river.OutputV1,
 
 width: i32 = 0,
 height: i32 = 0,
 x: i32 = 0,
 y: i32 = 0,
 
+tags: u32 = 0x0001,
+
 link: wl.list.Link,
 
-pub fn init(output: *Output, context: *Context, river_output_v1: *river.OutputV1) void {
+pub fn create(context: *Context, river_output_v1: *river.OutputV1) !*Output {
+    var output = try utils.allocator.create(Output);
+    errdefer output.destroy();
+
     output.* = .{
         .context = context,
-        .output_v1 = river_output_v1,
+        .river_output_v1 = river_output_v1,
         .link = undefined, // Handled by the wl.list
     };
 
-    output.output_v1.setListener(*Output, outputListener, output);
+    output.river_output_v1.setListener(*Output, outputListener, output);
+
+    return output;
+}
+
+pub fn destroy(output: *Output) void {
+    output.river_output_v1.destroy();
+    utils.allocator.destroy(output);
 }
 
 fn outputListener(river_output_v1: *river.OutputV1, event: river.OutputV1.Event, output: *Output) void {
-    assert(output.output_v1 == river_output_v1);
+    assert(output.river_output_v1 == river_output_v1);
     switch (event) {
-        .removed => {
-            river_output_v1.destroy();
-            utils.allocator.destroy(output);
-        },
-        .wl_output => {
-            // log.debug("initializing new river_output_v1 corresponding to wl_output: {d}", .{ev.name});
+        .removed => output.destroy(),
+        .wl_output => |ev| {
+            log.debug("initializing new river_output_v1 corresponding to wl_output: {d}", .{ev.name});
         },
         .dimensions => |ev| {
             output.width = ev.width;
             output.height = ev.height;
         },
         .position => |ev| {
+            // TODO - CONFIG: Allow setting output position (do I even need to do this?)
             output.x = ev.x;
             output.y = ev.y;
         },
