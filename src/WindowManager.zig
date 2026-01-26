@@ -40,7 +40,28 @@ pub fn create(context: *Context, window_manager_v1: *river.WindowManagerV1) !*Wi
 }
 
 pub fn destroy(wm: *WindowManager) void {
-    // TODO: Go through lists and destroy everything
+    var window_it = wm.windows.iterator(.forward);
+    while (window_it.next()) |window| {
+        window.window_v1.destroy();
+        window.node_v1.destroy();
+        window.link.remove();
+        utils.allocator.destroy(window);
+    }
+
+    var output_it = wm.outputs.iterator(.forward);
+    while (output_it.next()) |output| {
+        output.output_v1.destroy();
+        output.link.remove();
+        utils.allocator.destroy(output);
+    }
+
+    var seat_it = wm.seats.iterator(.forward);
+    while (seat_it.next()) |seat| {
+        seat.seat_v1.destroy();
+        seat.link.remove();
+        utils.allocator.destroy(seat);
+    }
+
     utils.allocator.destroy(wm);
 }
 
@@ -208,7 +229,7 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
         },
         .output => |ev| {
             // TODO: Support multi-output
-            var output = utils.allocator.create(Output) catch @panic("out-of-memory; exiting.");
+            var output = utils.allocator.create(Output) catch @panic("Out of memory");
             output.init(context, ev.id);
             wm.outputs.append(output);
         },
@@ -221,12 +242,12 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
                 utils.versionNotSupported(river.SeatV1, river_seat_v1_version, MIN_RIVER_SEAT_V1_VERSION);
             }
 
-            var seat = utils.allocator.create(Seat) catch @panic("out-of-memory; exiting.");
+            var seat = utils.allocator.create(Seat) catch @panic("Out of memory");
             seat.init(context, river_seat_v1);
             wm.seats.append(seat);
         },
         .window => |ev| {
-            var window = utils.allocator.create(Window) catch @panic("out-of-memory; exiting.");
+            var window = utils.allocator.create(Window) catch @panic("Out of memory");
             window.init(context, ev.id);
 
             // TODO - CONFIG: Allow appending window instead of prepending

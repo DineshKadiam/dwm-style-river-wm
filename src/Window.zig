@@ -46,7 +46,7 @@ pub fn init(window: *Window, context: *Context, river_window_v1: *river.WindowV1
     window.* = .{
         .context = context,
         .window_v1 = river_window_v1,
-        .node_v1 = river_window_v1.getNode() catch @panic("failed to get node"),
+        .node_v1 = river_window_v1.getNode() catch @panic("Failed to get node"),
         .link = undefined, // Handled by the wl.list
     };
 
@@ -126,7 +126,7 @@ pub fn manage(window: *Window) void {
     if (pending_manage.fullscreen) |fullscreen| {
         window.fullscreen = fullscreen;
         if (fullscreen) {
-            const output = window.context.wm.outputs.first() orelse @panic("failed to get output");
+            const output = window.context.wm.outputs.first() orelse @panic("Failed to get output");
             window.window_v1.fullscreen(output.output_v1);
             window.window_v1.informFullscreen();
         } else {
@@ -165,16 +165,19 @@ pub fn render(window: *Window) void {
     // Set borders
     if (!window.fullscreen) {
         if (window.pending_render.focused) |focused| {
-            const border_width = window.context.config.border_width;
             if (focused) {
-                const border_color_focused = window.context.config.border_color_focused;
-                window.window_v1.setBorders(.{ .top = true, .bottom = true, .left = true, .right = true }, border_width, border_color_focused.red, border_color_focused.green, border_color_focused.blue, border_color_focused.alpha);
+                window.applyBorders(window.context.config.border_color_focused);
             } else {
-                const border_color_unfocused = window.context.config.border_color_unfocused;
-                window.window_v1.setBorders(.{ .top = true, .bottom = true, .left = true, .right = true }, border_width, border_color_unfocused.red, border_color_unfocused.green, border_color_unfocused.blue, border_color_unfocused.alpha);
+                window.applyBorders(window.context.config.border_color_unfocused);
             }
         }
     }
+}
+
+fn applyBorders(window: *Window, color: utils.RiverColor) void {
+    const border_width = window.context.config.border_width;
+    const all_sides = river.WindowV1.Edges{ .top = true, .bottom = true, .left = true, .right = true };
+    window.window_v1.setBorders(all_sides, border_width, color.red, color.green, color.blue, color.alpha);
 }
 
 const std = @import("std");

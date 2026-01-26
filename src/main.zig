@@ -11,7 +11,7 @@ const Globals = struct {
 
 pub fn main() !void {
     const wayland_display_var = try utils.allocator.dupeZ(u8, process.getEnvVarOwned(utils.allocator, "WAYLAND_DISPLAY") catch {
-        log.err("Error getting WAYLAND_DISPLAY environment variable. Exiing", .{});
+        log.err("Error getting WAYLAND_DISPLAY environment variable. Exiting", .{});
         std.posix.exit(1);
     });
     defer utils.allocator.free(wayland_display_var);

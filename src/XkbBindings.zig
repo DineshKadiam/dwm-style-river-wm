@@ -126,7 +126,13 @@ pub fn create(context: *Context, xkb_bindings_v1: *river.XkbBindingsV1) !*XkbBin
 }
 
 pub fn destroy(xkb_bindings: *XkbBindings) void {
-    xkb_bindings.destroy();
+    var it = xkb_bindings.bindings.iterator(.forward);
+    while (it.next()) |binding| {
+        binding.link.remove();
+        binding.xkb_binding_v1.destroy();
+        utils.allocator.destroy(binding);
+    }
+    utils.allocator.destroy(xkb_bindings);
 }
 
 pub fn addBinding(xkb_bindings: *XkbBindings, river_seat_v1: *river.SeatV1, keysym: u32, modifiers: river.SeatV1.Modifiers, command: Command) void {
@@ -135,7 +141,7 @@ pub fn addBinding(xkb_bindings: *XkbBindings, river_seat_v1: *river.SeatV1, keys
         return;
     };
 
-    const xkb_binding = utils.allocator.create(XkbBinding) catch @panic("out-of-memory");
+    const xkb_binding = utils.allocator.create(XkbBinding) catch @panic("Out of memory");
     xkb_binding.init(xkb_binding_v1, command, xkb_bindings.context);
     xkb_bindings.bindings.append(xkb_binding);
 

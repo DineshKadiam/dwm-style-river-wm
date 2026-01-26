@@ -46,20 +46,18 @@ fn seatListener(river_seat_v1: *river.SeatV1, event: river.SeatV1.Event, seat: *
         .wl_seat => {
             // log.debug("initializing new river_seat_v1 corresponding to wl_seat: {d}", .{ev.name});
         },
-        .pointer_enter => |ev| {
-            const window_v1 = ev.window orelse return;
-            const window: *Window = @ptrCast(@alignCast(window_v1.getUserData()));
-            seat.pending_manage.pending_focus = .{ .window = window };
-        },
-        .window_interaction => |ev| {
-            const window_v1 = ev.window orelse return;
-            const window: *Window = @ptrCast(@alignCast(window_v1.getUserData()));
-            seat.pending_manage.pending_focus = .{ .window = window };
-        },
+        .pointer_enter => |ev| seat.setWindowFocus(ev.window),
+        .window_interaction => |ev| seat.setWindowFocus(ev.window),
         else => |ev| {
             log.debug("unhandled event: {s}", .{@tagName(ev)});
         },
     }
+}
+
+fn setWindowFocus(seat: *Seat, window_v1: ?*river.WindowV1) void {
+    const wv1 = window_v1 orelse return;
+    const window: *Window = @ptrCast(@alignCast(wv1.getUserData()));
+    seat.pending_manage.pending_focus = .{ .window = window };
 }
 
 pub fn manage(seat: *Seat) void {
