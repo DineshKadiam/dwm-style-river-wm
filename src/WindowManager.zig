@@ -6,6 +6,8 @@ const WindowManager = @This();
 
 const PRIMARY_RATIO: f32 = 0.55;
 
+const MIN_RIVER_SEAT_V1_VERSION: u2 = 3;
+
 context: *Context,
 
 window_manager_v1: *river.WindowManagerV1,
@@ -38,6 +40,28 @@ pub fn create(context: *Context, window_manager_v1: *river.WindowManagerV1) !*Wi
 }
 
 pub fn destroy(wm: *WindowManager) void {
+    var window_it = wm.windows.iterator(.forward);
+    while (window_it.next()) |window| {
+        window.window_v1.destroy();
+        window.node_v1.destroy();
+        window.link.remove();
+        utils.allocator.destroy(window);
+    }
+
+    var output_it = wm.outputs.iterator(.forward);
+    while (output_it.next()) |output| {
+        output.output_v1.destroy();
+        output.link.remove();
+        utils.allocator.destroy(output);
+    }
+
+    var seat_it = wm.seats.iterator(.forward);
+    while (seat_it.next()) |seat| {
+        seat.seat_v1.destroy();
+        seat.link.remove();
+        utils.allocator.destroy(seat);
+    }
+
     utils.allocator.destroy(wm);
 }
 
@@ -66,7 +90,7 @@ pub fn getPrevWindow(wm: *WindowManager, current: *Window) ?*Window {
 }
 
 /// Calculate primary/stack layout positions for all windows.
-/// - Single window: fullscreen
+/// - Single window: maximized
 /// - Multiple windows: stack (45% left, vertically tiled), primary (55% right)
 fn calculatePrimaryStackLayout(wm: *WindowManager) void {
     const count = wm.window_count;
@@ -84,11 +108,11 @@ fn calculatePrimaryStackLayout(wm: *WindowManager) void {
     while (it.next()) |window| {
         if (count == 1) {
             // Single window: maximize
-            window.pending_state.x = output_x;
-            window.pending_state.y = output_y;
-            window.pending_state.width = output_width;
-            window.pending_state.height = output_height;
-            window.pending_state.maximized = true;
+            window.pending_render.x = output_x;
+            window.pending_render.y = output_y;
+            window.pending_manage.width = output_width;
+            window.pending_manage.height = output_height;
+            window.pending_manage.maximized = true;
         } else {
             // Multiple windows: primary/stack layout
             // TODO: Support multiple windows in primary stack
@@ -96,25 +120,25 @@ fn calculatePrimaryStackLayout(wm: *WindowManager) void {
             const stack_width: u31 = output_width - primary_width;
             const stack_count = count - 1;
             const stack_height: u31 = @divFloor(output_height, stack_count);
-            window.pending_state.maximized = false;
+            window.pending_manage.maximized = false;
 
             if (index == 0) {
                 // Primary window (first window) - right side
-                window.pending_state.x = output_x + @as(i32, stack_width);
-                window.pending_state.y = output_y;
-                window.pending_state.width = primary_width;
-                window.pending_state.height = output_height;
+                window.pending_render.x = output_x + @as(i32, stack_width);
+                window.pending_render.y = output_y;
+                window.pending_manage.width = primary_width;
+                window.pending_manage.height = output_height;
             } else {
                 // Stack window(s) - left side
                 const stack_index = index - 1;
-                window.pending_state.x = output_x;
-                window.pending_state.y = output_y + @as(i32, stack_index) * @as(i32, stack_height);
-                window.pending_state.width = stack_width;
+                window.pending_render.x = output_x;
+                window.pending_render.y = output_y + @as(i32, stack_index) * @as(i32, stack_height);
+                window.pending_manage.width = stack_width;
                 // Last stack window gets remaining height to avoid gaps from integer division
                 if (index == count - 1) {
-                    window.pending_state.height = output_height - stack_index * stack_height;
+                    window.pending_manage.height = output_height - stack_index * stack_height;
                 } else {
-                    window.pending_state.height = stack_height;
+                    window.pending_manage.height = stack_height;
                 }
             }
         }
@@ -122,10 +146,10 @@ fn calculatePrimaryStackLayout(wm: *WindowManager) void {
         // Borders are automatically disabled when a window is fullscreened so we don't
         // have to worry about that.
         const border_width = wm.context.config.border_width;
-        window.pending_state.height.? -= 2 * border_width;
-        window.pending_state.width.? -= 2 * border_width;
-        window.pending_state.x.? += border_width;
-        window.pending_state.y.? += border_width;
+        window.pending_manage.height.? -= 2 * border_width;
+        window.pending_manage.width.? -= 2 * border_width;
+        window.pending_render.x.? += border_width;
+        window.pending_render.y.? += border_width;
 
         index += 1;
     }
@@ -140,13 +164,14 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
             std.posix.exit(1);
         },
         .manage_start => {
+            log.debug("manage start", .{});
             if (!context.initialized) {
                 // This code (should) only be run once while initializing the WM, so let's
                 // mark it as cold.
                 @branchHint(.cold);
                 context.initialized = true;
 
-                const seat = wm.seats.first() orelse @panic("No river_seat_v1 found");
+                const seat = wm.seats.first() orelse @panic("Failed to get seat");
                 const river_seat_v1 = seat.seat_v1;
                 context.xkb_bindings.addBinding(river_seat_v1, xkbcommon.Keysym.t, .{ .mod4 = true }, .{ .spawn = &.{"foot"} });
                 context.xkb_bindings.addBinding(river_seat_v1, xkbcommon.Keysym.j, .{ .mod4 = true }, .focus_next);
@@ -156,12 +181,6 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
                 context.xkb_bindings.addBinding(river_seat_v1, xkbcommon.Keysym.e, .{ .mod4 = true, .shift = true }, .exit);
             }
 
-            {
-                var it = wm.seats.iterator(.forward);
-                while (it.next()) |seat| {
-                    seat.manage();
-                }
-            }
             {
                 var it = wm.outputs.iterator(.forward);
                 while (it.next()) |output| {
@@ -176,9 +195,17 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
                     window.manage();
                 }
             }
+            {
+                var it = wm.seats.iterator(.forward);
+                while (it.next()) |seat| {
+                    seat.manage();
+                }
+            }
             window_manager_v1.manageFinish();
+            log.debug("manage end===================", .{});
         },
         .render_start => {
+            log.debug("render start", .{});
             {
                 var it = wm.seats.iterator(.forward);
                 while (it.next()) |seat| {
@@ -198,26 +225,38 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
                 }
             }
             window_manager_v1.renderFinish();
+            log.debug("render end==================", .{});
         },
         .output => |ev| {
-            log.debug("3", .{});
-            var output = utils.allocator.create(Output) catch @panic("out-of-memory; exiting.");
+            // TODO: Support multi-output
+            var output = utils.allocator.create(Output) catch @panic("Out of memory");
             output.init(context, ev.id);
             wm.outputs.append(output);
         },
         .seat => |ev| {
-            log.debug("4", .{});
-            var seat = utils.allocator.create(Seat) catch @panic("out-of-memory; exiting.");
-            seat.init(context, ev.id);
+            // TODO: Support multi-seat (maybe ?)
+            const river_seat_v1 = ev.id;
+            const river_seat_v1_version = river_seat_v1.getVersion();
+            if (river_seat_v1_version < MIN_RIVER_SEAT_V1_VERSION) {
+                @branchHint(.cold); // If we're in here, the program is exiting anyways
+                utils.versionNotSupported(river.SeatV1, river_seat_v1_version, MIN_RIVER_SEAT_V1_VERSION);
+            }
+
+            var seat = utils.allocator.create(Seat) catch @panic("Out of memory");
+            seat.init(context, river_seat_v1);
             wm.seats.append(seat);
         },
         .window => |ev| {
-            log.debug("5", .{});
-            var window = utils.allocator.create(Window) catch @panic("out-of-memory; exiting.");
+            var window = utils.allocator.create(Window) catch @panic("Out of memory");
             window.init(context, ev.id);
-            wm.windows.append(window);
+
+            // TODO - CONFIG: Allow appending window instead of prepending
+            wm.windows.prepend(window);
+            const seat = wm.seats.first() orelse @panic("Failed to get seat");
+            seat.pending_manage.pending_focus = .{ .window = window };
+            seat.pending_manage.should_warp_pointer = true;
+
             wm.window_count += 1;
-            log.debug("window_count = {d}", .{wm.window_count});
         },
         else => |ev| {
             log.debug("unhandled event: {s}", .{@tagName(ev)});

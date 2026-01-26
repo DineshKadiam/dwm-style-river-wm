@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2025-2026 Ben Buhse <me@benbuhse.email>
+// SPDX-FileCopyrightText: 2026 Ben Buhse <me@benbuhse.email>
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 
@@ -49,33 +49,46 @@ const XkbBinding = struct {
             .spawn => |cmd| {
                 var child = std.process.Child.init(cmd, std.heap.c_allocator);
                 _ = child.spawn() catch |err| {
-                    log.err("Failed to spawn foot: {}", .{err});
+                    log.err("Failed to spawn \"{s}\": {}", .{ cmd[0], err });
                 };
             },
             .focus_next => {
                 const seat = context.wm.seats.first() orelse return;
-                if (seat.focused) |current| {
-                    seat.focused = context.wm.getNextWindow(current);
-                } else {
+                const pending_focus = if (seat.focused) |current|
+                    context.wm.getNextWindow(current)
+                else
                     // No window focused, focus the first one
-                    seat.focused = context.wm.windows.first();
+                    context.wm.windows.first();
+
+                if (pending_focus) |window| {
+                    seat.pending_manage.pending_focus = .{ .window = window };
+                    seat.pending_manage.should_warp_pointer = true;
+                } else {
+                    seat.pending_manage.pending_focus = .clear_focus;
                 }
-                context.wm.window_manager_v1.manageDirty();
+                // context.wm.window_manager_v1.manageDirty();
             },
             .focus_prev => {
                 const seat = context.wm.seats.first() orelse return;
-                if (seat.focused) |current| {
-                    seat.focused = context.wm.getPrevWindow(current);
-                } else {
+                const pending_focus = if (seat.focused) |current|
+                    context.wm.getPrevWindow(current)
+                else
                     // No window focused, focus the last one
-                    seat.focused = context.wm.windows.last();
+                    context.wm.windows.last();
+
+                if (pending_focus) |window| {
+                    seat.pending_manage.pending_focus = .{ .window = window };
+                    seat.pending_manage.should_warp_pointer = true;
+                } else {
+                    seat.pending_manage.pending_focus = .clear_focus;
                 }
-                context.wm.window_manager_v1.manageDirty();
+                // context.wm.window_manager_v1.manageDirty();
             },
             .fullscreen => {
                 const seat = context.wm.seats.first() orelse return;
                 const window = seat.focused orelse return;
-                window.pending_state.fullscreen = !window.fullscreen;
+                window.pending_manage.fullscreen = !window.fullscreen;
+                // context.wm.window_manager_v1.manageDirty();
             },
             .close_window => {
                 const seat = context.wm.seats.first() orelse return;
@@ -113,7 +126,13 @@ pub fn create(context: *Context, xkb_bindings_v1: *river.XkbBindingsV1) !*XkbBin
 }
 
 pub fn destroy(xkb_bindings: *XkbBindings) void {
-    xkb_bindings.destroy();
+    var it = xkb_bindings.bindings.iterator(.forward);
+    while (it.next()) |binding| {
+        binding.link.remove();
+        binding.xkb_binding_v1.destroy();
+        utils.allocator.destroy(binding);
+    }
+    utils.allocator.destroy(xkb_bindings);
 }
 
 pub fn addBinding(xkb_bindings: *XkbBindings, river_seat_v1: *river.SeatV1, keysym: u32, modifiers: river.SeatV1.Modifiers, command: Command) void {
@@ -122,7 +141,7 @@ pub fn addBinding(xkb_bindings: *XkbBindings, river_seat_v1: *river.SeatV1, keys
         return;
     };
 
-    const xkb_binding = utils.allocator.create(XkbBinding) catch @panic("out-of-memory");
+    const xkb_binding = utils.allocator.create(XkbBinding) catch @panic("Out of memory");
     xkb_binding.init(xkb_binding_v1, command, xkb_bindings.context);
     xkb_bindings.bindings.append(xkb_binding);
 
