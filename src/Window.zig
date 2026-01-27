@@ -18,7 +18,11 @@ fullscreen: bool = false,
 maximized: bool = false,
 
 tags: u32 = 0x0001,
-output: ?*Output,
+// output: ?*Output,
+
+// XXX: Do I really even need to store `show`?
+//      I think I only would if I was trying not to send extraneous requests.
+show: bool = true,
 
 initialized: bool = false,
 
@@ -28,6 +32,10 @@ pending_manage: PendingManage = .{},
 /// State consumed in render() phase, reset at end of render().
 pending_render: PendingRender = .{},
 
+/// Used to put Windows into a list in
+/// WindowManager.calculatePriamryStackLayout()
+active_list_node: DoublyLinkedList.Node = .{},
+
 link: wl.list.Link,
 
 pub const PendingManage = struct {
@@ -36,6 +44,9 @@ pub const PendingManage = struct {
 
     fullscreen: ?bool = null,
     maximized: ?bool = null,
+
+    tags: ?u32 = null,
+    // output: ?*Output = null,
 };
 
 pub const PendingRender = struct {
@@ -43,9 +54,11 @@ pub const PendingRender = struct {
     y: ?i32 = null,
 
     focused: ?bool = null,
+
+    show: ?bool = null,
 };
 
-pub fn create(context: *Context, river_window_v1: *river.WindowV1, output: ?*Output) !*Window {
+pub fn create(context: *Context, river_window_v1: *river.WindowV1, output: *Output) !*Window {
     var window = try utils.allocator.create(Window);
     errdefer window.destroy();
 
@@ -53,15 +66,10 @@ pub fn create(context: *Context, river_window_v1: *river.WindowV1, output: ?*Out
         .context = context,
         .river_window_v1 = river_window_v1,
         .river_node_v1 = river_window_v1.getNode() catch @panic("Failed to get node"),
-        .output = output,
+        // .output = output,
+        .tags = if (output.tags != 0) output.tags else 0x0001,
         .link = undefined, // Handled by the wl.list
     };
-
-    if (output) |out| {
-        window.tags = if (out.tags != 0) out.tags else 0x0001;
-    } else {
-        window.tags = 0x0001;
-    }
 
     window.river_window_v1.setListener(*Window, windowListener, window);
 
@@ -119,6 +127,7 @@ fn windowListener(river_window_v1: *river.WindowV1, event: river.WindowV1.Event,
 
 pub fn manage(window: *Window) void {
     if (!window.initialized) {
+        // Only happens once per Window
         @branchHint(.unlikely);
         window.initialized = true;
 
@@ -130,7 +139,7 @@ pub fn manage(window: *Window) void {
         window.river_window_v1.setTiled(.{ .top = true, .bottom = true, .left = true, .right = true });
     }
 
-    // Any new state since the last manage event
+    // Updating state since the last manage event
     defer window.pending_manage = .{};
     const pending_manage = window.pending_manage;
     // Layout (pre-computed by WindowManager.calculatePrimaryStackLayout())
@@ -141,7 +150,6 @@ pub fn manage(window: *Window) void {
             window.river_window_v1.proposeDimensions(new_width, new_height);
         }
     }
-
     // Fullscreen and maximize operations
     if (pending_manage.fullscreen) |fullscreen| {
         window.fullscreen = fullscreen;
@@ -161,6 +169,10 @@ pub fn manage(window: *Window) void {
         } else {
             window.river_window_v1.informUnmaximized();
         }
+    }
+    // New tags
+    if (pending_manage.tags) |tags| {
+        window.tags = tags;
     }
 }
 
@@ -192,6 +204,19 @@ pub fn render(window: *Window) void {
             }
         }
     }
+
+    // Show or hide the Window
+    if (window.pending_render.show) |show| {
+        if (show) {
+            if (!window.show) {
+                window.river_window_v1.show();
+            }
+        } else {
+            if (window.show) {
+                window.river_window_v1.hide();
+            }
+        }
+    }
 }
 
 fn applyBorders(window: *Window, color: utils.RiverColor) void {
@@ -202,6 +227,7 @@ fn applyBorders(window: *Window, color: utils.RiverColor) void {
 
 const std = @import("std");
 const assert = std.debug.assert;
+const DoublyLinkedList = std.DoublyLinkedList;
 
 const wayland = @import("wayland");
 const wl = wayland.client.wl;

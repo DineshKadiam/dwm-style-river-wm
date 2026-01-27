@@ -13,9 +13,16 @@ height: i32 = 0,
 x: i32 = 0,
 y: i32 = 0,
 
+/// Tags are 32-bit bitfield. A window can be active on one(?) or more tags.
 tags: u32 = 0x0001,
 
+pending_manage: PendingManage = .{},
+
 link: wl.list.Link,
+
+pub const PendingManage = struct {
+    tags: ?u32 = null,
+};
 
 pub fn create(context: *Context, river_output_v1: *river.OutputV1) !*Output {
     var output = try utils.allocator.create(Output);
@@ -49,7 +56,8 @@ fn outputListener(river_output_v1: *river.OutputV1, event: river.OutputV1.Event,
             output.height = ev.height;
         },
         .position => |ev| {
-            // TODO - CONFIG: Allow setting output position (do I even need to do this?)
+            // TODO - CONFIG: Allow setting output position (do I even need to
+            // do this, or do I just get told what the position is?)
             output.x = ev.x;
             output.y = ev.y;
         },
@@ -57,7 +65,11 @@ fn outputListener(river_output_v1: *river.OutputV1, event: river.OutputV1.Event,
 }
 
 pub fn manage(output: *Output) void {
-    _ = output;
+    defer output.pending_manage = .{};
+
+    if (output.pending_manage.tags) |tags| {
+        output.tags = tags;
+    }
 }
 
 pub fn render(output: *Output) void {
