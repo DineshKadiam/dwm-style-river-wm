@@ -1,0 +1,10 @@
+attach_mode top
+
+focus_follows_pointer true
+pointer_warp_on_focus_change true
+
+borders {
+	width 2
+	color_focused 0x89b4fa
+	color_unfocused 0x1e1e2e
+}

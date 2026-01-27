@@ -193,7 +193,7 @@ fn loadBordersChildBlock(config: *Config, parser: *kdl.Parser) !void {
     }
 }
 
-/// Skips an entire child block in KDL
+/// Skips an entire child block including any nested child blocks
 fn skipChildBlock(_: *Config, parser: *kdl.Parser) !void {
     log.warn("Unexpected child block. Skipping it", .{});
 
@@ -216,10 +216,11 @@ fn skipChildBlock(_: *Config, parser: *kdl.Parser) !void {
     }
 }
 
-/// Convert a KDL argument into a bool or null if the string is not a bool
-/// "#true" and "true" => true
-/// "#false" and "false" => false
-/// else => null
+/// Convert a KDL argument into a bool
+///
+/// if arg_str in ["#true", "true"], return true
+/// if arg_str in ["#false", "false"], return false
+/// else, return null
 fn boolFromKdlStr(_: Config, arg_str: []const u8) ?bool {
     if (mem.eql(u8, arg_str, "#true") or
         mem.eql(u8, arg_str, "true"))
