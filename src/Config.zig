@@ -139,9 +139,7 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                     try config.skipChildBlock(&parser);
                 }
             },
-            .child_block_end => {
-                @panic("Reached end of non-existant child block. A bug in zig-kdl?");
-            },
+            .child_block_end => log.err("Reached unexpected .child_block_end. Ignoring it", .{}),
         }
     }
 }
@@ -198,11 +196,21 @@ fn loadBordersChildBlock(config: *Config, parser: *kdl.Parser) !void {
 /// Skips an entire child block in KDL
 fn skipChildBlock(_: *Config, parser: *kdl.Parser) !void {
     log.warn("Unexpected child block. Skipping it", .{});
+
+    var depth: usize = 0;
     while (try parser.next()) |event| {
         switch (event) {
-            .child_block_end => return,
+            // Nested child block
+            .child_block_begin => depth += 1,
+            .child_block_end => {
+                if (depth == 0) {
+                    return;
+                } else {
+                    depth -= 1;
+                }
+            },
             else => {
-                // We don't care about anything else in this child block
+                // We don't care about any nodes in here
             },
         }
     }
