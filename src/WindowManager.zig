@@ -286,8 +286,10 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
             const output = wm.outputs.first() orelse @panic("Failed to get output");
             const window = Window.create(context, ev.id, output) catch @panic("Out of memory");
 
-            // TODO - CONFIG: Allow appending window instead of prepending
-            wm.windows.prepend(window);
+            switch (context.config.attach_mode) {
+                .top => wm.windows.prepend(window),
+                .bottom => wm.windows.append(window),
+            }
             seat.pending_manage.pending_focus = .{ .window = window };
             seat.pending_manage.should_warp_pointer = true;
 

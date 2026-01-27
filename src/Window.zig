@@ -208,13 +208,9 @@ pub fn render(window: *Window) void {
     // Show or hide the Window
     if (window.pending_render.show) |show| {
         if (show) {
-            if (!window.show) {
-                window.river_window_v1.show();
-            }
+            window.river_window_v1.show();
         } else {
-            if (window.show) {
-                window.river_window_v1.hide();
-            }
+            window.river_window_v1.hide();
         }
     }
 }

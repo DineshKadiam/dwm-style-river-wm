@@ -37,14 +37,15 @@ pub fn main() !void {
     const river_window_manager_v1 = globals.river_window_manager_v1 orelse utils.interfaceNotAdvertised(river.WindowManagerV1);
     const river_xkb_bindings_v1 = globals.river_xkb_bindings_v1 orelse utils.interfaceNotAdvertised(river.XkbBindingsV1);
 
+    const config = try Config.create();
+    defer config.destroy();
     const context = try Context.create(
         wl_display,
         wl_registry,
         wl_compositor,
         river_window_manager_v1,
         river_xkb_bindings_v1,
-        // Hardcoded config for now
-        .{ .border_width = 2, .border_color_focused = utils.parseRgbaComptime("0x89b4fa"), .border_color_unfocused = utils.parseRgbaComptime("0x1e1e2e") },
+        config,
     );
     defer context.destroy();
 
