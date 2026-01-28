@@ -80,7 +80,8 @@ fn load(config: *Config, reader: *Io.Reader) !void {
         switch (event) {
             .node => |node| {
                 if (next_child_block) |child_block| {
-                    log.warn("Expected child block for {s}, but got another node instead", .{@tagName(child_block)});
+                    log.warn("Expected child block for {s}, but got another node instead. Continuing but ignoring {s}", .{ @tagName(child_block), @tagName(child_block) });
+                    next_child_block = null;
                 }
                 // If it's a node, we check if it's a valid NodeName
                 const node_name = std.meta.stringToEnum(NodeName, node.name);
@@ -91,29 +92,29 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                             const attach_mode_str = node.arg(&parser, 0) orelse "";
                             if (std.meta.stringToEnum(AttachMode, attach_mode_str)) |mode| {
                                 config.attach_mode = mode;
-                                log.debug("Setting attach_mode to {s}", .{@tagName(mode)});
+                                logDebugSettingNode(name, attach_mode_str);
                             } else {
-                                log.warn("Invalid \"attach_mode\". Using default", .{});
+                                logWarnInvalidNodeArg(name);
                                 continue;
                             }
                         },
                         .focus_follows_pointer => {
                             const focus_follows_pointer_str = node.arg(&parser, 0) orelse "";
-                            if (config.boolFromKdlStr(focus_follows_pointer_str)) |focus_follows_pointer| {
+                            if (boolFromKdlStr(focus_follows_pointer_str)) |focus_follows_pointer| {
                                 config.focus_follows_pointer = focus_follows_pointer;
-                                log.debug("Setting focus_follows_pointer to {}", .{focus_follows_pointer});
+                                logDebugSettingNode(name, focus_follows_pointer_str);
                             } else {
-                                log.warn("Invalid \"focus_follows_pointer\". Using default", .{});
+                                logWarnInvalidNodeArg(name);
                                 continue;
                             }
                         },
                         .pointer_warp_on_focus_change => {
                             const pointer_warp_on_focus_change_str = node.arg(&parser, 0) orelse "";
-                            if (config.boolFromKdlStr(pointer_warp_on_focus_change_str)) |pointer_warp_on_focus_change| {
+                            if (boolFromKdlStr(pointer_warp_on_focus_change_str)) |pointer_warp_on_focus_change| {
                                 config.pointer_warp_on_focus_change = pointer_warp_on_focus_change;
-                                log.debug("Setting pointer_warp_on_focus_change to {}", .{pointer_warp_on_focus_change});
+                                logDebugSettingNode(name, pointer_warp_on_focus_change_str);
                             } else {
-                                log.warn("Invalid \"pointer_warp_on_focus_change\". Using default", .{});
+                                logWarnInvalidNodeArg(name);
                                 continue;
                             }
                         },
@@ -155,26 +156,26 @@ fn loadBordersChildBlock(config: *Config, parser: *kdl.Parser) !void {
                         .width => {
                             const width_str = node.arg(parser, 0) orelse "";
                             config.border_width = fmt.parseInt(u8, width_str, 10) catch {
-                                log.warn("Invalid border.width \"{s}\"", .{width_str});
+                                logWarnInvalidNodeArg(name);
                                 continue;
                             };
-                            log.debug("Setting border.width to {d}", .{config.border_width});
+                            logDebugSettingNode(name, width_str);
                         },
                         .color_focused => {
                             const color_str = node.arg(parser, 0) orelse "";
                             config.border_color_focused = utils.parseRgba(color_str) catch {
-                                log.warn("Invalid border.color_focused \"{s}\"", .{color_str});
+                                logWarnInvalidNodeArg(name);
                                 continue;
                             };
-                            log.debug("Setting border.color_focused to {s}", .{color_str});
+                            logDebugSettingNode(name, color_str);
                         },
                         .color_unfocused => {
                             const color_str = node.arg(parser, 0) orelse "";
                             config.border_color_unfocused = utils.parseRgba(color_str) catch {
-                                log.warn("Invalid border.color_unfocused \"{s}\"", .{color_str});
+                                logWarnInvalidNodeArg(name);
                                 continue;
                             };
-                            log.debug("Setting border.color_unfocused to {s}", .{color_str});
+                            logDebugSettingNode(name, color_str);
                         },
                     }
                 } else {
@@ -221,7 +222,7 @@ fn skipChildBlock(_: *Config, parser: *kdl.Parser) !void {
 /// if arg_str in ["#true", "true"], return true
 /// if arg_str in ["#false", "false"], return false
 /// else, return null
-fn boolFromKdlStr(_: Config, arg_str: []const u8) ?bool {
+fn boolFromKdlStr(arg_str: []const u8) ?bool {
     if (mem.eql(u8, arg_str, "#true") or
         mem.eql(u8, arg_str, "true"))
     {
@@ -232,6 +233,24 @@ fn boolFromKdlStr(_: Config, arg_str: []const u8) ?bool {
         return false;
     }
     return null;
+}
+
+fn logWarnInvalidNodeArg(node_name: anytype) void {
+    const node_name_type = @TypeOf(node_name);
+    switch (node_name_type) {
+        NodeName => log.warn("Invalid \"{s}\". Using default value", .{@tagName(node_name)}),
+        BorderNodeName => log.warn("Invalid \"border.{s}\". Using default value", .{@tagName(node_name)}),
+        else => @compileError("This function does not (yet) support type \"" ++ @typeName(@TypeOf(node_name)) ++ "\""),
+    }
+}
+
+fn logDebugSettingNode(node_name: anytype, node_value: []const u8) void {
+    const node_name_type = @TypeOf(node_name);
+    switch (node_name_type) {
+        NodeName => log.debug("Setting {s} to {s}", .{ @tagName(node_name), node_value }),
+        BorderNodeName => log.debug("Setting border.{s} to {s}", .{ @tagName(node_name), node_value }),
+        else => @compileError("This function does not (yet) support type \"" ++ @typeName(@TypeOf(node_name)) ++ "\""),
+    }
 }
 
 const std = @import("std");
