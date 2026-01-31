@@ -45,7 +45,7 @@ const XkbBinding = struct {
         return xkb_binding;
     }
 
-    fn destroy(xkb_binding: *XkbBinding) void {
+    pub fn destroy(xkb_binding: *XkbBinding) void {
         xkb_binding.xkb_binding_v1.destroy();
         utils.allocator.destroy(xkb_binding);
     }
@@ -137,16 +137,9 @@ const XkbBinding = struct {
                     log.err("Failed to reload Config. Not deleting old one", .{});
                     return;
                 };
-                // Clean up old one
-                var it = context.xkb_bindings.bindings.safeIterator(.forward);
-                while (it.next()) |binding| {
-                    binding.link.remove();
-                    binding.destroy();
-                }
-                context.config.destroy();
-                // Replace the old one
-                context.config = new_config;
-                context.initialized = false;
+                // Send the config to the WM to handle during next manage
+                context.pending_manage.config = new_config;
+                context.wm.river_window_manager_v1.manageDirty();
             },
             .toggle_fullscreen => {
                 const seat = context.wm.seats.first() orelse return;
