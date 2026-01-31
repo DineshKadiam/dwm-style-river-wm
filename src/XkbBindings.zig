@@ -10,10 +10,9 @@ pub const Command = union(enum) {
     focus_prev,
     zoom,
     change_ratio: f32,
-    // reload_config, // TODO
+    reload_config,
     toggle_fullscreen,
     close_window,
-    // exit, // TODO: Delete?
     // Tag management
     set_output_tags: u32,
     set_window_tags: u32,
@@ -46,7 +45,7 @@ const XkbBinding = struct {
         return xkb_binding;
     }
 
-    fn destroy(xkb_binding: *XkbBinding) void {
+    pub fn destroy(xkb_binding: *XkbBinding) void {
         xkb_binding.xkb_binding_v1.destroy();
         utils.allocator.destroy(xkb_binding);
     }
@@ -128,10 +127,19 @@ const XkbBinding = struct {
                 current_focus.link.swapWith(&first_window.link);
             },
             .change_ratio => |diff| {
-                const new_ratio = context.wm.primary_ratio + diff;
-                if (new_ratio >= 0.10 and new_ratio <= 0.90) {
-                    context.wm.pending_manage.primary_ratio = context.wm.primary_ratio + diff;
-                }
+                context.wm.pending_manage.primary_ratio = std.math.clamp(context.wm.primary_ratio + diff, 0.10, 0.90);
+            },
+            .reload_config => {
+                // Try create new config
+                const new_config = Config.create() catch {
+                    // We do this so that, if the Config fails to reload, the
+                    // user still has *some* config.
+                    log.err("Failed to reload Config. Not deleting old one", .{});
+                    return;
+                };
+                // Send the config to the WM to handle during next manage
+                context.pending_manage.config = new_config;
+                context.wm.river_window_manager_v1.manageDirty();
             },
             .toggle_fullscreen => {
                 const seat = context.wm.seats.first() orelse return;
@@ -241,6 +249,7 @@ const xkbcommon = @import("xkbcommon");
 
 const utils = @import("utils.zig");
 const Context = @import("Context.zig");
+const Config = @import("Config.zig");
 const Seat = @import("Seat.zig");
 const Window = @import("Window.zig");
 

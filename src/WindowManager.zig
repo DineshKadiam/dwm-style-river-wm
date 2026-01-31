@@ -186,9 +186,12 @@ fn manage_start(wm: *WindowManager) void {
 
     const river_window_manager_v1 = wm.river_window_manager_v1;
     const context = wm.context;
+
+    // This gets used shortly, so it goes at the beginning
+    context.manage();
+
     if (!context.initialized) {
-        // This code (should) only be run once while initializing the WM, so let's
-        // mark it as cold.
+        // This code runs during initial startup and after config reloads.
         @branchHint(.cold);
         context.initialized = true;
 
@@ -220,7 +223,7 @@ fn manage_start(wm: *WindowManager) void {
         }
     }
 
-    // Manage the WM itself first
+    // Manage the WM itself before outputs/windows/seats
     if (wm.pending_manage.primary_ratio) |primary_ratio| {
         // Ratios outside of this range can cause crashes anyways (when doing the layout calulcation)
         std.debug.assert(primary_ratio >= 0.10 and primary_ratio <= 0.90);

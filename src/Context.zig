@@ -21,6 +21,13 @@ xkb_bindings: *XkbBindings,
 // WM Configuration
 config: *Config,
 
+/// State consumed in manage() phase, reset at end of manage().
+pending_manage: PendingManage = .{},
+
+pub const PendingManage = struct {
+    config: ?*Config = null,
+};
+
 pub fn create(
     wl_display: *wl.Display,
     wl_registry: *wl.Registry,
@@ -50,6 +57,22 @@ pub fn destroy(context: *Context) void {
     context.wm.destroy();
 
     utils.allocator.destroy(context);
+}
+
+pub fn manage(context: *Context) void {
+    defer context.pending_manage = .{};
+
+    if (context.pending_manage.config) |new_config| {
+        // Destroy all existing bindings
+        var it = context.xkb_bindings.bindings.safeIterator(.forward);
+        while (it.next()) |binding| {
+            binding.link.remove();
+            binding.destroy();
+        }
+        context.config.destroy();
+        context.config = new_config;
+        context.initialized = false;
+    }
 }
 
 const std = @import("std");
