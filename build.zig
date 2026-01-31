@@ -48,6 +48,7 @@ pub fn build(b: *std.Build) void {
 
     exe.linkLibC();
     exe.linkSystemLibrary("wayland-client");
+    exe.linkSystemLibrary("xkbcommon");
 
     b.installArtifact(exe);
 
@@ -95,6 +96,7 @@ pub fn build(b: *std.Build) void {
 
     exe_check.linkLibC();
     exe_check.linkSystemLibrary("wayland-client");
+    exe_check.linkSystemLibrary("xkbcommon");
 
     const check = b.step("check", "Check if beanbag compiles");
     check.dependOn(&exe_check.step);

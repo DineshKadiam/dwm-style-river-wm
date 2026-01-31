@@ -13,8 +13,8 @@
             .hash = "wayland-0.4.0-lQa1khbMAQAsLS2eBR7M5lofyEGPIbu2iFDmoz8lPC27",
         },
         .xkbcommon = .{
-            .url = "https://codeberg.org/ifreund/zig-xkbcommon/archive/v0.3.0.tar.gz",
-            .hash = "xkbcommon-0.3.0-VDqIe3K9AQB2fG5ZeRcMC9i7kfrp5m2rWgLrmdNn9azr",
+            .url = "https://codeberg.org/ifreund/zig-xkbcommon/archive/6786ca619bb442c3f523b5bb894e6a1e48d7e897.tar.gz",
+            .hash = "xkbcommon-0.4.0-dev-VDqIe0y2AgCNeWLthDZ3MUcUYzhyKXjK85ISm_zxk9Nk",
         },
         .kdl = .{
             .url = "https://codeberg.org/desttinghim/zig-kdl/archive/edc943426ba1fc47606568a9fc7f402b2b1992e0.tar.gz",

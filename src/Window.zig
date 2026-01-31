@@ -33,7 +33,7 @@ pending_manage: PendingManage = .{},
 pending_render: PendingRender = .{},
 
 /// Used to put Windows into a list in
-/// WindowManager.calculatePriamryStackLayout()
+/// WindowManager.calculatePrimaryStackLayout()
 active_list_node: DoublyLinkedList.Node = .{},
 
 link: wl.list.Link,

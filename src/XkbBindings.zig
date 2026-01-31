@@ -8,17 +8,21 @@ pub const Command = union(enum) {
     spawn: []const []const u8,
     focus_next,
     focus_prev,
+    // zoom, // TODO
+    // ratio_up, // TODO
+    // ratio_down, // TODO
+    // reload_config, // TODO
     toggle_fullscreen,
     close_window,
-    exit,
+    // exit, // TODO: Delete?
     // Tag management
     set_output_tags: u32,
     set_window_tags: u32,
     toggle_output_tags: u32,
     toggle_window_tags: u32,
-    spawn_tagmask: u32,
-    focus_previous_tags,
-    send_to_previous_tags,
+    // spawn_tagmask: u32, // TODO
+    // focus_previous_tags, // TODO
+    // send_to_previous_tags, // TODO
 };
 
 const XkbBinding = struct {
@@ -114,10 +118,6 @@ const XkbBinding = struct {
                     window.river_window_v1.close();
                 }
             },
-            .exit => {
-                // TODO: Disabled while I'm working with river within river :P
-                // _ = std.process.Child.init(&.{"killall river"}, std.heap.c_allocator);
-            },
             .set_output_tags => |tags| {
                 // TODO: Support multiple outputs
                 const output = context.wm.outputs.first() orelse return;
@@ -135,8 +135,11 @@ const XkbBinding = struct {
             .toggle_output_tags => |tags| {
                 const output = context.wm.outputs.first() orelse return;
                 const old_tags = output.pending_manage.tags orelse output.tags;
-                output.pending_manage.tags = old_tags ^ tags;
-                context.wm.river_window_manager_v1.manageDirty();
+                const new_tags = old_tags ^ tags;
+                if (new_tags != 0) {
+                    output.pending_manage.tags = new_tags;
+                    context.wm.river_window_manager_v1.manageDirty();
+                }
             },
             .toggle_window_tags => |tags| {
                 const seat = context.wm.seats.first() orelse return;
@@ -144,12 +147,15 @@ const XkbBinding = struct {
                 // const window = seat.pending_manage.pending_focus orelse seat.focused;
                 const window = seat.focused orelse return;
                 const old_tags = window.pending_manage.tags orelse window.tags;
-                window.pending_manage.tags = old_tags ^ tags;
-                context.wm.river_window_manager_v1.manageDirty();
+                const new_tags = old_tags ^ tags;
+                if (new_tags != 0) {
+                    window.pending_manage.tags = new_tags;
+                    context.wm.river_window_manager_v1.manageDirty();
+                }
             },
-            .spawn_tagmask, .focus_previous_tags, .send_to_previous_tags => {
-                @panic("Unimplemented");
-            },
+            // .spawn_tagmask, .focus_previous_tags, .send_to_previous_tags => {
+            //     @panic("Unimplemented");
+            // },
         }
     }
 };
@@ -185,8 +191,8 @@ pub fn destroy(xkb_bindings: *XkbBindings) void {
     utils.allocator.destroy(xkb_bindings);
 }
 
-pub fn addBinding(xkb_bindings: *XkbBindings, river_seat_v1: *river.SeatV1, keysym: u32, modifiers: river.SeatV1.Modifiers, command: Command) void {
-    const xkb_binding_v1 = xkb_bindings.xkb_bindings_v1.getXkbBinding(river_seat_v1, keysym, modifiers) catch |err| {
+pub fn addBinding(xkb_bindings: *XkbBindings, river_seat_v1: *river.SeatV1, keysym: xkbcommon.Keysym, modifiers: river.SeatV1.Modifiers, command: Command) void {
+    const xkb_binding_v1 = xkb_bindings.xkb_bindings_v1.getXkbBinding(river_seat_v1, @intFromEnum(keysym), modifiers) catch |err| {
         log.err("Failed to get river xkb binding: {}", .{err});
         return;
     };
