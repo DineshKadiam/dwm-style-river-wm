@@ -108,7 +108,6 @@ pub fn tokenizeToOwnedSlices(input: []const u8, delimiter: u8) ![]const []const 
     while (it.next()) |part| {
         const duped = try allocator.dupe(u8, part);
         try list.append(utils.allocator, duped);
-        log.debug("{s}", .{duped});
     }
     return list.toOwnedSlice(utils.allocator);
 }

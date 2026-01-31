@@ -322,6 +322,17 @@ fn loadKeybindsChildBlock(config: *Config, parser: *kdl.Parser) !void {
                         .zoom => {
                             break :sw .zoom;
                         },
+                        .change_ratio => {
+                            const diff_str = utils.stripQuotes(node.arg(parser, 2) orelse {
+                                logWarnMissingNodeArg(name, "diff");
+                                continue;
+                            });
+                            const diff = fmt.parseFloat(f32, diff_str) catch {
+                                logWarnInvalidNodeArg(name, diff_str);
+                                continue;
+                            };
+                            break :sw .{ .change_ratio = diff };
+                        },
                         .toggle_fullscreen => {
                             break :sw .toggle_fullscreen;
                         },

@@ -9,8 +9,7 @@ pub const Command = union(enum) {
     focus_next,
     focus_prev,
     zoom,
-    // ratio_up, // TODO
-    // ratio_down, // TODO
+    change_ratio: f32,
     // reload_config, // TODO
     toggle_fullscreen,
     close_window,
@@ -127,6 +126,12 @@ const XkbBinding = struct {
                     unreachable;
                 };
                 current_focus.link.swapWith(&first_window.link);
+            },
+            .change_ratio => |diff| {
+                const new_ratio = context.wm.primary_ratio + diff;
+                if (new_ratio >= 0.10 and new_ratio <= 0.90) {
+                    context.wm.pending_manage.primary_ratio = context.wm.primary_ratio + diff;
+                }
             },
             .toggle_fullscreen => {
                 const seat = context.wm.seats.first() orelse return;

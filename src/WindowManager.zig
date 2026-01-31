@@ -4,8 +4,6 @@
 
 const WindowManager = @This();
 
-const PRIMARY_RATIO: f32 = 0.55;
-
 const MIN_RIVER_SEAT_V1_VERSION: u2 = 3;
 
 context: *Context,
@@ -17,6 +15,15 @@ outputs: wl.list.Head(Output, .link),
 windows: wl.list.Head(Window, .link),
 
 window_count: u8 = 0,
+
+primary_ratio: f32 = 0.55,
+
+/// State consumed in manage phase, reset at end of manage_start().
+pending_manage: PendingManage = .{},
+
+pub const PendingManage = struct {
+    primary_ratio: ?f32 = null,
+};
 
 pub fn create(context: *Context, window_manager_v1: *river.WindowManagerV1) !*WindowManager {
     const wm = try utils.allocator.create(WindowManager);
@@ -133,7 +140,7 @@ fn calculatePrimaryStackLayout(wm: *WindowManager) void {
         } else {
             // Multiple windows: primary/stack layout
             // TODO: Support multiple windows in primary stack
-            const primary_width: u31 = @intFromFloat(@as(f32, @floatFromInt(output_width)) * PRIMARY_RATIO);
+            const primary_width: u31 = @intFromFloat(@as(f32, @floatFromInt(output_width)) * wm.primary_ratio);
             const stack_width: u31 = output_width - primary_width;
             const stack_count = active_count - 1;
             const stack_height: u31 = @divFloor(output_height, stack_count);
@@ -175,6 +182,8 @@ fn calculatePrimaryStackLayout(wm: *WindowManager) void {
 }
 
 fn manage_start(wm: *WindowManager) void {
+    defer wm.pending_manage = .{};
+
     const river_window_manager_v1 = wm.river_window_manager_v1;
     const context = wm.context;
     if (!context.initialized) {
@@ -209,6 +218,13 @@ fn manage_start(wm: *WindowManager) void {
             std.debug.assert(keybind.keysym != null);
             context.xkb_bindings.addBinding(river_seat_v1, keybind.keysym.?, keybind.modifiers, keybind.command);
         }
+    }
+
+    // Manage the WM itself first
+    if (wm.pending_manage.primary_ratio) |primary_ratio| {
+        // Ratios outside of this range can cause crashes anyways (when doing the layout calulcation)
+        std.debug.assert(primary_ratio >= 0.10 and primary_ratio <= 0.90);
+        wm.primary_ratio = primary_ratio;
     }
 
     {

@@ -7,15 +7,17 @@ borders {
     color_unfocused "0x1e1e2e"
 }
 keybinds {
-    spawn mod4 t foot
-    focus_next mod4 j
-    focus_prev mod4 k
-    zoom mod4 z
-    toggle_fullscreen mod4 f
-    close_window mod4+Shift q
+    spawn Mod4 T foot
+    focus_next Mod4 J
+    focus_prev Mod4 K
+    zoom Mod4 Z
+    change_ratio Mod4 H +0.05
+    change_ratio Mod4 L -0.05
+    toggle_fullscreen Mod4 F
+    close_window Mod4+Shift Q
     // Generates keybinds for keys 1-9 → tags 1<<0 through 1<<9
-    tag_bind mod4 set_output_tags
-    tag_bind mod4+shift set_window_tags
-    tag_bind mod4+ctrl toggle_output_tags
-    tag_bind mod4+ctrl+shift toggle_window_tags
+    tag_bind Mod4 set_output_tags
+    tag_bind Mod4+shift set_window_tags
+    tag_bind Mod4+ctrl toggle_output_tags
+    tag_bind Mod4+ctrl+shift toggle_window_tags
 }
