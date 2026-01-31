@@ -313,15 +313,6 @@ fn loadKeybindsChildBlock(config: *Config, parser: *kdl.Parser) !void {
                             const split_exec = try utils.tokenizeToOwnedSlices(exec_str, ' ');
                             break :sw .{ .spawn = split_exec };
                         },
-                        .focus_next => {
-                            break :sw .focus_next;
-                        },
-                        .focus_prev => {
-                            break :sw .focus_prev;
-                        },
-                        .zoom => {
-                            break :sw .zoom;
-                        },
                         .change_ratio => {
                             const diff_str = utils.stripQuotes(node.arg(parser, 2) orelse {
                                 logWarnMissingNodeArg(name, "diff");
@@ -333,11 +324,13 @@ fn loadKeybindsChildBlock(config: *Config, parser: *kdl.Parser) !void {
                             };
                             break :sw .{ .change_ratio = diff };
                         },
-                        .toggle_fullscreen => {
-                            break :sw .toggle_fullscreen;
-                        },
-                        .close_window => {
-                            break :sw .close_window;
+                        inline .focus_next, .focus_prev, .zoom, .reload_config, .toggle_fullscreen, .close_window => |cmd| {
+                            // None of these have arguments, just create the union and give it back
+                            break :sw @unionInit(
+                                XkbBindings.Command,
+                                @tagName(cmd),
+                                {},
+                            );
                         },
                         inline .set_output_tags, .set_window_tags, .toggle_output_tags, .toggle_window_tags => |cmd| {
                             const tags_str = utils.stripQuotes(node.arg(parser, 2) orelse {
@@ -348,7 +341,11 @@ fn loadKeybindsChildBlock(config: *Config, parser: *kdl.Parser) !void {
                                 logWarnInvalidNodeArg(name, tags_str);
                                 continue;
                             };
-                            break :sw @unionInit(XkbBindings.Command, @tagName(cmd), tags);
+                            break :sw @unionInit(
+                                XkbBindings.Command,
+                                @tagName(cmd),
+                                tags,
+                            );
                         },
                     };
 
