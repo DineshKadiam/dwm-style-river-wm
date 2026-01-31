@@ -319,6 +319,9 @@ fn loadKeybindsChildBlock(config: *Config, parser: *kdl.Parser) !void {
                         .focus_prev => {
                             break :sw .focus_prev;
                         },
+                        .zoom => {
+                            break :sw .zoom;
+                        },
                         .toggle_fullscreen => {
                             break :sw .toggle_fullscreen;
                         },

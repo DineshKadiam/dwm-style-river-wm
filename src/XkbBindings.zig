@@ -8,7 +8,7 @@ pub const Command = union(enum) {
     spawn: []const []const u8,
     focus_next,
     focus_prev,
-    // zoom, // TODO
+    zoom,
     // ratio_up, // TODO
     // ratio_down, // TODO
     // reload_config, // TODO
@@ -104,7 +104,29 @@ const XkbBinding = struct {
                 } else {
                     seat.pending_manage.pending_focus = .clear_focus;
                 }
-                // context.wm.window_manager_v1.manageDirty();
+            },
+            .zoom => {
+                const wm = context.wm;
+                const seat = wm.seats.first() orelse return;
+                const current_focus = if (seat.pending_manage.pending_focus) |pending_focus| blk: {
+                    switch (pending_focus) {
+                        .clear_focus => return,
+                        .window => |window| break :blk window,
+                    }
+                } else seat.focused orelse return;
+                const first_window: *Window = if (wm.windows.first()) |first| blk: {
+                    if (current_focus == first) {
+                        // Try get the second window instead
+                        break :blk @fieldParentPtr("link", first.link.next orelse return);
+                    } else {
+                        seat.pending_manage.should_warp_pointer = true;
+                        break :blk first;
+                    }
+                } else {
+                    // If current_focus is not null, we know that first_window *must not* be null.
+                    unreachable;
+                };
+                current_focus.link.swapWith(&first_window.link);
             },
             .toggle_fullscreen => {
                 const seat = context.wm.seats.first() orelse return;
@@ -215,5 +237,6 @@ const xkbcommon = @import("xkbcommon");
 const utils = @import("utils.zig");
 const Context = @import("Context.zig");
 const Seat = @import("Seat.zig");
+const Window = @import("Window.zig");
 
 const log = std.log.scoped(.XkbBindings);

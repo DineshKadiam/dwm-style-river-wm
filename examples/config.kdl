@@ -10,6 +10,7 @@ keybinds {
     spawn mod4 t foot
     focus_next mod4 j
     focus_prev mod4 k
+    zoom mod4 z
     toggle_fullscreen mod4 f
     close_window mod4+Shift q
     // Generates keybinds for keys 1-9 → tags 1<<0 through 1<<9
