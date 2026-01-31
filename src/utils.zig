@@ -67,19 +67,77 @@ fn parseRgbaHelper(bytes: [4]u8) RiverColor {
     };
 }
 
+/// Parse a modifier string like "mod4+shift+ctrl" into river.SeatV1.Modifiers.
+/// Modifier names are case-insensitive. Returns null if any modifier is unrecognized.
+pub fn parseModifiers(s: []const u8) !?river.SeatV1.Modifiers {
+    var modifiers: river.SeatV1.Modifiers = .{};
+
+    var it = mem.splitScalar(u8, s, '+');
+    while (it.next()) |part| {
+        // Modifier names are 3 (alt) to 5 (shift/super) characters long,
+        // other length can't be correctly formatted.
+        if (part.len < 3 or part.len > 5) return null;
+
+        // Case-insensitive comparison by lowercasing
+        const lower = try std.ascii.allocLowerString(utils.allocator, part);
+        defer utils.allocator.free(lower);
+
+        if (mem.eql(u8, lower, "mod4") or mem.eql(u8, lower, "super")) {
+            modifiers.mod4 = true;
+        } else if (mem.eql(u8, lower, "shift")) {
+            modifiers.shift = true;
+        } else if (mem.eql(u8, lower, "ctrl")) {
+            modifiers.ctrl = true;
+        } else if (mem.eql(u8, lower, "mod1") or mem.eql(u8, lower, "alt")) {
+            modifiers.mod1 = true;
+        } else if (mem.eql(u8, lower, "mod3")) {
+            modifiers.mod3 = true;
+        } else if (mem.eql(u8, lower, "mod5")) {
+            modifiers.mod5 = true;
+        } else {
+            return null;
+        }
+    }
+
+    return modifiers;
+}
+
+pub fn tokenizeToOwnedSlices(input: []const u8, delimiter: u8) ![]const []const u8 {
+    var list: std.ArrayList([]const u8) = .empty;
+    var it = std.mem.tokenizeScalar(u8, input, delimiter);
+    while (it.next()) |part| {
+        const duped = try allocator.dupe(u8, part);
+        try list.append(utils.allocator, duped);
+        log.debug("{s}", .{duped});
+    }
+    return list.toOwnedSlice(utils.allocator);
+}
+
+pub fn stripQuotes(s: []const u8) []const u8 {
+    if (s.len >= 2 and s[0] == '"' and s[s.len - 1] == '"') {
+        return s[1 .. s.len - 1];
+    }
+    return s;
+}
+
 /// Report that the given WaylandGlobal wasn't advertised and exit the program
 pub fn interfaceNotAdvertised(comptime WaylandGlobal: type) noreturn {
-    log.err("{s} not advertised. Exiting", .{WaylandGlobal.interface.name});
-    std.posix.exit(1);
+    fatal("{s} not advertised. Exiting", .{WaylandGlobal.interface.name});
 }
 
 /// Report that the given WaylandGlobal was advertised but the support version was too low and exit the program
 pub fn versionNotSupported(comptime WaylandGlobal: type, have_version: u32, need_version: u32) noreturn {
-    log.err("The compositor only advertised {s} version {d} but version {d} is required. Exiting", .{ WaylandGlobal.interface.name, have_version, need_version });
-    std.posix.exit(1);
+    fatal("The compositor only advertised {s} version {d} but version {d} is required. Exiting", .{ WaylandGlobal.interface.name, have_version, need_version });
 }
 
 const std = @import("std");
+const fatal = std.process.fatal;
 const fmt = std.fmt;
+const mem = std.mem;
+
+const wayland = @import("wayland");
+const river = wayland.client.river;
+
+const utils = @import("utils.zig");
 
 const log = std.log.scoped(.utils);

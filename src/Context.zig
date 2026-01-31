@@ -19,7 +19,7 @@ wm: *WindowManager,
 xkb_bindings: *XkbBindings,
 
 // WM Configuration
-config: Config,
+config: *Config,
 
 pub fn create(
     wl_display: *wl.Display,
@@ -27,7 +27,7 @@ pub fn create(
     wl_compositor: *wl.Compositor,
     river_window_manager_v1: *river.WindowManagerV1,
     river_xkb_bindings_v1: *river.XkbBindingsV1,
-    config: Config,
+    config: *Config,
 ) !*Context {
     const context = try utils.allocator.create(Context);
     errdefer context.destroy();

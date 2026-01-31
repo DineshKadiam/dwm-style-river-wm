@@ -56,8 +56,6 @@ fn outputListener(river_output_v1: *river.OutputV1, event: river.OutputV1.Event,
             output.height = ev.height;
         },
         .position => |ev| {
-            // TODO - CONFIG: Allow setting output position (do I even need to
-            // do this, or do I just get told what the position is?)
             output.x = ev.x;
             output.y = ev.y;
         },

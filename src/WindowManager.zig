@@ -185,23 +185,29 @@ fn manage_start(wm: *WindowManager) void {
 
         const seat = wm.seats.first() orelse @panic("Failed to get seat");
         const river_seat_v1 = seat.river_seat_v1;
-        context.xkb_bindings.addBinding(river_seat_v1, xkbcommon.Keysym.t, .{ .mod4 = true }, .{ .spawn = &.{"foot"} });
-        context.xkb_bindings.addBinding(river_seat_v1, xkbcommon.Keysym.j, .{ .mod4 = true }, .focus_next);
-        context.xkb_bindings.addBinding(river_seat_v1, xkbcommon.Keysym.k, .{ .mod4 = true }, .focus_prev);
-        context.xkb_bindings.addBinding(river_seat_v1, xkbcommon.Keysym.f, .{ .mod4 = true }, .toggle_fullscreen);
-        context.xkb_bindings.addBinding(river_seat_v1, xkbcommon.Keysym.q, .{ .mod4 = true, .shift = true }, .close_window);
-        context.xkb_bindings.addBinding(river_seat_v1, xkbcommon.Keysym.e, .{ .mod4 = true, .shift = true }, .exit);
 
         // Tag bindings
-        comptime var i: u8 = 1;
-        comptime var buffer: [1]u8 = undefined;
-        inline while (i <= 9) : (i += 1) {
-            const tags: u32 = 1 << (i - 1);
-            buffer[0] = i + '0';
-            context.xkb_bindings.addBinding(river_seat_v1, @field(xkbcommon.Keysym, &buffer), .{ .mod4 = true }, .{ .set_output_tags = tags });
-            context.xkb_bindings.addBinding(river_seat_v1, @field(xkbcommon.Keysym, &buffer), .{ .mod4 = true, .shift = true }, .{ .set_window_tags = tags });
-            context.xkb_bindings.addBinding(river_seat_v1, @field(xkbcommon.Keysym, &buffer), .{ .mod4 = true, .ctrl = true }, .{ .toggle_output_tags = tags });
-            context.xkb_bindings.addBinding(river_seat_v1, @field(xkbcommon.Keysym, &buffer), .{ .mod4 = true, .shift = true, .ctrl = true }, .{ .toggle_window_tags = tags });
+        for (context.config.tag_binds.items) |tag_bind| {
+            comptime var i: u8 = 1;
+            comptime var buffer: [1]u8 = undefined;
+            inline while (i <= 9) : (i += 1) {
+                const tags: u32 = 1 << (i - 1);
+                buffer[0] = i + '0';
+                const command: XkbBindings.Command = switch (tag_bind.command) {
+                    .set_output_tags => .{ .set_output_tags = tags },
+                    .set_window_tags => .{ .set_window_tags = tags },
+                    .toggle_output_tags => .{ .toggle_output_tags = tags },
+                    .toggle_window_tags => .{ .toggle_window_tags = tags },
+                    else => unreachable,
+                };
+                context.xkb_bindings.addBinding(river_seat_v1, @field(xkbcommon.Keysym, &buffer), tag_bind.modifiers, command);
+            }
+        }
+        // Rest of the keybinds
+        for (context.config.keybinds.items) |keybind| {
+            // Keysyms should only be null in tag_binds (above)
+            std.debug.assert(keybind.keysym != null);
+            context.xkb_bindings.addBinding(river_seat_v1, keybind.keysym.?, keybind.modifiers, keybind.command);
         }
     }
 
@@ -256,8 +262,7 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
     const context = wm.context;
     switch (event) {
         .unavailable => {
-            log.err("Window manager unavailable (some other wm instance is running). Exiting", .{});
-            std.posix.exit(1);
+            fatal("Window manager unavailable (some other wm instance is running). Exiting", .{});
         },
         .manage_start => wm.manage_start(),
         .render_start => wm.render_start(),
@@ -286,8 +291,10 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
             const output = wm.outputs.first() orelse @panic("Failed to get output");
             const window = Window.create(context, ev.id, output) catch @panic("Out of memory");
 
-            // TODO - CONFIG: Allow appending window instead of prepending
-            wm.windows.prepend(window);
+            switch (context.config.attach_mode) {
+                .top => wm.windows.prepend(window),
+                .bottom => wm.windows.append(window),
+            }
             seat.pending_manage.pending_focus = .{ .window = window };
             seat.pending_manage.should_warp_pointer = true;
 
@@ -301,6 +308,7 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
 
 const std = @import("std");
 const assert = std.debug.assert;
+const fatal = std.process.fatal;
 const DoublyLinkedList = std.DoublyLinkedList;
 
 const wayland = @import("wayland");

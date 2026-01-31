@@ -1,0 +1,20 @@
+attach_mode top
+focus_follows_pointer #true
+pointer_warp_on_focus_change #true
+borders {
+    width 2
+    color_focused "0x89b4fa"
+    color_unfocused "0x1e1e2e"
+}
+keybinds {
+    spawn mod4 t foot
+    focus_next mod4 j
+    focus_prev mod4 k
+    toggle_fullscreen mod4 f
+    close_window mod4+Shift q
+    // Generates keybinds for keys 1-9 → tags 1<<0 through 1<<9
+    tag_bind mod4 set_output_tags
+    tag_bind mod4+shift set_window_tags
+    tag_bind mod4+ctrl toggle_output_tags
+    tag_bind mod4+ctrl+shift toggle_window_tags
+}

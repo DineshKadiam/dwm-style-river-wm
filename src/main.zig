@@ -11,14 +11,12 @@ const Globals = struct {
 
 pub fn main() !void {
     const wayland_display_var = try utils.allocator.dupeZ(u8, process.getEnvVarOwned(utils.allocator, "WAYLAND_DISPLAY") catch {
-        log.err("Error getting WAYLAND_DISPLAY environment variable. Exiting", .{});
-        std.posix.exit(1);
+        fatal("Error getting WAYLAND_DISPLAY environment variable. Exiting", .{});
     });
     defer utils.allocator.free(wayland_display_var);
 
     const wl_display = wl.Display.connect(null) catch {
-        log.err("Error connecting to Wayland server. Exiting", .{});
-        std.posix.exit(1);
+        fatal("Error connecting to Wayland server. Exiting", .{});
     };
     defer wl_display.disconnect();
 
@@ -29,29 +27,28 @@ pub fn main() !void {
 
     const errno = wl_display.roundtrip();
     if (errno != .SUCCESS) {
-        log.err("Initial roundtrip failed: E{s}", .{@tagName(errno)});
-        std.posix.exit(1);
+        fatal("Initial roundtrip failed: E{s}", .{@tagName(errno)});
     }
 
     const wl_compositor = globals.wl_compositor orelse utils.interfaceNotAdvertised(wl.Compositor);
     const river_window_manager_v1 = globals.river_window_manager_v1 orelse utils.interfaceNotAdvertised(river.WindowManagerV1);
     const river_xkb_bindings_v1 = globals.river_xkb_bindings_v1 orelse utils.interfaceNotAdvertised(river.XkbBindingsV1);
 
+    const config = try Config.create();
+    defer config.destroy();
     const context = try Context.create(
         wl_display,
         wl_registry,
         wl_compositor,
         river_window_manager_v1,
         river_xkb_bindings_v1,
-        // Hardcoded config for now
-        .{ .border_width = 2, .border_color_focused = utils.parseRgbaComptime("0x89b4fa"), .border_color_unfocused = utils.parseRgbaComptime("0x1e1e2e") },
+        config,
     );
     defer context.destroy();
 
     while (true) {
         if (wl_display.dispatch() != .SUCCESS) {
-            log.err("wayland display dispatch failed", .{});
-            std.posix.exit(1);
+            fatal("wayland display dispatch failed", .{});
         }
     }
 
@@ -64,18 +61,15 @@ fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, globals: *
             if (mem.orderZ(u8, ev.interface, wl.Compositor.interface.name) == .eq) {
                 if (ev.version < 4) utils.versionNotSupported(wl.Compositor, ev.version, 4);
                 globals.wl_compositor = registry.bind(ev.name, wl.Compositor, 4) catch |e| {
-                    log.err("Failed to bind to compositor: {any}", .{@errorName(e)});
-                    std.posix.exit(1);
+                    fatal("Failed to bind to compositor: {any}", .{@errorName(e)});
                 };
             } else if (mem.orderZ(u8, ev.interface, river.WindowManagerV1.interface.name) == .eq) {
                 globals.river_window_manager_v1 = registry.bind(ev.name, river.WindowManagerV1, 3) catch |e| {
-                    log.err("Failed to bind to window_manager_v1: {any}", .{@errorName(e)});
-                    std.posix.exit(1);
+                    fatal("Failed to bind to window_manager_v1: {any}", .{@errorName(e)});
                 };
             } else if (mem.orderZ(u8, ev.interface, river.XkbBindingsV1.interface.name) == .eq) {
                 globals.river_xkb_bindings_v1 = registry.bind(ev.name, river.XkbBindingsV1, 2) catch |e| {
-                    log.err("Failed to bind to xkb_bindings_v1: {any}", .{@errorName(e)});
-                    std.posix.exit(1);
+                    fatal("Failed to bind to xkb_bindings_v1: {any}", .{@errorName(e)});
                 };
             }
         },
@@ -86,6 +80,7 @@ fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, globals: *
 
 const std = @import("std");
 const mem = std.mem;
+const fatal = std.process.fatal;
 const process = std.process;
 
 const wayland = @import("wayland");

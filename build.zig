@@ -12,8 +12,12 @@ pub fn build(b: *std.Build) void {
     const strip = b.option(bool, "strip", "Omit debug information") orelse false;
     const pie = b.option(bool, "pie", "Build a Position Independent Executable") orelse false;
 
+    // Wayland
     const scanner = Scanner.create(b, .{});
     const wayland = b.createModule(.{ .root_source_file = scanner.result });
+    // Rest of the deps
+    const kdl = b.dependency("kdl", .{}).module("kdl");
+    const known_folders = b.dependency("known_folders", .{}).module("known-folders");
     const xkbcommon = b.dependency("xkbcommon", .{}).module("xkbcommon");
 
     scanner.addCustomProtocol(b.path("protocol/river-window-management-v1.xml"));
@@ -36,11 +40,15 @@ pub fn build(b: *std.Build) void {
     });
     exe.pie = pie;
 
+    // Make sure to also add new imports to the exe_check step
     exe.root_module.addImport("wayland", wayland);
     exe.root_module.addImport("xkbcommon", xkbcommon);
+    exe.root_module.addImport("kdl", kdl);
+    exe.root_module.addImport("known_folders", known_folders);
 
     exe.linkLibC();
     exe.linkSystemLibrary("wayland-client");
+    exe.linkSystemLibrary("xkbcommon");
 
     b.installArtifact(exe);
 
@@ -82,9 +90,13 @@ pub fn build(b: *std.Build) void {
     });
 
     exe_check.root_module.addImport("wayland", wayland);
+    exe_check.root_module.addImport("xkbcommon", xkbcommon);
+    exe_check.root_module.addImport("kdl", kdl);
+    exe_check.root_module.addImport("known_folders", known_folders);
 
     exe_check.linkLibC();
     exe_check.linkSystemLibrary("wayland-client");
+    exe_check.linkSystemLibrary("xkbcommon");
 
     const check = b.step("check", "Check if beanbag compiles");
     check.dependOn(&exe_check.step);
