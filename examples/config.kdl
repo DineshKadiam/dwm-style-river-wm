@@ -8,11 +8,16 @@ borders {
 }
 keybinds {
     spawn Mod4 T foot
-    focus_next Mod4 J
-    focus_prev Mod4 K
+    focus_next_window Mod4 J
+    focus_prev_window Mod4 K
+    focus_next_output Mod4+Shift J
+    focus_prev_output Mod4+Shift K
+    send_to_next_output Mod1+Shift J
+    send_to_prev_output Mod1+Shift K
     zoom Mod4 Z
     change_ratio Mod4 H +0.05
     change_ratio Mod4 L -0.05
+    reload_config Mod4+Shift R
     toggle_fullscreen Mod4 F
     close_window Mod4+Shift Q
     // Generates keybinds for keys 1-9 → tags 1<<0 through 1<<9

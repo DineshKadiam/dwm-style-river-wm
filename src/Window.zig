@@ -18,11 +18,7 @@ fullscreen: bool = false,
 maximized: bool = false,
 
 tags: u32 = 0x0001,
-// output: ?*Output,
-
-// XXX: Do I really even need to store `show`?
-//      I think I only would if I was trying not to send extraneous requests.
-show: bool = true,
+output: ?*Output,
 
 initialized: bool = false,
 
@@ -46,7 +42,12 @@ pub const PendingManage = struct {
     maximized: ?bool = null,
 
     tags: ?u32 = null,
-    // output: ?*Output = null,
+    pending_output: ?PendingOutput = null,
+
+    pub const PendingOutput = union(enum) {
+        output: *Output,
+        clear_output,
+    };
 };
 
 pub const PendingRender = struct {
@@ -58,7 +59,7 @@ pub const PendingRender = struct {
     show: ?bool = null,
 };
 
-pub fn create(context: *Context, river_window_v1: *river.WindowV1, output: *Output) !*Window {
+pub fn create(context: *Context, river_window_v1: *river.WindowV1, output: ?*Output) !*Window {
     var window = try utils.allocator.create(Window);
     errdefer window.destroy();
 
@@ -66,8 +67,8 @@ pub fn create(context: *Context, river_window_v1: *river.WindowV1, output: *Outp
         .context = context,
         .river_window_v1 = river_window_v1,
         .river_node_v1 = river_window_v1.getNode() catch @panic("Failed to get node"),
-        // .output = output,
-        .tags = if (output.tags != 0) output.tags else 0x0001,
+        .output = output,
+        .tags = if (output) |o| o.tags else 0x0001,
         .link = undefined, // Handled by the wl.list
     };
 
@@ -87,22 +88,23 @@ fn windowListener(river_window_v1: *river.WindowV1, event: river.WindowV1.Event,
     assert(window.river_window_v1 == river_window_v1);
     switch (event) {
         .closed => {
-            window.context.wm.window_count -= 1;
             {
+                // If there's no output, we don't really care about focus and can skip this event
+                const output = if (window.output) |output| output else return;
                 var it = window.context.wm.seats.iterator(.forward);
                 while (it.next()) |seat| {
-                    if (seat.focused == window) {
+                    if (seat.focused_window == window) {
                         // Find another window to focus and warp pointer there
-                        if (window.context.wm.getPrevWindow(window)) |next_focus| {
+                        if (output.prevWindow(window)) |next_focus| {
                             if (next_focus != window) {
-                                seat.pending_manage.pending_focus = .{ .window = next_focus };
+                                seat.pending_manage.window = .{ .window = next_focus };
                                 seat.pending_manage.should_warp_pointer = true;
                             } else {
                                 // Only window in list - clear focus
-                                seat.pending_manage.pending_focus = .clear_focus;
+                                seat.pending_manage.window = .clear_focus;
                             }
                         } else {
-                            seat.pending_manage.pending_focus = .clear_focus;
+                            seat.pending_manage.window = .clear_focus;
                         }
                     }
                 }
@@ -111,7 +113,7 @@ fn windowListener(river_window_v1: *river.WindowV1, event: river.WindowV1.Event,
             window.destroy();
         },
         .dimensions => |ev| {
-            // The protocol requires these are strictly greather than zero.
+            // The protocol requires these are strictly greater than zero.
             assert(ev.width > 0 and ev.height > 0);
             window.width = @intCast(ev.width);
             window.height = @intCast(ev.height);
@@ -151,10 +153,11 @@ pub fn manage(window: *Window) void {
         }
     }
     // Fullscreen and maximize operations
-    if (pending_manage.fullscreen) |fullscreen| {
+    if (pending_manage.fullscreen) |fullscreen| blk: {
         window.fullscreen = fullscreen;
         if (fullscreen) {
-            const output = window.context.wm.outputs.first() orelse @panic("Failed to get output");
+            // If the window isn't on an output, just skip fullscreening
+            const output = window.output orelse break :blk;
             window.river_window_v1.fullscreen(output.river_output_v1);
             window.river_window_v1.informFullscreen();
         } else {
@@ -173,6 +176,14 @@ pub fn manage(window: *Window) void {
     // New tags
     if (pending_manage.tags) |tags| {
         window.tags = tags;
+    }
+    if (pending_manage.pending_output) |pending_output| {
+        switch (pending_output) {
+            .output => |output| {
+                window.output = output;
+            },
+            .clear_output => window.output = null,
+        }
     }
 }
 

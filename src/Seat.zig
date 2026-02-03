@@ -8,7 +8,8 @@ context: *Context,
 
 river_seat_v1: *river.SeatV1,
 
-focused: ?*Window,
+focused_window: ?*Window,
+focused_output: ?*Output,
 
 /// State consumed in manage phase, reset at end of manage().
 pending_manage: PendingManage = .{},
@@ -16,11 +17,17 @@ pending_manage: PendingManage = .{},
 link: wl.list.Link,
 
 pub const PendingManage = struct {
-    pending_focus: ?PendingFocus = null,
+    window: ?PendingWindow = null,
+    output: ?PendingOutput = null,
     should_warp_pointer: bool = false,
 
-    pub const PendingFocus = union(enum) {
+    pub const PendingWindow = union(enum) {
         window: *Window,
+        clear_focus,
+    };
+
+    pub const PendingOutput = union(enum) {
+        output: *Output,
         clear_focus,
     };
 };
@@ -32,7 +39,8 @@ pub fn create(context: *Context, river_seat_v1: *river.SeatV1) !*Seat {
     seat.* = .{
         .context = context,
         .river_seat_v1 = river_seat_v1,
-        .focused = null,
+        .focused_window = null,
+        .focused_output = null,
         .link = undefined, // Handled by the wl.list
     };
 
@@ -66,41 +74,51 @@ fn seatListener(river_seat_v1: *river.SeatV1, event: river.SeatV1.Event, seat: *
 // river_window_v1 needs to be optional because ev.window is optional
 fn setWindowFocus(seat: *Seat, river_window_v1: ?*river.WindowV1) void {
     const wv1 = river_window_v1 orelse return;
-    const window: *Window = @ptrCast(@alignCast(wv1.getUserData()));
-    seat.pending_manage.pending_focus = .{ .window = window };
+    const window: *Window = @ptrCast(@alignCast(wv1.getUserData() orelse return));
+    seat.pending_manage.window = .{ .window = window };
 }
 
 pub fn manage(seat: *Seat) void {
     defer seat.pending_manage = .{};
 
-    if (seat.pending_manage.pending_focus) |pending_focus| {
-        switch (pending_focus) {
+    if (seat.pending_manage.window) |pending_window| {
+        switch (pending_window) {
             .window => |window| {
-                if (seat.focused) |focused| {
+                if (seat.focused_window) |focused| {
                     // Tell the previously focused Window that it's no longer focused
                     if (focused != window) {
                         focused.pending_render.focused = false;
                     }
                 }
-                seat.focused = window;
+                seat.focused_window = window;
                 seat.river_seat_v1.focusWindow(window.river_window_v1);
                 window.pending_render.focused = true;
             },
             .clear_focus => {
-                if (seat.focused) |focused| {
+                if (seat.focused_window) |focused| {
                     // Tell the previously focused Window that it's no longer focused
                     focused.pending_render.focused = false;
                 }
-                seat.focused = null;
+                seat.focused_window = null;
                 seat.river_seat_v1.clearFocus();
+            },
+        }
+    }
+    if (seat.pending_manage.output) |pending_output| {
+        switch (pending_output) {
+            .output => |output| {
+                seat.focused_output = output;
+            },
+            .clear_focus => {
+                seat.focused_output = null;
             },
         }
     }
 
     if (seat.pending_manage.should_warp_pointer) blk: {
         if (seat.context.config.pointer_warp_on_focus_change) {
-            const window = seat.focused orelse {
-                log.err("Trying to warp-on-focus-change without a focused window.", .{});
+            const window = seat.focused_window orelse {
+                log.warn("Trying to warp-on-focus-change without a focused window.", .{});
                 break :blk;
             };
             // Warp pointer to center of focused window;
@@ -126,6 +144,7 @@ const river = wayland.client.river;
 
 const utils = @import("utils.zig");
 const Context = @import("Context.zig");
+const Output = @import("Output.zig");
 const Window = @import("Window.zig");
 
 const log = std.log.scoped(.Seat);
