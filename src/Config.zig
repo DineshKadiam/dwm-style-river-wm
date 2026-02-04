@@ -324,13 +324,19 @@ fn loadKeybindsChildBlock(config: *Config, parser: *kdl.Parser) !void {
                             };
                             break :sw .{ .change_ratio = diff };
                         },
-                        inline .focus_next, .focus_prev, .zoom, .reload_config, .toggle_fullscreen, .close_window => |cmd| {
+                        inline .focus_next_window,
+                        .focus_prev_window,
+                        .focus_next_output,
+                        .focus_prev_output,
+                        .send_to_next_output,
+                        .send_to_prev_output,
+                        .zoom,
+                        .reload_config,
+                        .toggle_fullscreen,
+                        .close_window,
+                        => |cmd| {
                             // None of these have arguments, just create the union and give it back
-                            break :sw @unionInit(
-                                XkbBindings.Command,
-                                @tagName(cmd),
-                                {},
-                            );
+                            break :sw @unionInit(XkbBindings.Command, @tagName(cmd), {});
                         },
                         inline .set_output_tags, .set_window_tags, .toggle_output_tags, .toggle_window_tags => |cmd| {
                             const tags_str = utils.stripQuotes(node.arg(parser, 2) orelse {
@@ -341,11 +347,7 @@ fn loadKeybindsChildBlock(config: *Config, parser: *kdl.Parser) !void {
                                 logWarnInvalidNodeArg(name, tags_str);
                                 continue;
                             };
-                            break :sw @unionInit(
-                                XkbBindings.Command,
-                                @tagName(cmd),
-                                tags,
-                            );
+                            break :sw @unionInit(XkbBindings.Command, @tagName(cmd), tags);
                         },
                     };
 
