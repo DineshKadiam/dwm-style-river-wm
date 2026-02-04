@@ -15,6 +15,9 @@ pub const Command = union(enum) {
     zoom,
     // Changes the ratio on the focused output only
     change_ratio: f32,
+    // Changes the primary count on the focus output only
+    increment_primary_count,
+    decrement_primary_count,
     reload_config,
     toggle_fullscreen,
     close_window,
@@ -72,6 +75,7 @@ const XkbBinding = struct {
 
     fn executeCommand(xkb_binding: *XkbBinding) void {
         const context = xkb_binding.context;
+        // TODO: Should I log.warn when commands return early?
         switch (xkb_binding.command) {
             .spawn => |cmd| {
                 var child = std.process.Child.init(cmd, utils.allocator);
@@ -118,6 +122,19 @@ const XkbBinding = struct {
                 const seat = context.wm.seats.first() orelse return;
                 const output = seat.focused_output orelse return;
                 output.pending_manage.primary_ratio = output.primary_ratio + diff;
+                context.wm.river_window_manager_v1.manageDirty();
+            },
+            .increment_primary_count => {
+                const seat = context.wm.seats.first() orelse return;
+                const output = seat.focused_output orelse return;
+                output.pending_manage.primary_count = output.primary_count + 1;
+                context.wm.river_window_manager_v1.manageDirty();
+            },
+            .decrement_primary_count => {
+                const seat = context.wm.seats.first() orelse return;
+                const output = seat.focused_output orelse return;
+                output.pending_manage.primary_count = output.primary_count - 1;
+                context.wm.river_window_manager_v1.manageDirty();
             },
             .reload_config => {
                 // Try create new config

@@ -16,6 +16,9 @@ y: i32 = 0,
 /// Proportion of output width taken by the primary stack
 primary_ratio: f32 = 0.55,
 
+/// Number of windows in the primary stack
+primary_count: u8 = 1,
+
 /// Tags are 32-bit bitfield. A window can be active on one(?) or more tags.
 tags: u32 = 0x0001,
 
@@ -34,6 +37,7 @@ pub const PendingManage = struct {
 
     tags: ?u32 = null,
     primary_ratio: ?f32 = null,
+    primary_count: ?u8 = null,
 };
 
 pub fn create(context: *Context, river_output_v1: *river.OutputV1) !*Output {
@@ -170,6 +174,10 @@ pub fn manage(output: *Output) void {
         // Ratios outside of this range could cause crashes (when doing the layout calculation)
         output.primary_ratio = std.math.clamp(primary_ratio, 0.10, 0.90);
     }
+    if (output.pending_manage.primary_count) |primary_count| {
+        // Don't allow less than 1 primary
+        output.primary_count = @max(1, primary_count);
+    }
 
     // Calculate layout before managing windows
     output.calculatePrimaryStackLayout();
@@ -214,52 +222,69 @@ fn calculatePrimaryStackLayout(output: *Output) void {
     const output_height: u31 = @intCast(output.height);
     const output_x = output.x;
     const output_y = output.y;
+    const border_width = output.context.config.border_width;
 
-    // Iterate through the active windows and apply the tags
+    // Single window: maximize and return early
+    if (active_count == 1) {
+        const window: *Window = @fieldParentPtr("active_list_node", active_list.popFirst().?);
+        window.pending_render.x = output_x + border_width;
+        window.pending_render.y = output_y + border_width;
+        window.pending_manage.width = output_width - 2 * border_width;
+        window.pending_manage.height = output_height - 2 * border_width;
+        window.pending_manage.maximized = true;
+        return;
+    }
+
+    // Multiple windows: primary/stack layout
+    const primary_count = @min(active_count, output.primary_count);
+    const stack_count = active_count - primary_count;
+
+    // Primary width is equal to output width when all windows are primaries
+    // (since there would be no secondaries)
+    const primary_width: u31 = if (primary_count == active_count)
+        output_width
+    else
+        @intFromFloat(@as(f32, @floatFromInt(output_width)) * output.primary_ratio);
+    const primary_height: u31 = @divFloor(output_height, primary_count);
+
+    const stack_width: u31 = output_width - primary_width;
+    const stack_height: u31 = if (stack_count > 0)
+        @divFloor(output_height, stack_count)
+    else
+        0;
+
+    // Iterate through the active windows and apply positions
     var i: u31 = 0;
     while (active_list.popFirst()) |node| : (i += 1) {
         const window: *Window = @fieldParentPtr("active_list_node", node);
-        if (active_count == 1) {
-            // Single window: maximize
-            window.pending_render.x = output_x;
-            window.pending_render.y = output_y;
-            window.pending_manage.width = output_width;
-            window.pending_manage.height = output_height;
-            window.pending_manage.maximized = true;
-        } else {
-            // Multiple windows: primary/stack layout
-            // TODO: Support multiple windows in primary stack
-            const primary_width: u31 = @intFromFloat(@as(f32, @floatFromInt(output_width)) * output.primary_ratio);
-            const stack_width: u31 = output_width - primary_width;
-            const stack_count = active_count - 1;
-            const stack_height: u31 = @divFloor(output_height, stack_count);
-            window.pending_manage.maximized = false;
+        window.pending_manage.maximized = false;
 
-            if (i == 0) {
-                // Primary window (first window) - right side
-                window.pending_render.x = output_x + @as(i32, stack_width);
-                window.pending_render.y = output_y;
-                window.pending_manage.width = primary_width;
-                window.pending_manage.height = output_height;
+        if (i < primary_count) {
+            // Primary window(s) - right side
+            window.pending_render.x = output_x + @as(i32, stack_width);
+            window.pending_render.y = output_y + @as(i32, i) * @as(i32, primary_height);
+            window.pending_manage.width = primary_width;
+            // Last primary window gets remaining height to avoid gaps from integer division
+            if (i == primary_count - 1) {
+                window.pending_manage.height = output_height - i * primary_height;
             } else {
-                // Stack window(s) - left side
-                const stack_index = i - 1;
-                window.pending_render.x = output_x;
-                window.pending_render.y = output_y + @as(i32, stack_index) * @as(i32, stack_height);
-                window.pending_manage.width = stack_width;
-                // Last stack window gets remaining height to avoid gaps from integer division
-                if (i == active_count - 1) {
-                    window.pending_manage.height = output_height - stack_index * stack_height;
-                } else {
-                    window.pending_manage.height = stack_height;
-                }
+                window.pending_manage.height = primary_height;
+            }
+        } else {
+            // Stack window(s) - left side
+            const stack_index = i - primary_count;
+            window.pending_render.x = output_x;
+            window.pending_render.y = output_y + @as(i32, stack_index) * @as(i32, stack_height);
+            window.pending_manage.width = stack_width;
+            // Last stack window gets remaining height to avoid gaps from integer division
+            if (stack_index == stack_count - 1) {
+                window.pending_manage.height = output_height - stack_index * stack_height;
+            } else {
+                window.pending_manage.height = stack_height;
             }
         }
-        // Make space for borders; this is the same for all windows.
-        // Borders are automatically disabled when a window is fullscreened so we don't
-        // have to worry about that.
-        const border_width = output.context.config.border_width;
-        // We use .? because we know we set the windows height, width, x, and y above
+
+        // Make space for borders
         window.pending_manage.height.? -= 2 * border_width;
         window.pending_manage.width.? -= 2 * border_width;
         window.pending_render.x.? += border_width;
