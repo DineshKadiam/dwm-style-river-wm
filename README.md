@@ -13,10 +13,10 @@ These are in rough order of my priority, though no promises I do them in this or
 - [ ] Support floating windows
 - [ ] Support wallpapers
 - [ ] Support a bar
-- [ ] Support changeable primary count
 - [ ] Support starting programs at WM launch
 - [ ] Support overriding config location
 - [ ] Add support for multimedia/brightness keys
 - [ ] Support multiple seats
+- [x] Support changeable primary count
 - [x] Support changeable primary ratio
 - [x] Support multiple outputs

@@ -334,6 +334,8 @@ fn loadKeybindsChildBlock(config: *Config, parser: *kdl.Parser) !void {
                         .reload_config,
                         .toggle_fullscreen,
                         .close_window,
+                        .increment_primary_count,
+                        .decrement_primary_count,
                         => |cmd| {
                             // None of these have arguments, just create the union and give it back
                             break :sw @unionInit(XkbBindings.Command, @tagName(cmd), {});

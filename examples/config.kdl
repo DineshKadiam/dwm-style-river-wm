@@ -17,6 +17,8 @@ keybinds {
     zoom Mod4 Z
     change_ratio Mod4 H +0.05
     change_ratio Mod4 L -0.05
+    increment_primary_count Mod4 I
+    decrement_primary_count Mod4 D
     reload_config Mod4+Shift R
     toggle_fullscreen Mod4 F
     close_window Mod4+Shift Q
