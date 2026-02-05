@@ -188,9 +188,24 @@ pub fn manage(output: *Output) void {
 }
 
 pub fn render(output: *Output) void {
+    const seat = output.context.wm.seats.first();
+    const focused = if (seat) |s| s.focused_window else null;
+
     var it = output.windows.iterator(.forward);
     while (it.next()) |window| {
         window.render();
+
+        // Make sure floating windows are above tiled windows
+        if (window.floating and output.tags & window.tags != 0 and window != focused) {
+            window.river_node_v1.placeTop();
+        }
+    }
+
+    // Make sure that the *focused* floating window goes above any other floating windows
+    if (focused) |f| {
+        if (f.floating and f.output == output and output.tags & f.tags != 0) {
+            f.river_node_v1.placeTop();
+        }
     }
 }
 
@@ -206,8 +221,12 @@ fn calculatePrimaryStackLayout(output: *Output) void {
     var it = output.windows.iterator(.forward);
     while (it.next()) |window| {
         if (output.tags & window.tags != 0x0000) {
-            active_list.append(&window.active_list_node);
-            active_count += 1;
+            // Floating windows should be shown but not included in this layout generation
+            const will_float = window.pending_manage.floating orelse window.floating;
+            if (!will_float) {
+                active_count += 1;
+                active_list.append(&window.active_list_node);
+            }
             window.pending_render.show = true;
         } else {
             window.pending_render.show = false;

@@ -13,6 +13,7 @@ pub const Command = union(enum) {
     send_to_next_output,
     send_to_prev_output,
     zoom,
+    toggle_float,
     // Changes the ratio on the focused output only
     change_ratio: f32,
     // Changes the primary count on the focus output only
@@ -98,25 +99,36 @@ const XkbBinding = struct {
                         .window => |window| break :blk window,
                     }
                 } else seat.focused_window orelse return;
+
+                // Noop if the focused window is floating
+                if (current_focus.floating) return;
+
+                // Get the first tiled window to try zoom with
                 const output = current_focus.output orelse return;
-                const first_window: *Window = if (output.windows.first()) |first| blk: {
-                    if (current_focus == first) {
-                        // Try get the second window instead
-                        const next = first.link.next orelse return;
-                        // next is the sentinel; there's only one window
-                        if (next == &output.windows.link) {
-                            return;
+                const first_tiled: *Window = blk: {
+                    var it = output.windows.iterator(.forward);
+                    while (it.next()) |window| {
+                        if (window != current_focus and !window.floating) {
+                            break :blk window;
                         }
-                        break :blk @fieldParentPtr("link", next);
-                    } else {
-                        seat.pending_manage.should_warp_pointer = true;
-                        break :blk first;
                     }
-                } else {
-                    // If current_focus is not null, we know that first_window *must not* be null.
-                    unreachable;
+                    // No (or only one) tiled windows, nothing to do
+                    return;
                 };
-                current_focus.link.swapWith(&first_window.link);
+
+                current_focus.link.swapWith(&first_tiled.link);
+                // Don't warp pointer if the first was the one focused before
+                if (output.windows.first() == current_focus) {
+                    seat.pending_manage.should_warp_pointer = true;
+                }
+            },
+            .toggle_float => {
+                const seat = context.wm.seats.first() orelse return;
+                const window = seat.focused_window orelse return;
+                // Noop if the window is fullscreened
+                if (window.fullscreen) return;
+                window.pending_manage.floating = !window.floating;
+                context.wm.river_window_manager_v1.manageDirty();
             },
             .change_ratio => |diff| {
                 const seat = context.wm.seats.first() orelse return;

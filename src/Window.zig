@@ -9,6 +9,7 @@ context: *Context,
 river_window_v1: *river.WindowV1,
 river_node_v1: *river.NodeV1,
 
+// TODO: Could switch this to a Rect { x, y, width, height }
 width: u31 = 0,
 height: u31 = 0,
 x: i32 = 0,
@@ -19,6 +20,12 @@ maximized: bool = false,
 
 tags: u32 = 0x0001,
 output: ?*Output,
+
+floating: bool = false,
+float_width: u31 = 0,
+float_height: u31 = 0,
+float_x: i32 = 0,
+float_y: i32 = 0,
 
 initialized: bool = false,
 
@@ -43,6 +50,8 @@ pub const PendingManage = struct {
 
     tags: ?u32 = null,
     pending_output: ?PendingOutput = null,
+
+    floating: ?bool = null,
 
     pub const PendingOutput = union(enum) {
         output: *Output,
@@ -128,6 +137,7 @@ fn windowListener(river_window_v1: *river.WindowV1, event: river.WindowV1.Event,
 }
 
 pub fn manage(window: *Window) void {
+    const river_window_v1 = window.river_window_v1;
     if (!window.initialized) {
         // Only happens once per Window
         @branchHint(.unlikely);
@@ -135,15 +145,48 @@ pub fn manage(window: *Window) void {
 
         // TODO: We might want to think about paying attention to the decoration_hint event
         //       If we do, this would need to move, I think?
-        window.river_window_v1.useSsd();
+        river_window_v1.useSsd();
 
-        window.river_window_v1.setCapabilities(.{ .fullscreen = true, .maximize = true });
-        window.river_window_v1.setTiled(.{ .top = true, .bottom = true, .left = true, .right = true });
+        river_window_v1.setCapabilities(.{ .fullscreen = true, .maximize = true });
+        river_window_v1.setTiled(.{ .top = true, .bottom = true, .left = true, .right = true });
     }
 
     // Updating state since the last manage event
     defer window.pending_manage = .{};
     const pending_manage = window.pending_manage;
+    // Floating status
+    if (pending_manage.floating) |floating| blk: {
+        // This needs to be before proposing the new dimensions since we want to save the current ones!
+        // Skip the rest of the block if floating matches what is already set
+        if (floating == window.floating) break :blk;
+
+        window.floating = floating;
+        if (floating) {
+            // Let the window know it isn't tiled
+            river_window_v1.setTiled(.{});
+
+            if (window.float_width == 0) {
+                // Never floated before; use current dimensions but centered on output
+                if (window.output) |output| {
+                    // Need to find center and then subtract half of the window's width/height
+                    window.float_x = output.x + @divTrunc(output.width, 2) - @divTrunc(window.width, 2);
+                    window.float_y = output.y + @divTrunc(output.height, 2) - @divTrunc(window.height, 2);
+                }
+            } else {
+                // Window has floated before; re-use its old dimensions
+                river_window_v1.proposeDimensions(window.float_width, window.float_height);
+            }
+            window.pending_render.x = window.float_x;
+            window.pending_render.y = window.float_y;
+        } else {
+            river_window_v1.setTiled(.{ .top = true, .bottom = true, .left = true, .right = true });
+            // Save floating dimensions in case the window gets floated again
+            window.float_width = window.width;
+            window.float_height = window.height;
+            window.float_x = window.x;
+            window.float_y = window.y;
+        }
+    }
     // Layout (pre-computed by WindowManager.calculatePrimaryStackLayout())
     if (pending_manage.width) |new_width| {
         if (pending_manage.height) |new_height| {
@@ -177,6 +220,7 @@ pub fn manage(window: *Window) void {
     if (pending_manage.tags) |tags| {
         window.tags = tags;
     }
+    // New output
     if (pending_manage.pending_output) |pending_output| {
         switch (pending_output) {
             .output => |output| {

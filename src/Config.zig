@@ -330,6 +330,7 @@ fn loadKeybindsChildBlock(config: *Config, parser: *kdl.Parser) !void {
                         .focus_prev_output,
                         .send_to_next_output,
                         .send_to_prev_output,
+                        .toggle_float,
                         .zoom,
                         .reload_config,
                         .toggle_fullscreen,

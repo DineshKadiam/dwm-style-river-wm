@@ -172,6 +172,7 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
                 // and focus the first one
                 first.pending_render.focused = true;
             }
+            // We clear any orphaned_windows if an output is added
             output.windows.appendList(&wm.orphan_windows);
         },
         .seat => |ev| {

@@ -15,6 +15,7 @@ keybinds {
     send_to_next_output Mod1+Shift J
     send_to_prev_output Mod1+Shift K
     zoom Mod4 Z
+    toggle_float Mod4+Shift F
     change_ratio Mod4 H +0.05
     change_ratio Mod4 L -0.05
     increment_primary_count Mod4 I
