@@ -97,24 +97,43 @@ fn windowListener(river_window_v1: *river.WindowV1, event: river.WindowV1.Event,
     assert(window.river_window_v1 == river_window_v1);
     switch (event) {
         .closed => {
-            {
-                // If there's no output, we don't really care about focus and can skip this event
-                const output = if (window.output) |output| output else return;
-                var it = window.context.wm.seats.iterator(.forward);
-                while (it.next()) |seat| {
-                    if (seat.focused_window == window) {
-                        // Find another window to focus and warp pointer there
-                        if (output.prevWindow(window)) |next_focus| {
-                            if (next_focus != window) {
-                                seat.pending_manage.window = .{ .window = next_focus };
-                                seat.pending_manage.should_warp_pointer = true;
-                            } else {
-                                // Only window in list - clear focus
-                                seat.pending_manage.window = .clear_focus;
-                            }
+            // Clear any pointer operations referencing this window
+            var seat_it = window.context.wm.seats.iterator(.forward);
+            while (seat_it.next()) |seat| {
+                switch (seat.pointer_op) {
+                    .move => |op| if (op.window == window) {
+                        seat.river_seat_v1.opEnd();
+                        seat.pointer_op = .none;
+                    },
+                    .resize => |op| if (op.window == window) {
+                        seat.river_seat_v1.opEnd();
+                        seat.pointer_op = .none;
+                    },
+                    .none => {},
+                }
+                if (seat.pending_manage.pointer_move_request == window)
+                    seat.pending_manage.pointer_move_request = null;
+                if (seat.pending_manage.pointer_resize_request) |req| {
+                    if (req.window == window)
+                        seat.pending_manage.pointer_resize_request = null;
+                }
+            }
+            // If there's no output, we don't really care about focus and can skip this event
+            const output = if (window.output) |output| output else return;
+            var it = window.context.wm.seats.iterator(.forward);
+            while (it.next()) |seat| {
+                if (seat.focused_window == window) {
+                    // Find another window to focus and warp pointer there
+                    if (output.prevWindow(window)) |next_focus| {
+                        if (next_focus != window) {
+                            seat.pending_manage.window = .{ .window = next_focus };
+                            seat.pending_manage.should_warp_pointer = true;
                         } else {
+                            // Only window in list - clear focus
                             seat.pending_manage.window = .clear_focus;
                         }
+                    } else {
+                        seat.pending_manage.window = .clear_focus;
                     }
                 }
             }
@@ -167,6 +186,8 @@ pub fn manage(window: *Window) void {
 
             if (window.float_width == 0) {
                 // Never floated before; use current dimensions but centered on output
+                window.float_width = window.width;
+                window.float_height = window.height;
                 if (window.output) |output| {
                     // Need to find center and then subtract half of the window's width/height
                     window.float_x = output.x + @divTrunc(output.width, 2) - @divTrunc(window.width, 2);
@@ -287,5 +308,6 @@ const river = wayland.client.river;
 const utils = @import("utils.zig");
 const Context = @import("Context.zig");
 const Output = @import("Output.zig");
+const Seat = @import("Seat.zig");
 
 const log = std.log.scoped(.Window);

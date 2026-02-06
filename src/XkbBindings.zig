@@ -30,6 +30,20 @@ pub const Command = union(enum) {
     // spawn_tagmask: u32, // TODO
     // focus_previous_tags, // TODO
     // send_to_previous_tags, // TODO
+
+    // Move floating window by pixels
+    move_up: i32,
+    move_down: i32,
+    move_left: i32,
+    move_right: i32,
+
+    // Resize floating window by pixels
+    resize_width: i32,
+    resize_height: i32,
+
+    // Swap window position in stack
+    swap_next,
+    swap_prev,
 };
 
 const XkbBinding = struct {
@@ -214,6 +228,14 @@ const XkbBinding = struct {
                     context.wm.river_window_manager_v1.manageDirty();
                 }
             },
+            .move_up => |pixels| moveFloatingWindow(context, 0, -pixels),
+            .move_down => |pixels| moveFloatingWindow(context, 0, pixels),
+            .move_left => |pixels| moveFloatingWindow(context, -pixels, 0),
+            .move_right => |pixels| moveFloatingWindow(context, pixels, 0),
+            .resize_width => |delta| resizeFloatingWindow(context, delta, 0),
+            .resize_height => |delta| resizeFloatingWindow(context, 0, delta),
+            .swap_next => swapWindow(context, .next),
+            .swap_prev => swapWindow(context, .prev),
         }
     }
 
@@ -304,6 +326,61 @@ const XkbBinding = struct {
             seat.pending_manage.output = .{ .output = output };
             seat.pending_manage.should_warp_pointer = true;
             window.pending_manage.pending_output = .{ .output = output };
+        }
+    }
+
+    fn moveFloatingWindow(context: *Context, dx: i32, dy: i32) void {
+        const seat = context.wm.seats.first() orelse return;
+        const window = seat.focused_window orelse return;
+        if (!window.floating) return;
+        const output = window.output orelse return;
+
+        const min_x = output.x;
+        const max_x = output.x + output.width - @as(i32, window.float_width);
+        const min_y = output.y;
+        const max_y = output.y + output.height - @as(i32, window.float_height);
+
+        window.float_x = std.math.clamp(window.float_x + dx, min_x, @max(min_x, max_x));
+        window.float_y = std.math.clamp(window.float_y + dy, min_y, @max(min_y, max_y));
+        window.pending_render.x = window.float_x;
+        window.pending_render.y = window.float_y;
+        context.wm.river_window_manager_v1.manageDirty();
+    }
+
+    fn resizeFloatingWindow(context: *Context, dw: i32, dh: i32) void {
+        const seat = context.wm.seats.first() orelse return;
+        const window = seat.focused_window orelse return;
+        if (!window.floating) return;
+        const output = window.output orelse return;
+
+        const new_width: i32 = @as(i32, window.float_width) + dw;
+        const new_height: i32 = @as(i32, window.float_height) + dh;
+        window.float_width = @intCast(@max(50, new_width));
+        window.float_height = @intCast(@max(50, new_height));
+
+        // Clamp position to keep window on screen after resize
+        const max_x = output.x + output.width - @as(i32, window.float_width);
+        const max_y = output.y + output.height - @as(i32, window.float_height);
+        window.float_x = std.math.clamp(window.float_x, output.x, @max(output.x, max_x));
+        window.float_y = std.math.clamp(window.float_y, output.y, @max(output.y, max_y));
+
+        window.pending_render.x = window.float_x;
+        window.pending_render.y = window.float_y;
+        window.river_window_v1.proposeDimensions(window.float_width, window.float_height);
+        context.wm.river_window_manager_v1.manageDirty();
+    }
+
+    fn swapWindow(context: *Context, comptime direction: enum { next, prev }) void {
+        const seat = context.wm.seats.first() orelse return;
+        const window = seat.focused_window orelse return;
+        const output = window.output orelse return;
+        const target = switch (direction) {
+            .next => output.nextWindow(window),
+            .prev => output.prevWindow(window),
+        } orelse return;
+        if (target != window) {
+            window.link.swapWith(&target.link);
+            context.wm.river_window_manager_v1.manageDirty();
         }
     }
 };

@@ -110,6 +110,28 @@ fn manage_start(wm: *WindowManager) void {
             std.debug.assert(keybind.keysym != null);
             context.xkb_bindings.addBinding(river_seat_v1, keybind.keysym.?, keybind.modifiers, keybind.command);
         }
+
+        // Pointer bindings
+        for (context.config.pointer_binds.items) |pointer_bind| {
+            const binding = river_seat_v1.getPointerBinding(pointer_bind.button, pointer_bind.modifiers) catch {
+                log.err("Failed to create pointer binding", .{});
+                continue;
+            };
+
+            switch (pointer_bind.action) {
+                .move_window => {
+                    if (seat.move_pointer_binding) |old| old.destroy();
+                    binding.setListener(*Seat, Seat.movePointerBindingListener, seat);
+                    seat.move_pointer_binding = binding;
+                },
+                .resize_window => {
+                    if (seat.resize_pointer_binding) |old| old.destroy();
+                    binding.setListener(*Seat, Seat.resizePointerBindingListener, seat);
+                    seat.resize_pointer_binding = binding;
+                },
+            }
+            binding.enable();
+        }
     }
 
     {

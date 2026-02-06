@@ -1,31 +1,68 @@
+// Whether new windows should go to the top or bottom of the window stack
 attach_mode top
+// Whether mousing over a new window should move focus
 focus_follows_pointer #true
+// Whether the focus should warp to the center of newly-focused windows
 pointer_warp_on_focus_change #true
 borders {
     width 2
+    // 8 or 10 digit hex color
     color_focused "0x89b4fa"
     color_unfocused "0x1e1e2e"
 }
 keybinds {
+    // Swap a window
     spawn Mod4 T foot
+    // Move focus up or down the windows stack
     focus_next_window Mod4 J
     focus_prev_window Mod4 K
-    focus_next_output Mod4+Shift J
-    focus_prev_output Mod4+Shift K
-    send_to_next_output Mod1+Shift J
-    send_to_prev_output Mod1+Shift K
+    // Move focus between windows
+    focus_next_output Mod4 Period
+    focus_prev_output Mod4 Comma
+    // Move windows between outputs
+    send_to_next_output Mod4+Shift Period
+    send_to_prev_output Mod4+Shift Comma
+    // Swap the currently-focused window with the current primary
     zoom Mod4 Z
+    // Float/unfloat the currently-focused window
     toggle_float Mod4+Shift F
-    change_ratio Mod4 H +0.05
+    // Change the primary ratio of the current output
+    change_ratio Mod4 H 0.05
     change_ratio Mod4 L -0.05
+    // Change the number of windows in the primary side
     increment_primary_count Mod4 I
     decrement_primary_count Mod4 D
+    // Reload config file
     reload_config Mod4+Shift R
+    // Toggle fullscreen on the currently-focused window
     toggle_fullscreen Mod4 F
+    // Close the currently-focused window
     close_window Mod4+Shift Q
-    // Generates keybinds for keys 1-9 → tags 1<<0 through 1<<9
+    // Move windows up or down the stack
+    swap_next Mod4+Shift N
+    swap_prev Mod4+Shift P
+    // Move floating windows; noop on tiled windows
+    move_left Mod4+Shift H 100
+    move_down Mod4+Shift J 100
+    move_up Mod4+Shift K 100
+    move_right Mod4+Shift L 100
+    // Resize floating windows; noop on tiled windows
+    resize_width Mod4+Alt+Shift H -100
+    resize_height Mod4+Alt+Shift J 100
+    resize_height Mod4+Alt+Shift K -100
+    resize_width Mod4+Alt+Shift L 100
+    // Special command to generate keybinds for keys 1-9 and tags 1<<0 through 1<<9
     tag_bind Mod4 set_output_tags
-    tag_bind Mod4+shift set_window_tags
-    tag_bind Mod4+ctrl toggle_output_tags
-    tag_bind Mod4+ctrl+shift toggle_window_tags
+    tag_bind Mod4+Shift set_window_tags
+    tag_bind Mod4+Ctrl toggle_output_tags
+    tag_bind Mod4+Ctrl+Shift toggle_window_tags
 }
+pointer_binds {
+    // Mod4 + Left click to move floating windows;
+    // tiled windows will automatically float if moved
+    move_window Mod4 BTN_LEFT
+    // Mod4 + Right click to resize floating windows;
+    // tiled windows will automatically float if resized
+    resize_window Mod4 BTN_RIGHT
+}
+
