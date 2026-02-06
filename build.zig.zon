@@ -24,6 +24,14 @@
             .url = "https://github.com/ziglibs/known-folders/archive/83d39161eac2ed6f37ad3cb4d9dd518696ce90bb.tar.gz",
             .hash = "known_folders-0.0.0-Fy-PJv3LAAABBRVoZWVrKZdyLoUfl5VRY5fqRRRdnF5L",
         },
+        .pixman = .{
+            .url = "https://codeberg.org/ifreund/zig-pixman/archive/387f04a0289a69d159c88b5f70396ec12a8ddb00.tar.gz",
+            .hash = "pixman-0.4.0-dev-LClMn0eVAAAlXnMK-MVBZkOG0urNdOPGVQdaGecXPM5O",
+        },
+        .zigimg = .{
+            .url = "https://github.com/zigimg/zigimg/archive/fb74dfb7c6d83f2bd01a229826669451525a4ba8.tar.gz",
+            .hash = "zigimg-0.1.0-8_eo2kSGFwADIkeZYTgfnLOV-khh6ZRoGmK6F2-s_QbY",
+        },
     },
 
     .paths = .{

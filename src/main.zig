@@ -2,11 +2,15 @@
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-/// Wayland globals that we need to bind to
+/// Wayland globals that we need to bind listen in alphabetical order
 const Globals = struct {
-    wl_compositor: ?*wl.Compositor = null,
+    river_layer_shell_v1: ?*river.LayerShellV1 = null,
     river_window_manager_v1: ?*river.WindowManagerV1 = null,
     river_xkb_bindings_v1: ?*river.XkbBindingsV1 = null,
+    wl_compositor: ?*wl.Compositor = null,
+    wl_output: ?*wl.Output = null,
+    wl_shm: ?*wl.Shm = null,
+    zwlr_layer_shell_v1: ?*zwlr.LayerShellV1 = null,
 };
 
 pub fn main() !void {
@@ -30,20 +34,28 @@ pub fn main() !void {
         fatal("Initial roundtrip failed: E{s}", .{@tagName(errno)});
     }
 
-    const wl_compositor = globals.wl_compositor orelse utils.interfaceNotAdvertised(wl.Compositor);
+    const river_layer_shell_v1 = globals.river_layer_shell_v1 orelse utils.interfaceNotAdvertised(river.LayerShellV1);
     const river_window_manager_v1 = globals.river_window_manager_v1 orelse utils.interfaceNotAdvertised(river.WindowManagerV1);
     const river_xkb_bindings_v1 = globals.river_xkb_bindings_v1 orelse utils.interfaceNotAdvertised(river.XkbBindingsV1);
+    const wl_compositor = globals.wl_compositor orelse utils.interfaceNotAdvertised(wl.Compositor);
+    const wl_output = globals.wl_output orelse utils.interfaceNotAdvertised(wl.Output);
+    const wl_shm = globals.wl_shm orelse utils.interfaceNotAdvertised(wl.Shm);
+    const zwlr_layer_shell_v1 = globals.zwlr_layer_shell_v1 orelse utils.interfaceNotAdvertised(zwlr.LayerShellV1);
 
     const config = try Config.create();
     defer config.destroy();
-    const context = try Context.create(
-        wl_display,
-        wl_registry,
-        wl_compositor,
-        river_window_manager_v1,
-        river_xkb_bindings_v1,
-        config,
-    );
+    const context = try Context.create(.{
+        .wl_compositor = wl_compositor,
+        .wl_display = wl_display,
+        .wl_output = wl_output,
+        .wl_registry = wl_registry,
+        .wl_shm = wl_shm,
+        .river_layer_shell_v1 = river_layer_shell_v1,
+        .river_window_manager_v1 = river_window_manager_v1,
+        .river_xkb_bindings_v1 = river_xkb_bindings_v1,
+        .zwlr_layer_shell_v1 = zwlr_layer_shell_v1,
+        .config = config,
+    });
     defer context.destroy();
 
     while (true) {
@@ -86,6 +98,7 @@ const process = std.process;
 const wayland = @import("wayland");
 const river = wayland.client.river;
 const wl = wayland.client.wl;
+const zwlr = wayland.client.zwlr;
 
 const utils = @import("utils.zig");
 const Config = @import("Config.zig");
