@@ -21,13 +21,25 @@ focus_follows_pointer: bool = true,
 pointer_warp_on_focus_change: bool = true,
 
 /// Tag bind entries parsed from config (tag_bind nodes in keybinds block)
-tag_binds: std.ArrayListUnmanaged(Keybind) = .{},
-keybinds: std.ArrayListUnmanaged(Keybind) = .{},
+tag_binds: std.ArrayList(Keybind) = .{},
+keybinds: std.ArrayList(Keybind) = .{},
+pointer_binds: std.ArrayList(PointerBind) = .{},
 
 pub const Keybind = struct {
     modifiers: river.SeatV1.Modifiers,
     command: XkbBindings.Command,
     keysym: ?xkbcommon.Keysym,
+};
+
+pub const PointerBind = struct {
+    modifiers: river.SeatV1.Modifiers,
+    button: u32, // Linux button code (BTN_LEFT=0x110, BTN_RIGHT=0x111, BTN_MIDDLE=0x112)
+    action: PointerAction,
+};
+
+pub const PointerAction = enum {
+    move_window,
+    resize_window,
 };
 
 pub const AttachMode = enum {
@@ -41,12 +53,18 @@ const NodeName = enum {
     pointer_warp_on_focus_change,
     borders,
     keybinds,
+    pointer_binds,
 };
 
 const BorderNodeName = enum {
     width,
     color_focused,
     color_unfocused,
+};
+
+const PointerBindNodeName = enum {
+    move_window,
+    resize_window,
 };
 
 // We can just directly use the tag type from Command as our node name
@@ -82,6 +100,7 @@ pub fn create() !*Config {
             }
             config.keybinds.clearAndFree(utils.allocator);
             config.tag_binds.clearAndFree(utils.allocator);
+            config.pointer_binds.clearAndFree(utils.allocator);
             config.* = .{};
         };
     }
@@ -101,6 +120,7 @@ pub fn destroy(config: *Config) void {
     }
     config.keybinds.deinit(utils.allocator);
     config.tag_binds.deinit(utils.allocator);
+    config.pointer_binds.deinit(utils.allocator);
     utils.allocator.destroy(config);
 }
 
@@ -161,6 +181,9 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                         .keybinds => {
                             next_child_block = .keybinds;
                         },
+                        .pointer_binds => {
+                            next_child_block = .pointer_binds;
+                        },
                     }
                 } else {
                     logWarnInvalidNode(node.name);
@@ -171,6 +194,7 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                     switch (child_block) {
                         .borders => try config.loadBordersChildBlock(&parser),
                         .keybinds => try config.loadKeybindsChildBlock(&parser),
+                        .pointer_binds => try config.loadPointerBindsChildBlock(&parser),
                         else => {
                             // Nothing else should ever be marked as a next_child_block
                             unreachable;
@@ -330,15 +354,35 @@ fn loadKeybindsChildBlock(config: *Config, parser: *kdl.Parser) !void {
                         .focus_prev_output,
                         .send_to_next_output,
                         .send_to_prev_output,
+                        .toggle_float,
                         .zoom,
                         .reload_config,
                         .toggle_fullscreen,
                         .close_window,
                         .increment_primary_count,
                         .decrement_primary_count,
+                        .swap_next,
+                        .swap_prev,
                         => |cmd| {
                             // None of these have arguments, just create the union and give it back
                             break :sw @unionInit(XkbBindings.Command, @tagName(cmd), {});
+                        },
+                        inline .move_up,
+                        .move_down,
+                        .move_left,
+                        .move_right,
+                        .resize_width,
+                        .resize_height,
+                        => |cmd| {
+                            const amount_str = utils.stripQuotes(node.arg(parser, 2) orelse {
+                                logWarnMissingNodeArg(name, "amount");
+                                continue;
+                            });
+                            const amount = fmt.parseInt(i32, amount_str, 0) catch {
+                                logWarnInvalidNodeArg(name, amount_str);
+                                continue;
+                            };
+                            break :sw @unionInit(XkbBindings.Command, @tagName(cmd), amount);
                         },
                         inline .set_output_tags, .set_window_tags, .toggle_output_tags, .toggle_window_tags => |cmd| {
                             const tags_str = utils.stripQuotes(node.arg(parser, 2) orelse {
@@ -372,6 +416,76 @@ fn loadKeybindsChildBlock(config: *Config, parser: *kdl.Parser) !void {
             },
         }
     }
+}
+
+fn loadPointerBindsChildBlock(config: *Config, parser: *kdl.Parser) !void {
+    while (try parser.next()) |event| {
+        switch (event) {
+            .node => |node| {
+                const node_name = std.meta.stringToEnum(PointerBindNodeName, node.name);
+                if (node_name) |name| {
+                    // Parse modifiers (arg 0)
+                    const mod_str = utils.stripQuotes(node.arg(parser, 0) orelse {
+                        logWarnMissingNodeArg(name, "modifier(s)");
+                        continue;
+                    });
+                    const modifiers = try utils.parseModifiers(mod_str) orelse {
+                        logWarnInvalidNodeArg(name, mod_str);
+                        continue;
+                    };
+
+                    // Parse button (arg 1)
+                    const button_str = utils.stripQuotes(node.arg(parser, 1) orelse {
+                        logWarnMissingNodeArg(name, "button");
+                        continue;
+                    });
+                    const button = parseButton(button_str) orelse {
+                        logWarnInvalidNodeArg(name, button_str);
+                        continue;
+                    };
+
+                    const action: PointerAction = switch (name) {
+                        .move_window => .move_window,
+                        .resize_window => .resize_window,
+                    };
+
+                    try config.pointer_binds.append(utils.allocator, .{
+                        .modifiers = modifiers,
+                        .button = button,
+                        .action = action,
+                    });
+
+                    log.debug("pointer_binds.{s}: {s} {s}", .{ @tagName(name), mod_str, button_str });
+                } else {
+                    logWarnInvalidNode(node.name);
+                }
+            },
+            .child_block_begin => {
+                try config.skipChildBlock(parser);
+            },
+            .child_block_end => {
+                return;
+            },
+        }
+    }
+}
+
+fn parseButton(s: []const u8) ?u32 {
+    // Support both numeric and named buttons
+    var lower_buf: [16]u8 = undefined;
+    const len = @min(s.len, 16);
+    const lower = std.ascii.lowerString(lower_buf[0..len], s[0..len]);
+
+    if (mem.eql(u8, lower, "btn_left") or mem.eql(u8, lower, "button1")) {
+        return 0x110; // BTN_LEFT = 272
+    } else if (mem.eql(u8, lower, "btn_right") or mem.eql(u8, lower, "button3")) {
+        return 0x111; // BTN_RIGHT = 273
+    } else if (mem.eql(u8, lower, "btn_middle") or mem.eql(u8, lower, "button2")) {
+        return 0x112; // BTN_MIDDLE = 274
+    }
+
+    // Try parsing as hex or decimal
+    return fmt.parseInt(u32, s, 0) catch null;
 }
 
 /// Skips an entire child block including any nested child blocks
@@ -421,6 +535,7 @@ fn logWarnInvalidNodeArg(node_name: anytype, node_value: []const u8) void {
         NodeName => log.warn("Invalid \"{s}\" ({s}). Using default value", .{ @tagName(node_name), node_value }),
         BorderNodeName => log.warn("Invalid \"border.{s}\" ({s}). Using default value", .{ @tagName(node_name), node_value }),
         KeybindNodeName => log.warn("Invalid \"keybind.{s}\" ({s}). Ignoring", .{ @tagName(node_name), node_value }),
+        PointerBindNodeName => log.warn("Invalid \"pointer_binds.{s}\" ({s}). Ignoring", .{ @tagName(node_name), node_value }),
         else => @compileError("This function does not (yet) support type \"" ++ @typeName(node_name_type) ++ "\""),
     }
 }
@@ -429,6 +544,7 @@ fn logWarnMissingNodeArg(node_name: anytype, comptime arg: []const u8) void {
     const node_name_type = @TypeOf(node_name);
     switch (node_name_type) {
         KeybindNodeName => log.warn("\"keybind.{s}\" missing " ++ arg ++ " argument. Ignoring", .{@tagName(node_name)}),
+        PointerBindNodeName => log.warn("\"pointer_binds.{s}\" missing " ++ arg ++ " argument. Ignoring", .{@tagName(node_name)}),
         else => @compileError("This function does not (yet) support type \"" ++ @typeName(node_name_type) ++ "\""),
     }
 }

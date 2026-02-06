@@ -13,6 +13,7 @@ pub const Command = union(enum) {
     send_to_next_output,
     send_to_prev_output,
     zoom,
+    toggle_float,
     // Changes the ratio on the focused output only
     change_ratio: f32,
     // Changes the primary count on the focus output only
@@ -29,6 +30,20 @@ pub const Command = union(enum) {
     // spawn_tagmask: u32, // TODO
     // focus_previous_tags, // TODO
     // send_to_previous_tags, // TODO
+
+    // Move floating window by pixels
+    move_up: i32,
+    move_down: i32,
+    move_left: i32,
+    move_right: i32,
+
+    // Resize floating window by pixels
+    resize_width: i32,
+    resize_height: i32,
+
+    // Swap window position in stack
+    swap_next,
+    swap_prev,
 };
 
 const XkbBinding = struct {
@@ -98,25 +113,36 @@ const XkbBinding = struct {
                         .window => |window| break :blk window,
                     }
                 } else seat.focused_window orelse return;
+
+                // Noop if the focused window is floating
+                if (current_focus.floating) return;
+
+                // Get the first tiled window to try zoom with
                 const output = current_focus.output orelse return;
-                const first_window: *Window = if (output.windows.first()) |first| blk: {
-                    if (current_focus == first) {
-                        // Try get the second window instead
-                        const next = first.link.next orelse return;
-                        // next is the sentinel; there's only one window
-                        if (next == &output.windows.link) {
-                            return;
+                const first_tiled: *Window = blk: {
+                    var it = output.windows.iterator(.forward);
+                    while (it.next()) |window| {
+                        if (window != current_focus and !window.floating) {
+                            break :blk window;
                         }
-                        break :blk @fieldParentPtr("link", next);
-                    } else {
-                        seat.pending_manage.should_warp_pointer = true;
-                        break :blk first;
                     }
-                } else {
-                    // If current_focus is not null, we know that first_window *must not* be null.
-                    unreachable;
+                    // No (or only one) tiled windows, nothing to do
+                    return;
                 };
-                current_focus.link.swapWith(&first_window.link);
+
+                current_focus.link.swapWith(&first_tiled.link);
+                // Don't warp pointer if the first was the one focused before
+                if (output.windows.first() == current_focus) {
+                    seat.pending_manage.should_warp_pointer = true;
+                }
+            },
+            .toggle_float => {
+                const seat = context.wm.seats.first() orelse return;
+                const window = seat.focused_window orelse return;
+                // Noop if the window is fullscreened
+                if (window.fullscreen) return;
+                window.pending_manage.floating = !window.floating;
+                context.wm.river_window_manager_v1.manageDirty();
             },
             .change_ratio => |diff| {
                 const seat = context.wm.seats.first() orelse return;
@@ -202,6 +228,14 @@ const XkbBinding = struct {
                     context.wm.river_window_manager_v1.manageDirty();
                 }
             },
+            .move_up => |pixels| moveFloatingWindow(context, 0, -pixels),
+            .move_down => |pixels| moveFloatingWindow(context, 0, pixels),
+            .move_left => |pixels| moveFloatingWindow(context, -pixels, 0),
+            .move_right => |pixels| moveFloatingWindow(context, pixels, 0),
+            .resize_width => |delta| resizeFloatingWindow(context, delta, 0),
+            .resize_height => |delta| resizeFloatingWindow(context, 0, delta),
+            .swap_next => swapWindow(context, .next),
+            .swap_prev => swapWindow(context, .prev),
         }
     }
 
@@ -292,6 +326,61 @@ const XkbBinding = struct {
             seat.pending_manage.output = .{ .output = output };
             seat.pending_manage.should_warp_pointer = true;
             window.pending_manage.pending_output = .{ .output = output };
+        }
+    }
+
+    fn moveFloatingWindow(context: *Context, dx: i32, dy: i32) void {
+        const seat = context.wm.seats.first() orelse return;
+        const window = seat.focused_window orelse return;
+        if (!window.floating) return;
+        const output = window.output orelse return;
+
+        const min_x = output.x;
+        const max_x = output.x + output.width - @as(i32, window.float_width);
+        const min_y = output.y;
+        const max_y = output.y + output.height - @as(i32, window.float_height);
+
+        window.float_x = std.math.clamp(window.float_x + dx, min_x, @max(min_x, max_x));
+        window.float_y = std.math.clamp(window.float_y + dy, min_y, @max(min_y, max_y));
+        window.pending_render.x = window.float_x;
+        window.pending_render.y = window.float_y;
+        context.wm.river_window_manager_v1.manageDirty();
+    }
+
+    fn resizeFloatingWindow(context: *Context, dw: i32, dh: i32) void {
+        const seat = context.wm.seats.first() orelse return;
+        const window = seat.focused_window orelse return;
+        if (!window.floating) return;
+        const output = window.output orelse return;
+
+        const new_width: i32 = @as(i32, window.float_width) + dw;
+        const new_height: i32 = @as(i32, window.float_height) + dh;
+        window.float_width = @intCast(@max(50, new_width));
+        window.float_height = @intCast(@max(50, new_height));
+
+        // Clamp position to keep window on screen after resize
+        const max_x = output.x + output.width - @as(i32, window.float_width);
+        const max_y = output.y + output.height - @as(i32, window.float_height);
+        window.float_x = std.math.clamp(window.float_x, output.x, @max(output.x, max_x));
+        window.float_y = std.math.clamp(window.float_y, output.y, @max(output.y, max_y));
+
+        window.pending_render.x = window.float_x;
+        window.pending_render.y = window.float_y;
+        window.river_window_v1.proposeDimensions(window.float_width, window.float_height);
+        context.wm.river_window_manager_v1.manageDirty();
+    }
+
+    fn swapWindow(context: *Context, comptime direction: enum { next, prev }) void {
+        const seat = context.wm.seats.first() orelse return;
+        const window = seat.focused_window orelse return;
+        const output = window.output orelse return;
+        const target = switch (direction) {
+            .next => output.nextWindow(window),
+            .prev => output.prevWindow(window),
+        } orelse return;
+        if (target != window) {
+            window.link.swapWith(&target.link);
+            context.wm.river_window_manager_v1.manageDirty();
         }
     }
 };
