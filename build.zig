@@ -111,6 +111,6 @@ pub fn build(b: *std.Build) void {
     exe_check.linkSystemLibrary("pixman-1");
     exe_check.linkSystemLibrary("xkbcommon");
 
-    const check = b.step("check", "Check if beanbag compiles");
+    const check = b.step("check", "Check if beansprout compiles");
     check.dependOn(&exe_check.step);
 }

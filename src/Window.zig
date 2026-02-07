@@ -35,8 +35,7 @@ pending_manage: PendingManage = .{},
 /// State consumed in render() phase, reset at end of render().
 pending_render: PendingRender = .{},
 
-/// Used to put Windows into a list in
-/// WindowManager.calculatePrimaryStackLayout()
+/// Used to put Windows into a list in calculatePrimaryStackLayout()
 active_list_node: DoublyLinkedList.Node = .{},
 
 link: wl.list.Link,
@@ -141,10 +140,10 @@ fn windowListener(river_window_v1: *river.WindowV1, event: river.WindowV1.Event,
             window.destroy();
         },
         .dimensions => |ev| {
-            // The protocol requires these are strictly greater than zero.
+            // Protocol guarantees that width and height are strictly greater than zero
             assert(ev.width > 0 and ev.height > 0);
-            window.width = @intCast(ev.width);
-            window.height = @intCast(ev.height);
+            window.pending_manage.width = @intCast(ev.width);
+            window.pending_manage.height = @intCast(ev.height);
         },
         .dimensions_hint => {
             // TODO: Maybe could use this for floating windows

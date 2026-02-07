@@ -8,10 +8,21 @@ context: *Context,
 
 river_output_v1: *river.OutputV1,
 
-width: i32 = 0,
-height: i32 = 0,
+// We have to wait for the rwm.wl_output event to get this
+wl_output: ?*wl.Output = null,
+
+// Output geometry
+scale: u31 = 0,
+width: u31 = 0,
+height: u31 = 0,
 x: i32 = 0,
 y: i32 = 0,
+
+// Information for this Output's wallpaper
+render_width: u31 = 0,
+render_height: u31 = 0,
+wl_surface: ?*wl.Surface = null,
+layer_surface: ?*zwlr.LayerSurfaceV1 = null,
 
 /// Proportion of output width taken by the primary stack
 primary_ratio: f32 = 0.55,
@@ -25,13 +36,19 @@ tags: u32 = 0x0001,
 /// State consumed in manage() phase, reset at end of manage().
 pending_manage: PendingManage = .{},
 
+// Friendly name of this output
+name: ?[]const u8 = null,
+
+/// Used for wallpaper rendering management
+configured: bool = false,
+
 windows: wl.list.Head(Window, .link),
 
 link: wl.list.Link,
 
 pub const PendingManage = struct {
-    width: ?i32 = null,
-    height: ?i32 = null,
+    width: ?u31 = null,
+    height: ?u31 = null,
     x: ?i32 = null,
     y: ?i32 = null,
 
@@ -53,7 +70,7 @@ pub fn create(context: *Context, river_output_v1: *river.OutputV1) !*Output {
 
     output.windows.init();
 
-    output.river_output_v1.setListener(*Output, outputListener, output);
+    output.river_output_v1.setListener(*Output, riverOutputListener, output);
 
     return output;
 }
@@ -65,6 +82,7 @@ pub fn destroy(output: *Output) void {
         window.destroy();
     }
 
+    output.deinitWallpaperLayerSurface();
     output.river_output_v1.destroy();
     utils.allocator.destroy(output);
 }
@@ -85,7 +103,8 @@ pub fn prevWindow(output: *Output, current: *Window) ?*Window {
     return @fieldParentPtr("link", prev_link);
 }
 
-fn outputListener(river_output_v1: *river.OutputV1, event: river.OutputV1.Event, output: *Output) void {
+// Used for the river_output_v1 interface
+fn riverOutputListener(river_output_v1: *river.OutputV1, event: river.OutputV1.Event, output: *Output) void {
     assert(output.river_output_v1 == river_output_v1);
     switch (event) {
         .removed => {
@@ -136,19 +155,218 @@ fn outputListener(river_output_v1: *river.OutputV1, event: river.OutputV1.Event,
             output.destroy();
         },
         .wl_output => |ev| {
-            log.debug("initializing new river_output_v1 corresponding to wl_output: {d}", .{ev.name});
+            // It's guaranteed for the wl_output global to advertised before this event happens
+            output.wl_output = output.context.wl_outputs.get(ev.name) orelse unreachable;
+            output.wl_output.?.setListener(*Output, wlOutputListener, output);
         },
         .dimensions => |ev| {
-            output.pending_manage.width = ev.width;
-            output.pending_manage.height = ev.height;
-            output.context.wm.river_window_manager_v1.manageDirty();
+            // Protocol guarantees that width and height are strictly greater than zero
+            assert(ev.width > 0 and ev.height > 0);
+            output.pending_manage.width = @intCast(ev.width);
+            output.pending_manage.height = @intCast(ev.height);
         },
         .position => |ev| {
             output.pending_manage.x = ev.x;
             output.pending_manage.y = ev.y;
-            output.context.wm.river_window_manager_v1.manageDirty();
         },
     }
+}
+
+// Used for the wl_output global interface that corresponds to the river_output_v1
+fn wlOutputListener(_: *wl.Output, event: wl.Output.Event, output: *Output) void {
+    switch (event) {
+        .mode => |ev| {
+            if (ev.width < 0 or ev.height < 0) {
+                // I'm not actually sure if this is possible, but just to be safe
+                log.warn("Received wl_output.mode event with a negative width or height ({d}x{d})", .{ ev.width, ev.height });
+                return;
+            }
+
+            output.width = @intCast(ev.width);
+            output.height = @intCast(ev.height);
+        },
+        .done => {
+            output.initWallpaperLayerSurface() catch |err| {
+                const output_name = output.name orelse "some output";
+                log.err("failed to add a surface to {s}: {}", .{ output_name, err });
+                return;
+            };
+        },
+        .scale => |ev| {
+            if (ev.factor < 0) {
+                // I'm not actually sure if this is possible, but just to be safe
+                log.warn("Received wl_output.scale event with a negative factor ({d})", .{ev.factor});
+                return;
+            }
+            output.scale = @intCast(ev.factor);
+        },
+        .name => |ev| {
+            output.name = utils.allocator.dupe(u8, mem.span(ev.name)) catch @panic("Out of memory");
+        },
+        else => {},
+    }
+}
+
+fn initWallpaperLayerSurface(output: *Output) !void {
+    if (output.wl_surface) |_| {
+        log.warn("Skipping adding a second wallpaper surface to {s}", .{output.name orelse "some output"});
+        return;
+    }
+
+    const context = output.context;
+
+    const wl_surface: *wl.Surface = try context.wl_compositor.createSurface();
+
+    // We don't want our surface to have any input region (default is infinite)
+    const empty_region: *wl.Region = try context.wl_compositor.createRegion();
+    defer empty_region.destroy();
+    wl_surface.setInputRegion(empty_region);
+
+    // Full surface should be opaque
+    const opaque_region: *wl.Region = try context.wl_compositor.createRegion();
+    defer opaque_region.destroy();
+    wl_surface.setOpaqueRegion(opaque_region);
+
+    const layer_surface: *zwlr.LayerSurfaceV1 = try context.zwlr_layer_shell_v1.getLayerSurface(wl_surface, output.wl_output, .background, "beansprout");
+    layer_surface.setExclusiveZone(-1);
+    layer_surface.setAnchor(.{ .top = true, .right = true, .bottom = true, .left = true });
+
+    output.wl_surface = wl_surface;
+    output.layer_surface = layer_surface;
+    context.buffer_pool.surface_count += 1;
+
+    layer_surface.setListener(*Output, wallpaperLayerSurfaceListener, output);
+    wl_surface.commit();
+}
+
+fn deinitWallpaperLayerSurface(output: *Output) void {
+    if (output.layer_surface) |layer_surface| {
+        layer_surface.destroy();
+    }
+    if (output.wl_surface) |wl_surface| {
+        wl_surface.destroy();
+    }
+
+    output.layer_surface = null;
+    output.wl_surface = null;
+    output.configured = false;
+    output.context.buffer_pool.surface_count -= 1;
+}
+
+fn wallpaperLayerSurfaceListener(layer_surface: *zwlr.LayerSurfaceV1, event: zwlr.LayerSurfaceV1.Event, output: *Output) void {
+    switch (event) {
+        .configure => |ev| {
+            layer_surface.ackConfigure(ev.serial);
+
+            if (ev.width < 0 or ev.height < 0) {
+                // I'm not actually sure if this is possible, but just to be safe
+                log.warn("Received zwlr_layer_surface_v1.configure event with a negative width or height ({d}x{d})", .{ ev.width, ev.height });
+                return;
+            }
+            const width: u31 = @intCast(ev.width);
+            const height: u31 = @intCast(ev.height);
+
+            if (output.configured and output.render_width == width and output.render_height == height) {
+                if (output.wl_surface) |wl_surface| {
+                    wl_surface.commit();
+                } else {
+                    log.warn("Output is marked as configured but is missing a layer_surface for the wallpaper", .{});
+                }
+                return;
+            }
+
+            log.debug("configuring wallpaper surface with width {} and height {}", .{ width, height });
+            output.render_width = width;
+            output.render_height = height;
+            output.configured = true;
+
+            output.renderWallpaper() catch |err| {
+                fatal("Wallpaper render failed: E{}", .{err});
+            };
+        },
+        .closed => {
+            output.deinitWallpaperLayerSurface();
+        },
+    }
+}
+
+/// Calculates image_dimension / (output_dimension * scale)
+fn calculate_scale(image_dimension: c_int, output_dimension: u31, scale: u31) f64 {
+    const numerator: f64 = @floatFromInt(image_dimension);
+    const denominator: f64 = @floatFromInt(output_dimension * scale);
+
+    return numerator / denominator;
+}
+
+/// Calculates (image_dimension / dimension_scale - output_dimension) / 2 / dimension_scale;
+fn calculate_transform(image_dimension: c_int, output_dimension: u31, dimension_scale: f64) f64 {
+    const numerator1: f64 = @floatFromInt(image_dimension);
+    const denominator1: f64 = dimension_scale;
+    const subtruend: f64 = @floatFromInt(output_dimension);
+    const numerator2: f64 = numerator1 / denominator1 - subtruend;
+
+    return numerator2 / 2 / dimension_scale;
+}
+
+/// Render the wallpaper image onto the layer surface
+fn renderWallpaper(output: *Output) !void {
+    const context = output.context;
+    const width = output.render_width;
+    const height = output.render_height;
+    const scale = output.scale;
+
+    // Don't have anything to render
+    if (width == 0 or height == 0 or scale == 0) {
+        return;
+    }
+    const buffer: *Buffer = try context.buffer_pool.nextBuffer(context.wl_shm, width * scale, height * scale);
+
+    // Scale our loaded image and then copy it into the Buffer's pixman.Image
+    const image = context.wallpaper_image.image;
+    const image_data = image.getData();
+    const image_width = image.getWidth();
+    const image_height = image.getHeight();
+    const image_stride = image.getStride();
+    const image_format = image.getFormat();
+
+    const pix = pixman.Image.createBitsNoClear(image_format, image_width, image_height, image_data, image_stride);
+    if (pix == null) {
+        log.err("failed to copy the background image for rendering", .{});
+        return error.ImageCopyError;
+    }
+    defer _ = pix.?.unref();
+
+    // Get scale for our image compared to the monitor's scale
+    // XXX: This sucks in Zig but also I'm sure there's a better way to write it
+    var sx: f64 = @as(f64, @floatFromInt(image_width)) / @as(f64, @floatFromInt(width * scale));
+    var sy: f64 = calculate_scale(image_height, height, scale);
+
+    const s = if (sx > sy) sy else sx;
+    sx = s;
+    sy = s;
+
+    const tx: f64 = calculate_transform(image_width, width, sx);
+    const ty: f64 = calculate_transform(image_height, height, sy);
+
+    var t: pixman.FTransform = undefined;
+    var t2: pixman.Transform = undefined;
+
+    pixman.FTransform.initTranslate(&t, tx, ty);
+    pixman.FTransform.initScale(&t, sx, sy);
+    _ = pixman.Transform.fromFTransform(&t2, &t);
+    _ = pix.?.setTransform(&t2);
+    _ = pix.?.setFilter(.best, &[_]pixman.Fixed{}, 0);
+
+    pixman.Image.composite32(.src, pix.?, null, buffer.pixman_image, 0, 0, 0, 0, 0, 0, width * scale, height * scale);
+
+    log.info("render: {}x{} (scaled from {}x{})", .{ width * scale, height * scale, image_width, image_height });
+
+    // Attach the buffer to the surface
+    const wl_surface = output.wl_surface.?;
+    wl_surface.setBufferScale(scale);
+    wl_surface.attach(buffer.wl_buffer, 0, 0);
+    wl_surface.damageBuffer(0, 0, width * scale, height * scale);
+    wl_surface.commit();
 }
 
 pub fn manage(output: *Output) void {
@@ -316,13 +534,18 @@ fn calculatePrimaryStackLayout(output: *Output) void {
 
 const std = @import("std");
 const assert = std.debug.assert;
+const fatal = std.process.fatal;
+const mem = std.mem;
 const DoublyLinkedList = std.DoublyLinkedList;
 
 const wayland = @import("wayland");
 const wl = wayland.client.wl;
 const river = wayland.client.river;
+const zwlr = wayland.client.zwlr;
+const pixman = @import("pixman");
 
 const utils = @import("utils.zig");
+const Buffer = @import("Buffer.zig");
 const Context = @import("Context.zig");
 const Window = @import("Window.zig");
 
