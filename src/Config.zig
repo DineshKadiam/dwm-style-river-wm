@@ -20,6 +20,10 @@ focus_follows_pointer: bool = true,
 /// Should the pointer warp to the center of newly-focused windows
 pointer_warp_on_focus_change: bool = true,
 
+// TODO: Implement a color when this is null
+/// Path to the wallpaper image
+wallpaper_image_path: []const u8 = "",
+
 /// Tag bind entries parsed from config (tag_bind nodes in keybinds block)
 tag_binds: std.ArrayList(Keybind) = .{},
 keybinds: std.ArrayList(Keybind) = .{},

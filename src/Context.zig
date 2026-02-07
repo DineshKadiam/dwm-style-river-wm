@@ -27,7 +27,7 @@ buffer_pool: BufferPool = .{},
 
 /// Holds a pixman.Image (and its raw pixels) for the wallpaper
 /// (same image on all outputs, but scaled separately)
-wallpaper_image: *WallpaperImage,
+wallpaper_image: ?*WallpaperImage,
 
 // WM Configuration
 config: *Config,
@@ -60,6 +60,12 @@ pub fn create(options: Options) !*Context {
     const context = try utils.allocator.create(Context);
     errdefer context.destroy();
 
+    // FIXME: TODO: Get this from Config
+    const wallpaper_image = WallpaperImage.create("FIXME") catch |e| blk: {
+        log.err("Failed to load wallpaper image from path \"{s}\": {s}", .{ "FIXME", @errorName(e) });
+        break :blk null;
+    };
+
     context.* = .{
         .initialized = false,
         .wl_compositor = options.wl_compositor,
@@ -68,7 +74,7 @@ pub fn create(options: Options) !*Context {
         .wl_shm = options.wl_shm,
         .wl_outputs = options.wl_outputs,
         .zwlr_layer_shell_v1 = options.zwlr_layer_shell_v1,
-        .wallpaper_image = try WallpaperImage.create("FIXME"), // FIXME: TODO: Get this from Config
+        .wallpaper_image = wallpaper_image,
         .wm = try WindowManager.create(context, options.river_window_manager_v1),
         .xkb_bindings = try XkbBindings.create(context, options.river_xkb_bindings_v1),
         .config = options.config,
@@ -81,7 +87,9 @@ pub fn destroy(context: *Context) void {
     context.xkb_bindings.destroy();
     context.wm.destroy();
 
-    context.wallpaper_image.destroy();
+    if (context.wallpaper_image) |wallpaper_image| {
+        wallpaper_image.destroy();
+    }
     context.buffer_pool.deinit();
 
     utils.allocator.destroy(context);

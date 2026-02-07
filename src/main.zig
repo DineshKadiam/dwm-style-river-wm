@@ -105,6 +105,10 @@ fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, globals: *
                 globals.wl_shm = registry.bind(ev.name, wl.Shm, 1) catch |e| {
                     fatal("Failed to bind to wl_shm: {any}", .{@errorName(e)});
                 };
+            } else if (mem.orderZ(u8, ev.interface, river.LayerShellV1.interface.name) == .eq) {
+                globals.river_layer_shell_v1 = registry.bind(ev.name, river.LayerShellV1, 1) catch |e| {
+                    fatal("Failed to bind to river_layer_shell_v1: {any}", .{@errorName(e)});
+                };
             } else if (mem.orderZ(u8, ev.interface, river.WindowManagerV1.interface.name) == .eq) {
                 globals.river_window_manager_v1 = registry.bind(ev.name, river.WindowManagerV1, 3) catch |e| {
                     fatal("Failed to bind to river_window_manager_v1: {any}", .{@errorName(e)});

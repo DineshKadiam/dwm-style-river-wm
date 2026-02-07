@@ -208,6 +208,11 @@ fn wlOutputListener(_: *wl.Output, event: wl.Output.Event, output: *Output) void
 }
 
 fn initWallpaperLayerSurface(output: *Output) !void {
+    if (output.context.wallpaper_image == null) {
+        // No wallpaper image, so we don't need any surfaces
+        return;
+    }
+
     if (output.wl_surface) |_| {
         log.warn("Skipping adding a second wallpaper surface to {s}", .{output.name orelse "some output"});
         return;
@@ -319,15 +324,16 @@ fn renderWallpaper(output: *Output) !void {
     if (width == 0 or height == 0 or scale == 0) {
         return;
     }
-    const buffer: *Buffer = try context.buffer_pool.nextBuffer(context.wl_shm, width * scale, height * scale);
-
     // Scale our loaded image and then copy it into the Buffer's pixman.Image
-    const image = context.wallpaper_image.image;
+    const wallpaper_image = context.wallpaper_image orelse return;
+    const image = wallpaper_image.image;
     const image_data = image.getData();
     const image_width = image.getWidth();
     const image_height = image.getHeight();
     const image_stride = image.getStride();
     const image_format = image.getFormat();
+
+    const buffer: *Buffer = try context.buffer_pool.nextBuffer(context.wl_shm, width * scale, height * scale);
 
     const pix = pixman.Image.createBitsNoClear(image_format, image_width, image_height, image_data, image_stride);
     if (pix == null) {
