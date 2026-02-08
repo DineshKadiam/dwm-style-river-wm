@@ -87,20 +87,35 @@ pub fn destroy(output: *Output) void {
     utils.allocator.destroy(output);
 }
 
-/// Get the next window in the list, wrapping to first if at end
+/// Get the next window in the list that shares at least one tag
+/// with the output, wrapping to first if at end.
 pub fn nextWindow(output: *Output, current: *Window) ?*Window {
-    const next_link = current.link.next orelse return output.windows.first();
-    // If we've reached the sentinel (head's link), wrap to first
-    if (next_link == &output.windows.link) return output.windows.first();
-    return @fieldParentPtr("link", next_link);
+    var link = current.link.next orelse unreachable;
+    // Walk forward, wrapping at sentinel, until we find a visible window or return to current
+    while (true) {
+        // If this is the sentinel, wrap to the beginning
+        if (link == &output.windows.link) {
+            link = link.next orelse unreachable;
+        }
+        const window: *Window = @fieldParentPtr("link", link);
+        if (window.tags & output.tags != 0 or window == current) return window;
+        link = link.next orelse unreachable;
+    }
 }
 
-/// Get the previous window in the list, wrapping to last if at beginning
+/// Get the previous window in the list that shares at least one tag
+/// with the output, wrapping to the last if at beginning
 pub fn prevWindow(output: *Output, current: *Window) ?*Window {
-    const prev_link = current.link.prev orelse return output.windows.last();
-    // If we've reached the sentinel (head's link), wrap to last
-    if (prev_link == &output.windows.link) return output.windows.last();
-    return @fieldParentPtr("link", prev_link);
+    var link = current.link.prev orelse unreachable;
+    while (true) {
+        // If this is the sentinel, wrap to the end
+        if (link == &output.windows.link) {
+            link = link.prev orelse unreachable;
+        }
+        const window: *Window = @fieldParentPtr("link", link);
+        if (window.tags & output.tags != 0 or window == current) return window;
+        link = link.prev orelse unreachable;
+    }
 }
 
 // Used for the river_output_v1 interface
