@@ -61,6 +61,7 @@ fn findSuitableBuffer(buffer_pool: *BufferPool, wl_shm: *wl.Shm, width: u31, hei
         const buffer: *Buffer = @fieldParentPtr("node", node);
         if (buffer.busy) continue;
         if (buffer.width == width and buffer.height == height) {
+            buffer.busy = true;
             return buffer;
         } else {
             first_unbusy_buffer = buffer;
@@ -72,6 +73,7 @@ fn findSuitableBuffer(buffer_pool: *BufferPool, wl_shm: *wl.Shm, width: u31, hei
     if (first_unbusy_buffer) |buffer| {
         buffer.deinit();
         buffer.* = try Buffer.init(wl_shm, width, height);
+        buffer.setListener();
         return buffer;
     }
 

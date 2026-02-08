@@ -35,7 +35,7 @@ pub fn create(image_path: []const u8) !*WallpaperImage {
         const g: u32 = @intCast(pixels[i].g);
         const b: u32 = @intCast(pixels[i].b);
         const new_val: u32 = (a << 24) + (r << 16) + (g << 8) + b;
-        try wallpaper_image.pixels.append(utils.allocator, new_val);
+        wallpaper_image.pixels.appendAssumeCapacity(new_val);
     }
 
     wallpaper_image.image = pixman.Image.createBits(.a8r8g8b8, @intCast(image.width), @intCast(image.height), @ptrCast(@alignCast(wallpaper_image.pixels.items.ptr)), @intCast(image.width * image.pixelFormat().pixelStride())) orelse return error.FailedToCreatePixmanImage;

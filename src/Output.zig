@@ -223,7 +223,7 @@ pub fn initWallpaperLayerSurface(output: *Output) !void {
     }
 
     if (output.wl_surface) |_| {
-        log.debug("Skipping adding a second wallpaper surface to {s}", .{output.name orelse "some output"});
+        // This output already has a layer surface, we can exit early
         return;
     }
 
@@ -344,15 +344,13 @@ pub fn renderWallpaper(output: *Output) !void {
 
     const buffer: *Buffer = try context.buffer_pool.nextBuffer(context.wl_shm, width * scale, height * scale);
 
-    const pix = pixman.Image.createBitsNoClear(image_format, image_width, image_height, image_data, image_stride);
-    if (pix == null) {
-        log.err("failed to copy the background image for rendering", .{});
+    const pix = pixman.Image.createBitsNoClear(image_format, image_width, image_height, image_data, image_stride) orelse {
+        log.err("Failed to copy the wallpaper image for rendering", .{});
         return error.ImageCopyError;
-    }
-    defer _ = pix.?.unref();
+    };
+    defer _ = pix.unref();
 
-    // Get scale for our image compared to the monitor's scale
-    // XXX: This sucks in Zig but also I'm sure there's a better way to write it
+    // Calculate image scale
     var sx: f64 = @as(f64, @floatFromInt(image_width)) / @as(f64, @floatFromInt(width * scale));
     var sy: f64 = calculate_scale(image_height, height, scale);
 
@@ -360,19 +358,31 @@ pub fn renderWallpaper(output: *Output) !void {
     sx = s;
     sy = s;
 
+    // Calculate translation offsets to center the image on the output.
+    // If the scaled image is larger than the output, the offset crops equally from both sides.
     const tx: f64 = calculate_transform(image_width, width, sx);
     const ty: f64 = calculate_transform(image_height, height, sy);
 
+    // Build a combined source-to-destination transform matrix.
+    // Pixman transforms map destination pixels back to source pixels, so:
+    //   t_scale: maps a destination pixel to the corresponding source pixel (scaling)
+    //   t_trans: shifts the sampling point to center the image
+    //   t = t_trans * t_scale: first scale, then translate (in source space)
+    var t_scale: pixman.FTransform = undefined;
+    var t_trans: pixman.FTransform = undefined;
     var t: pixman.FTransform = undefined;
+    // t2 is the fixed-point version of t, which is what pixman actually uses internally
     var t2: pixman.Transform = undefined;
 
-    pixman.FTransform.initTranslate(&t, tx, ty);
-    pixman.FTransform.initScale(&t, sx, sy);
+    pixman.FTransform.initScale(&t_scale, sx, sy);
+    pixman.FTransform.initTranslate(&t_trans, tx, ty);
+    pixman.FTransform.multiply(&t, &t_trans, &t_scale);
     _ = pixman.Transform.fromFTransform(&t2, &t);
-    _ = pix.?.setTransform(&t2);
-    _ = pix.?.setFilter(.best, &[_]pixman.Fixed{}, 0);
+    _ = pix.setTransform(&t2);
+    _ = pix.setFilter(.best, &[_]pixman.Fixed{}, 0);
 
-    pixman.Image.composite32(.src, pix.?, null, buffer.pixman_image, 0, 0, 0, 0, 0, 0, width * scale, height * scale);
+    // Combine the transformed source image into the buffer.
+    pixman.Image.composite32(.src, pix, null, buffer.pixman_image, 0, 0, 0, 0, 0, 0, width * scale, height * scale);
 
     log.info("render: {}x{} (scaled from {}x{})", .{ width * scale, height * scale, image_width, image_height });
 
