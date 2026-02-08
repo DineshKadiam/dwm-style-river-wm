@@ -179,9 +179,11 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
             const output = Output.create(context, ev.id) catch @panic("Out of memory");
             wm.outputs.append(output);
             // If there was already a seat, but no outputs, set this new output as focused
-            const seat = wm.seats.first() orelse return;
-            if (seat.focused_output == null and seat.pending_manage.output == null) {
-                seat.pending_manage.output = .{ .output = output };
+            const first_seat = wm.seats.first();
+            if (first_seat) |seat| {
+                if (seat.focused_output == null and seat.pending_manage.output == null) {
+                    seat.pending_manage.output = .{ .output = output };
+                }
             }
 
             // If there are orphan windows, send them to the new output
@@ -210,7 +212,9 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
             wm.seats.append(seat);
 
             // If there was already an output, but no seats, set the first output as focused
-            seat.pending_manage.output = .{ .output = wm.outputs.first() orelse return };
+            if (wm.outputs.first()) |output| {
+                seat.pending_manage.output = .{ .output = output };
+            }
         },
         .window => |ev| {
             // TODO: Support multiple seats
