@@ -13,7 +13,6 @@ These are in rough order of my priority, though no promises I do them in this or
 - [ ] Support per-host config using properties (maybe also per-output?)
 - [ ] Add input configuration, i.e. pointer acceleration and that type of thing
 - [ ] Support a basic bar
-- [ ] Implement runtime log levels
 - [ ] Support starting programs at WM launch
 - [ ] Support overriding config location
 - [ ] Add support for multimedia/brightness keys (this might not be neccesary)
@@ -25,5 +24,6 @@ These are in rough order of my priority, though no promises I do them in this or
 - [x] Support floating windows
 - [x] Support wallpapers
 - [x] Make "orelse return" bits into errors; handle gracefully
+- [x] Implement runtime log levels
 - [ ] Switch all structs to idiomatic Zig init/deinit pattern (init returns value, caller decides stack/heap)
   - I'm not sure I really need this

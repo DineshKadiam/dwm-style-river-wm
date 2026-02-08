@@ -23,7 +23,57 @@ const Globals = struct {
     }
 };
 
+const usage: []const u8 =
+    \\usage: beansprout [options]
+    \\
+    \\  -h                 Print this help message and exit.
+    \\  -version           Print the version number and exit.
+    \\  -log-level <level> Set the log level to error, warning, info, or debug.
+    \\
+;
+
 pub fn main() !void {
+    const result = flags.parser([*:0]const u8, &.{
+        .{ .name = "h", .kind = .boolean },
+        .{ .name = "version", .kind = .boolean },
+        .{ .name = "log-level", .kind = .arg },
+    }).parse(std.os.argv[1..]) catch {
+        try stderr.writeAll(usage);
+        try stderr.flush();
+        posix.exit(1);
+    };
+    if (result.flags.h) {
+        try stdout.writeAll(usage);
+        try stdout.flush();
+        posix.exit(0);
+    }
+    if (result.args.len != 0) {
+        log.err("unknown option '{s}'", .{result.args[0]});
+        try stderr.writeAll(usage);
+        try stderr.flush();
+        posix.exit(1);
+    }
+
+    if (result.flags.version) {
+        try stdout.writeAll(build_options.version ++ "\n");
+        try stdout.flush();
+        posix.exit(0);
+    }
+    if (result.flags.@"log-level") |level| {
+        if (mem.eql(u8, level, "error")) {
+            runtime_log_level = .err;
+        } else if (mem.eql(u8, level, "warning")) {
+            runtime_log_level = .warn;
+        } else if (mem.eql(u8, level, "info")) {
+            runtime_log_level = .info;
+        } else if (mem.eql(u8, level, "debug")) {
+            runtime_log_level = .debug;
+        } else {
+            log.err("invalid log level '{s}'", .{level});
+            posix.exit(1);
+        }
+    }
+
     const wayland_display_var = try utils.allocator.dupeZ(u8, process.getEnvVarOwned(utils.allocator, "WAYLAND_DISPLAY") catch {
         fatal("Error getting WAYLAND_DISPLAY environment variable. Exiting", .{});
     });
@@ -134,9 +184,49 @@ fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, globals: *
     }
 }
 
+var stderr_buffer: [1024]u8 = undefined;
+var stderr_writer = fs.File.stderr().writer(&stderr_buffer);
+const stderr = &stderr_writer.interface;
+
+var stdout_buffer: [1024]u8 = undefined;
+var stdout_writer = fs.File.stdout().writer(&stdout_buffer);
+const stdout = &stdout_writer.interface;
+
+/// Set the default log level based on the build mode.
+var runtime_log_level: std.log.Level = switch (builtin.mode) {
+    .Debug => .debug,
+    .ReleaseSafe, .ReleaseFast, .ReleaseSmall => .info,
+};
+
+pub const std_options: std.Options = .{
+    // Tell std.log to leave all log level filtering to us.
+    .log_level = .debug,
+    .logFn = logFn,
+};
+
+pub fn logFn(
+    comptime level: std.log.Level,
+    comptime scope: @TypeOf(.EnumLiteral),
+    comptime format: []const u8,
+    args: anytype,
+) void {
+    if (@intFromEnum(level) > @intFromEnum(runtime_log_level)) return;
+
+    if (scope != .default) return;
+
+    const scope_prefix = if (scope == .default) ": " else "(" ++ @tagName(scope) ++ "): ";
+
+    stderr.print(level.asText() ++ scope_prefix ++ format ++ "\n", args) catch return;
+    stderr.flush() catch return;
+}
+
+const build_options = @import("build_options");
+const builtin = @import("builtin");
 const std = @import("std");
-const mem = std.mem;
 const fatal = std.process.fatal;
+const fs = std.fs;
+const mem = std.mem;
+const posix = std.posix;
 const process = std.process;
 
 const wayland = @import("wayland");
@@ -144,6 +234,7 @@ const river = wayland.client.river;
 const wl = wayland.client.wl;
 const zwlr = wayland.client.zwlr;
 
+const flags = @import("flags.zig");
 const utils = @import("utils.zig");
 const Config = @import("Config.zig");
 const Context = @import("Context.zig");
