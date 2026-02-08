@@ -134,6 +134,10 @@ fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, globals: *
     }
 }
 
+pub const std_options = std.Options{
+    .log_level = .debug,
+};
+
 const std = @import("std");
 const mem = std.mem;
 const fatal = std.process.fatal;

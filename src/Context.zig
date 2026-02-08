@@ -60,12 +60,6 @@ pub fn create(options: Options) !*Context {
     const context = try utils.allocator.create(Context);
     errdefer context.destroy();
 
-    // FIXME: TODO: Get this from Config
-    const wallpaper_image = WallpaperImage.create("FIXME") catch |e| blk: {
-        log.err("Failed to load wallpaper image from path \"{s}\": {s}", .{ "FIXME", @errorName(e) });
-        break :blk null;
-    };
-
     context.* = .{
         .initialized = false,
         .wl_compositor = options.wl_compositor,
@@ -74,7 +68,7 @@ pub fn create(options: Options) !*Context {
         .wl_shm = options.wl_shm,
         .wl_outputs = options.wl_outputs,
         .zwlr_layer_shell_v1 = options.zwlr_layer_shell_v1,
-        .wallpaper_image = wallpaper_image,
+        .wallpaper_image = loadWallpaperImage(options.config),
         .wm = try WindowManager.create(context, options.river_window_manager_v1),
         .xkb_bindings = try XkbBindings.create(context, options.river_xkb_bindings_v1),
         .config = options.config,
@@ -105,13 +99,56 @@ pub fn manage(context: *Context) void {
             binding.link.remove();
             binding.destroy();
         }
+
+        // Check if wallpaper path changed before destroying old config
+        const wallpaper_changed = !pathsEqual(
+            context.config.wallpaper_image_path,
+            new_config.wallpaper_image_path,
+        );
+
         context.config.destroy();
         context.config = new_config;
         context.initialized = false;
+
+        if (wallpaper_changed) {
+            if (context.wallpaper_image) |img| img.destroy();
+            context.wallpaper_image = loadWallpaperImage(new_config);
+
+            var out_it = context.wm.outputs.iterator(.forward);
+            while (out_it.next()) |output| {
+                if (context.wallpaper_image == null) {
+                    output.deinitWallpaperLayerSurface();
+                } else if (output.wl_surface != null) {
+                    output.renderWallpaper() catch |err| {
+                        log.err("Wallpaper re-render failed: {}", .{err});
+                    };
+                } else {
+                    output.initWallpaperLayerSurface() catch |err| {
+                        log.err("Failed to init wallpaper surface: {}", .{err});
+                    };
+                }
+            }
+        }
     }
 }
 
+fn loadWallpaperImage(config: *Config) ?*WallpaperImage {
+    const image_path = config.wallpaper_image_path orelse return null;
+    if (image_path.len == 0) return null;
+    return WallpaperImage.create(image_path) catch |e| {
+        log.err("Failed to load wallpaper image from path \"{s}\": {s}", .{ image_path, @errorName(e) });
+        return null;
+    };
+}
+
+fn pathsEqual(a: ?[]const u8, b: ?[]const u8) bool {
+    const a_val = a orelse return b == null;
+    const b_val = b orelse return false;
+    return mem.eql(u8, a_val, b_val);
+}
+
 const std = @import("std");
+const mem = std.mem;
 
 const wayland = @import("wayland");
 const river = wayland.client.river;

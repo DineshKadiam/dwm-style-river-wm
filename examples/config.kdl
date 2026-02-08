@@ -4,6 +4,10 @@ attach_mode top
 focus_follows_pointer #true
 // Whether the focus should warp to the center of newly-focused windows
 pointer_warp_on_focus_change #true
+// Path to image to use as wallpaper
+// The same image is displayed on all outputs, but scaled separately
+// If this config is missing, then the background is blank black screen
+wallpaper_image_path "~/Pictures/the_valley.png"
 borders {
     width 2
     // 8 or 10 digit hex color

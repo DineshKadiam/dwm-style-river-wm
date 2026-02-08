@@ -22,7 +22,7 @@ pointer_warp_on_focus_change: bool = true,
 
 // TODO: Implement a color when this is null
 /// Path to the wallpaper image
-wallpaper_image_path: []const u8 = "",
+wallpaper_image_path: ?[]const u8 = null,
 
 /// Tag bind entries parsed from config (tag_bind nodes in keybinds block)
 tag_binds: std.ArrayList(Keybind) = .{},
@@ -55,6 +55,7 @@ const NodeName = enum {
     attach_mode,
     focus_follows_pointer,
     pointer_warp_on_focus_change,
+    wallpaper_image_path,
     borders,
     keybinds,
     pointer_binds,
@@ -105,6 +106,9 @@ pub fn create() !*Config {
             config.keybinds.clearAndFree(utils.allocator);
             config.tag_binds.clearAndFree(utils.allocator);
             config.pointer_binds.clearAndFree(utils.allocator);
+            if (config.wallpaper_image_path) |path| {
+                utils.allocator.free(path);
+            }
             config.* = .{};
         };
     }
@@ -125,6 +129,9 @@ pub fn destroy(config: *Config) void {
     config.keybinds.deinit(utils.allocator);
     config.tag_binds.deinit(utils.allocator);
     config.pointer_binds.deinit(utils.allocator);
+    if (config.wallpaper_image_path) |path| {
+        utils.allocator.free(path);
+    }
     utils.allocator.destroy(config);
 }
 
@@ -178,6 +185,19 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                                 logWarnInvalidNodeArg(name, pointer_warp_on_focus_change_str);
                                 continue;
                             }
+                        },
+                        .wallpaper_image_path => {
+                            if (node.argcount() < 1) {
+                                logWarnMissingNodeArg(name, "image path");
+                                continue;
+                            }
+
+                            const path_str = utils.stripQuotes(node.arg(&parser, 0) orelse unreachable);
+                            config.wallpaper_image_path = expandTilde(path_str) catch {
+                                logWarnInvalidNodeArg(name, path_str);
+                                continue;
+                            };
+                            logDebugSettingNode(name, path_str);
                         },
                         .borders => {
                             next_child_block = .borders;
@@ -547,6 +567,7 @@ fn logWarnInvalidNodeArg(node_name: anytype, node_value: []const u8) void {
 fn logWarnMissingNodeArg(node_name: anytype, comptime arg: []const u8) void {
     const node_name_type = @TypeOf(node_name);
     switch (node_name_type) {
+        NodeName => log.warn("\"{s}\" missing " ++ arg ++ " argument. Ignoring", .{@tagName(node_name)}),
         KeybindNodeName => log.warn("\"keybind.{s}\" missing " ++ arg ++ " argument. Ignoring", .{@tagName(node_name)}),
         PointerBindNodeName => log.warn("\"pointer_binds.{s}\" missing " ++ arg ++ " argument. Ignoring", .{@tagName(node_name)}),
         else => @compileError("This function does not (yet) support type \"" ++ @typeName(node_name_type) ++ "\""),
@@ -572,6 +593,14 @@ fn logDebugSettingNode(node_name: anytype, node_value: []const u8) void {
         BorderNodeName => log.debug("Setting border.{s} to {s}", .{ @tagName(node_name), node_value }),
         else => @compileError("This function does not (yet) support type \"" ++ @typeName(@TypeOf(node_name)) ++ "\""),
     }
+}
+
+fn expandTilde(path: []const u8) ![]const u8 {
+    if (path.len > 0 and path[0] == '~') {
+        const home = std.posix.getenv("HOME") orelse return error.HomeNotSet;
+        return std.fmt.allocPrint(utils.allocator, "{s}{s}", .{ home, path[1..] });
+    }
+    return utils.allocator.dupe(u8, path);
 }
 
 const std = @import("std");

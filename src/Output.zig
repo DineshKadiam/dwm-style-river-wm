@@ -12,7 +12,7 @@ river_output_v1: *river.OutputV1,
 wl_output: ?*wl.Output = null,
 
 // Output geometry
-scale: u31 = 0,
+scale: u31 = 1,
 width: u31 = 0,
 height: u31 = 0,
 x: i32 = 0,
@@ -158,6 +158,15 @@ fn riverOutputListener(river_output_v1: *river.OutputV1, event: river.OutputV1.E
             // It's guaranteed for the wl_output global to advertised before this event happens
             output.wl_output = output.context.wl_outputs.get(ev.name) orelse unreachable;
             output.wl_output.?.setListener(*Output, wlOutputListener, output);
+
+            // The wl_output's initial events (mode, scale, name, done) were likely
+            // already delivered during the initial roundtrip before we set our
+            // listener, so the .done event that triggers wallpaper init was lost.
+            // Explicitly init the wallpaper surface here.
+            output.initWallpaperLayerSurface() catch |err| {
+                const output_name = output.name orelse "some output";
+                log.err("failed to add a surface to {s}: {}", .{ output_name, err });
+            };
         },
         .dimensions => |ev| {
             // Protocol guarantees that width and height are strictly greater than zero
@@ -207,14 +216,14 @@ fn wlOutputListener(_: *wl.Output, event: wl.Output.Event, output: *Output) void
     }
 }
 
-fn initWallpaperLayerSurface(output: *Output) !void {
+pub fn initWallpaperLayerSurface(output: *Output) !void {
     if (output.context.wallpaper_image == null) {
         // No wallpaper image, so we don't need any surfaces
         return;
     }
 
     if (output.wl_surface) |_| {
-        log.warn("Skipping adding a second wallpaper surface to {s}", .{output.name orelse "some output"});
+        log.debug("Skipping adding a second wallpaper surface to {s}", .{output.name orelse "some output"});
         return;
     }
 
@@ -244,18 +253,18 @@ fn initWallpaperLayerSurface(output: *Output) !void {
     wl_surface.commit();
 }
 
-fn deinitWallpaperLayerSurface(output: *Output) void {
+pub fn deinitWallpaperLayerSurface(output: *Output) void {
     if (output.layer_surface) |layer_surface| {
         layer_surface.destroy();
     }
     if (output.wl_surface) |wl_surface| {
         wl_surface.destroy();
+        output.context.buffer_pool.surface_count -= 1;
     }
 
     output.layer_surface = null;
     output.wl_surface = null;
     output.configured = false;
-    output.context.buffer_pool.surface_count -= 1;
 }
 
 fn wallpaperLayerSurfaceListener(layer_surface: *zwlr.LayerSurfaceV1, event: zwlr.LayerSurfaceV1.Event, output: *Output) void {
@@ -314,7 +323,7 @@ fn calculate_transform(image_dimension: c_int, output_dimension: u31, dimension_
 }
 
 /// Render the wallpaper image onto the layer surface
-fn renderWallpaper(output: *Output) !void {
+pub fn renderWallpaper(output: *Output) !void {
     const context = output.context;
     const width = output.render_width;
     const height = output.render_height;

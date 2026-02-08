@@ -12,8 +12,7 @@ These are in rough order of my priority, though no promises I do them in this or
 
 - [ ] Switch all structs to idiomatic Zig init/deinit pattern (init returns value, caller decides stack/heap)
 - [ ] Support per-host config using properties
-- [ ] Support wallpapers
-- [ ] Support a bar
+- [ ] Support a basic bar
 - [ ] Support starting programs at WM launch
 - [ ] Support overriding config location
 - [ ] Add support for multimedia/brightness keys
@@ -23,4 +22,5 @@ These are in rough order of my priority, though no promises I do them in this or
 - [x] Support changeable primary ratio
 - [x] Support changeable primary count
 - [x] Support multiple outputs
-- [X] Support floating windows
+- [x] Support floating windows
+- [x] Support wallpapers
