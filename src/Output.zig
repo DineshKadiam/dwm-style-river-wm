@@ -295,7 +295,7 @@ fn wallpaperLayerSurfaceListener(layer_surface: *zwlr.LayerSurfaceV1, event: zwl
             output.configured = true;
 
             output.renderWallpaper() catch |err| {
-                fatal("Wallpaper render failed: E{}", .{err});
+                log.err("Wallpaper render failed: {}", .{err});
             };
         },
         .closed => {
@@ -334,7 +334,7 @@ pub fn renderWallpaper(output: *Output) !void {
         return;
     }
     // Scale our loaded image and then copy it into the Buffer's pixman.Image
-    const wallpaper_image = context.wallpaper_image orelse return;
+    const wallpaper_image = context.wallpaper_image orelse return error.MissingWallpaperImage;
     const image = wallpaper_image.image;
     const image_data = image.getData();
     const image_width = image.getWidth();
@@ -559,7 +559,6 @@ fn calculatePrimaryStackLayout(output: *Output) void {
 
 const std = @import("std");
 const assert = std.debug.assert;
-const fatal = std.process.fatal;
 const mem = std.mem;
 const DoublyLinkedList = std.DoublyLinkedList;
 

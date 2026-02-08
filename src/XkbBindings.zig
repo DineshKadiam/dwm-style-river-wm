@@ -118,7 +118,10 @@ const XkbBinding = struct {
                 if (current_focus.floating) return;
 
                 // Get the first tiled window to try zoom with
-                const output = current_focus.output orelse return;
+                const output = current_focus.output orelse {
+                    log.err("focused window has no output during zoom", .{});
+                    return;
+                };
                 const first_tiled: *Window = blk: {
                     var it = output.windows.iterator(.forward);
                     while (it.next()) |window| {
@@ -333,7 +336,10 @@ const XkbBinding = struct {
         const seat = context.wm.seats.first() orelse return;
         const window = seat.focused_window orelse return;
         if (!window.floating) return;
-        const output = window.output orelse return;
+        const output = window.output orelse {
+            log.err("focused floating window has no output during move", .{});
+            return;
+        };
 
         const min_x = output.x;
         const max_x = output.x + output.width - @as(i32, window.float_width);
@@ -351,7 +357,10 @@ const XkbBinding = struct {
         const seat = context.wm.seats.first() orelse return;
         const window = seat.focused_window orelse return;
         if (!window.floating) return;
-        const output = window.output orelse return;
+        const output = window.output orelse {
+            log.err("focused floating window has no output during resize", .{});
+            return;
+        };
 
         const new_width: i32 = @as(i32, window.float_width) + dw;
         const new_height: i32 = @as(i32, window.float_height) + dh;
@@ -373,7 +382,10 @@ const XkbBinding = struct {
     fn swapWindow(context: *Context, comptime direction: enum { next, prev }) void {
         const seat = context.wm.seats.first() orelse return;
         const window = seat.focused_window orelse return;
-        const output = window.output orelse return;
+        const output = window.output orelse {
+            log.err("focused window has no output during swap", .{});
+            return;
+        };
         const target = switch (direction) {
             .next => output.nextWindow(window),
             .prev => output.prevWindow(window),

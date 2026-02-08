@@ -106,7 +106,10 @@ fn seatListener(river_seat_v1: *river.SeatV1, event: river.SeatV1.Event, seat: *
 // river_window_v1 needs to be optional because ev.window is optional
 fn setWindowFocus(seat: *Seat, river_window_v1: ?*river.WindowV1) void {
     const wv1 = river_window_v1 orelse return;
-    const window: *Window = @ptrCast(@alignCast(wv1.getUserData() orelse return));
+    const window: *Window = @ptrCast(@alignCast(wv1.getUserData() orelse {
+        log.err("river_window_v1 has no user data", .{});
+        return;
+    }));
     seat.pending_manage.window = .{ .window = window };
 }
 
@@ -201,7 +204,10 @@ pub fn manage(seat: *Seat) void {
         switch (seat.pointer_op) {
             .none => {},
             .move => |op| {
-                const output = op.window.output orelse return;
+                const output = op.window.output orelse {
+                    log.err("window has no output during move operation", .{});
+                    return;
+                };
                 const min_x = output.x;
                 const max_x = output.x + output.width - @as(i32, op.window.float_width);
                 const min_y = output.y;
@@ -242,7 +248,10 @@ pub fn manage(seat: *Seat) void {
                 }
 
                 // Clamp position to output bounds
-                const output = op.window.output orelse return;
+                const output = op.window.output orelse {
+                    log.err("window has no output during resize operation", .{});
+                    return;
+                };
                 new_x = std.math.clamp(new_x, output.x, @max(output.x, output.x + output.width - new_width));
                 new_y = std.math.clamp(new_y, output.y, @max(output.y, output.y + output.height - new_height));
 
