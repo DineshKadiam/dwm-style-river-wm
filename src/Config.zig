@@ -28,6 +28,7 @@ wallpaper_image_path: ?[]const u8 = null,
 tag_binds: std.ArrayList(Keybind) = .{},
 keybinds: std.ArrayList(Keybind) = .{},
 pointer_binds: std.ArrayList(PointerBind) = .{},
+input_configs: std.ArrayList(InputConfig) = .{},
 
 pub const Keybind = struct {
     modifiers: river.SeatV1.Modifiers,
@@ -46,6 +47,32 @@ pub const PointerAction = enum {
     resize_window,
 };
 
+pub const InputConfig = struct {
+    /// Device name to match
+    /// If this is null, applies to all devices
+    name: ?[]const u8 = null,
+
+    send_events: ?SendEventsModes.Enum = null,
+    tap: ?TapState = null,
+    tap_button_map: ?TapButtonMap = null,
+    drag: ?DragState = null,
+    drag_lock: ?DragLockState = null,
+    three_finger_drag: ?ThreeFingerDragState = null,
+    accel_profile: ?AccelProfile = null,
+    accel_speed: ?f64 = null,
+    natural_scroll: ?NaturalScrollState = null,
+    left_handed: ?LeftHandedState = null,
+    click_method: ?ClickMethod = null,
+    clickfinger_button_map: ?ClickfingerButtonMap = null,
+    middle_emulation: ?MiddleEmulationState = null,
+    scroll_method: ?ScrollMethod = null,
+    scroll_button: ?u32 = null,
+    scroll_button_lock: ?ScrollButtonLockState = null,
+    dwt: ?DwtState = null,
+    dwtp: ?DwtpState = null,
+    rotation: ?u32 = null,
+};
+
 pub const AttachMode = enum {
     top,
     bottom,
@@ -56,9 +83,11 @@ const NodeName = enum {
     focus_follows_pointer,
     pointer_warp_on_focus_change,
     wallpaper_image_path,
+    // Sections with child blocks
     borders,
     keybinds,
     pointer_binds,
+    input,
 };
 
 const BorderNodeName = enum {
@@ -70,6 +99,28 @@ const BorderNodeName = enum {
 const PointerBindNodeName = enum {
     move_window,
     resize_window,
+};
+
+const InputConfigNodeName = enum {
+    send_events,
+    tap,
+    tap_button_map,
+    drag,
+    drag_lock,
+    three_finger_drag,
+    accel_profile,
+    accel_speed,
+    natural_scroll,
+    left_handed,
+    click_method,
+    clickfinger_button_map,
+    middle_emulation,
+    scroll_method,
+    scroll_button,
+    scroll_button_lock,
+    dwt,
+    dwtp,
+    rotation,
 };
 
 // We can just directly use the tag type from Command as our node name
@@ -106,6 +157,10 @@ pub fn create() !*Config {
             config.keybinds.clearAndFree(utils.allocator);
             config.tag_binds.clearAndFree(utils.allocator);
             config.pointer_binds.clearAndFree(utils.allocator);
+            for (config.input_configs.items) |ic| {
+                if (ic.name) |name| utils.allocator.free(name);
+            }
+            config.input_configs.clearAndFree(utils.allocator);
             if (config.wallpaper_image_path) |path| {
                 utils.allocator.free(path);
             }
@@ -129,6 +184,10 @@ pub fn destroy(config: *Config) void {
     config.keybinds.deinit(utils.allocator);
     config.tag_binds.deinit(utils.allocator);
     config.pointer_binds.deinit(utils.allocator);
+    for (config.input_configs.items) |ic| {
+        if (ic.name) |name| utils.allocator.free(name);
+    }
+    config.input_configs.deinit(utils.allocator);
     if (config.wallpaper_image_path) |path| {
         utils.allocator.free(path);
     }
@@ -141,6 +200,8 @@ fn load(config: *Config, reader: *Io.Reader) !void {
     defer parser.deinit(utils.allocator);
 
     var next_child_block: ?NodeName = null;
+    var pending_input_name: ?[]const u8 = null;
+    defer if (pending_input_name) |n| utils.allocator.free(n);
 
     // Parse the KDL config
     while (try parser.next()) |event| {
@@ -150,6 +211,8 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                 if (next_child_block) |child_block| {
                     logWarnMissingChildBlock(child_block);
                     next_child_block = null;
+                    if (pending_input_name) |n| utils.allocator.free(n);
+                    pending_input_name = null;
                 }
                 // If it's a node, we check if it's a valid NodeName
                 const node_name = std.meta.stringToEnum(NodeName, node.name);
@@ -208,6 +271,13 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                         .pointer_binds => {
                             next_child_block = .pointer_binds;
                         },
+                        .input => {
+                            pending_input_name = if (node.argcount() > 0)
+                                try utils.allocator.dupe(u8, utils.stripQuotes(node.arg(&parser, 0).?))
+                            else
+                                null;
+                            next_child_block = .input;
+                        },
                     }
                 } else {
                     logWarnInvalidNode(node.name);
@@ -219,6 +289,10 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                         .borders => try config.loadBordersChildBlock(&parser),
                         .keybinds => try config.loadKeybindsChildBlock(&parser),
                         .pointer_binds => try config.loadPointerBindsChildBlock(&parser),
+                        .input => {
+                            try config.loadInputChildBlock(&parser, pending_input_name);
+                            pending_input_name = null; // ownership transferred
+                        },
                         else => {
                             // Nothing else should ever be marked as a next_child_block
                             unreachable;
@@ -494,6 +568,89 @@ fn loadPointerBindsChildBlock(config: *Config, parser: *kdl.Parser) !void {
     }
 }
 
+fn loadInputChildBlock(config: *Config, parser: *kdl.Parser, name: ?[]const u8) !void {
+    var input_config: InputConfig = .{ .name = name };
+    errdefer if (input_config.name) |n| utils.allocator.free(n);
+
+    while (try parser.next()) |event| {
+        switch (event) {
+            .node => |node| {
+                const node_name = std.meta.stringToEnum(InputConfigNodeName, node.name);
+                if (node_name) |tag| {
+                    const val_str = utils.stripQuotes(node.arg(parser, 0) orelse {
+                        logWarnMissingNodeArg(tag, "value");
+                        continue;
+                    });
+                    switch (tag) {
+                        .accel_speed => {
+                            const speed = fmt.parseFloat(f64, val_str) catch {
+                                logWarnInvalidNodeArg(tag, val_str);
+                                continue;
+                            };
+                            input_config.accel_speed = speed;
+                            log.debug("input.accel_speed: {s}", .{val_str});
+                        },
+                        .scroll_button => {
+                            const button = parseButton(val_str) orelse {
+                                logWarnInvalidNodeArg(tag, val_str);
+                                continue;
+                            };
+                            input_config.scroll_button = button;
+                            log.debug("input.scroll_button: {s}", .{val_str});
+                        },
+                        .rotation => {
+                            const angle = fmt.parseInt(u32, val_str, 0) catch {
+                                logWarnInvalidNodeArg(tag, val_str);
+                                continue;
+                            };
+                            input_config.rotation = angle;
+                            log.debug("input.rotation: {s}", .{val_str});
+                        },
+                        inline .send_events,
+                        .tap,
+                        .tap_button_map,
+                        .drag,
+                        .drag_lock,
+                        .three_finger_drag,
+                        .accel_profile,
+                        .natural_scroll,
+                        .left_handed,
+                        .click_method,
+                        .clickfinger_button_map,
+                        .middle_emulation,
+                        .scroll_method,
+                        .scroll_button_lock,
+                        .dwt,
+                        .dwtp,
+                        => |cmd| {
+                            // These all have arguments, but we can use compile time constructs to reduce
+                            // code re-use here.
+                            // Because all the fields are optional, we have to use @typeInfo and get the optional's child type.
+                            const field_name = @tagName(cmd);
+                            const FieldType = @typeInfo(@TypeOf(@field(input_config, field_name))).optional.child;
+                            if (std.meta.stringToEnum(FieldType, val_str)) |val| {
+                                @field(input_config, field_name) = val;
+                                log.debug("input.{s}: {s}", .{ field_name, val_str });
+                            } else {
+                                logWarnInvalidNodeArg(cmd, val_str);
+                            }
+                        },
+                    }
+                } else {
+                    logWarnInvalidNode(node.name);
+                }
+            },
+            .child_block_begin => {
+                try config.skipChildBlock(parser);
+            },
+            .child_block_end => {
+                try config.input_configs.append(utils.allocator, input_config);
+                return;
+            },
+        }
+    }
+}
+
 fn parseButton(s: []const u8) ?u32 {
     // Support both numeric and named buttons
     var lower_buf: [16]u8 = undefined;
@@ -560,6 +717,7 @@ fn logWarnInvalidNodeArg(node_name: anytype, node_value: []const u8) void {
         BorderNodeName => log.warn("Invalid \"border.{s}\" ({s}). Using default value", .{ @tagName(node_name), node_value }),
         KeybindNodeName => log.warn("Invalid \"keybind.{s}\" ({s}). Ignoring", .{ @tagName(node_name), node_value }),
         PointerBindNodeName => log.warn("Invalid \"pointer_binds.{s}\" ({s}). Ignoring", .{ @tagName(node_name), node_value }),
+        InputConfigNodeName => log.warn("Invalid \"input.{s}\" ({s}). Ignoring", .{ @tagName(node_name), node_value }),
         else => @compileError("This function does not (yet) support type \"" ++ @typeName(node_name_type) ++ "\""),
     }
 }
@@ -570,6 +728,7 @@ fn logWarnMissingNodeArg(node_name: anytype, comptime arg: []const u8) void {
         NodeName => log.warn("\"{s}\" missing " ++ arg ++ " argument. Ignoring", .{@tagName(node_name)}),
         KeybindNodeName => log.warn("\"keybind.{s}\" missing " ++ arg ++ " argument. Ignoring", .{@tagName(node_name)}),
         PointerBindNodeName => log.warn("\"pointer_binds.{s}\" missing " ++ arg ++ " argument. Ignoring", .{@tagName(node_name)}),
+        InputConfigNodeName => log.warn("\"input.{s}\" missing " ++ arg ++ " argument. Ignoring", .{@tagName(node_name)}),
         else => @compileError("This function does not (yet) support type \"" ++ @typeName(node_name_type) ++ "\""),
     }
 }
@@ -611,6 +770,22 @@ const Io = std.Io;
 
 const wayland = @import("wayland");
 const river = wayland.client.river;
+const AccelProfile = river.LibinputDeviceV1.AccelProfile;
+const ClickfingerButtonMap = river.LibinputDeviceV1.ClickfingerButtonMap;
+const ClickMethod = river.LibinputDeviceV1.ClickMethod;
+const DragLockState = river.LibinputDeviceV1.DragLockState;
+const DragState = river.LibinputDeviceV1.DragState;
+const DwtState = river.LibinputDeviceV1.DwtState;
+const DwtpState = river.LibinputDeviceV1.DwtpState;
+const LeftHandedState = river.LibinputDeviceV1.LeftHandedState;
+const MiddleEmulationState = river.LibinputDeviceV1.MiddleEmulationState;
+const NaturalScrollState = river.LibinputDeviceV1.NaturalScrollState;
+const ScrollButtonLockState = river.LibinputDeviceV1.ScrollButtonLockState;
+const ScrollMethod = river.LibinputDeviceV1.ScrollMethod;
+const SendEventsModes = river.LibinputDeviceV1.SendEventsModes;
+const TapButtonMap = river.LibinputDeviceV1.TapButtonMap;
+const TapState = river.LibinputDeviceV1.TapState;
+const ThreeFingerDragState = river.LibinputDeviceV1.ThreeFingerDragState;
 
 const kdl = @import("kdl");
 const known_folders = @import("known_folders");
