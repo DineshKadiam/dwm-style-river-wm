@@ -192,7 +192,7 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                                 continue;
                             }
 
-                            const path_str = utils.stripQuotes(node.arg(&parser, 0) orelse unreachable);
+                            const path_str = utils.stripQuotes(node.arg(&parser, 0).?);
                             config.wallpaper_image_path = expandTilde(path_str) catch {
                                 logWarnInvalidNodeArg(name, path_str);
                                 continue;

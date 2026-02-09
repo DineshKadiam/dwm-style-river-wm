@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Ben Buhse <me@benbuhse.email>
 //
 // SPDX-License-Identifier: GPL-3.0-or-later
-//
-//
 
 /// Context to pass Wayland info around.
 const Context = @This();
@@ -19,6 +17,7 @@ wl_outputs: *std.AutoHashMapUnmanaged(u32, *wl.Output),
 zwlr_layer_shell_v1: *zwlr.LayerShellV1,
 
 // Wayland globals that we have special structs for
+im: *InputManager,
 wm: *WindowManager,
 xkb_bindings: *XkbBindings,
 
@@ -48,6 +47,8 @@ pub const Options = struct {
     wl_shm: *wl.Shm,
     wl_outputs: *std.AutoHashMapUnmanaged(u32, *wl.Output),
 
+    river_input_manager_v1: *river.InputManagerV1,
+    river_libinput_config_v1: *river.LibinputConfigV1,
     river_layer_shell_v1: *river.LayerShellV1, // TODO
     river_window_manager_v1: *river.WindowManagerV1,
     river_xkb_bindings_v1: *river.XkbBindingsV1,
@@ -69,6 +70,7 @@ pub fn create(options: Options) !*Context {
         .wl_outputs = options.wl_outputs,
         .zwlr_layer_shell_v1 = options.zwlr_layer_shell_v1,
         .wallpaper_image = loadWallpaperImage(options.config),
+        .im = try InputManager.create(context, options.river_input_manager_v1, options.river_libinput_config_v1),
         .wm = try WindowManager.create(context, options.river_window_manager_v1),
         .xkb_bindings = try XkbBindings.create(context, options.river_xkb_bindings_v1),
         .config = options.config,
@@ -156,8 +158,9 @@ const wl = wayland.client.wl;
 const zwlr = wayland.client.zwlr;
 
 const utils = @import("utils.zig");
-const Config = @import("Config.zig");
 const BufferPool = @import("BufferPool.zig");
+const Config = @import("Config.zig");
+const InputManager = @import("InputManager.zig");
 const WallpaperImage = @import("WallpaperImage.zig");
 const WindowManager = @import("WindowManager.zig");
 const XkbBindings = @import("XkbBindings.zig");

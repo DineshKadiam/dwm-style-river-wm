@@ -1,7 +1,7 @@
 .{
     .name = .beansprout,
 
-    .version = "0.0.0",
+    .version = "0.0.1",
 
     .fingerprint = 0x145dac71c283d187, // Changing this has security and trust implications.
 
@@ -9,8 +9,8 @@
 
     .dependencies = .{
         .wayland = .{
-            .url = "https://codeberg.org/ifreund/zig-wayland/archive/v0.4.0.tar.gz",
-            .hash = "wayland-0.4.0-lQa1khbMAQAsLS2eBR7M5lofyEGPIbu2iFDmoz8lPC27",
+            .url = "https://codeberg.org/ifreund/zig-wayland/archive/e57368ecbda85d564362779b253b744260a4b053.tar.gz",
+            .hash = "wayland-0.5.0-dev-lQa1kv_ZAQCZfnVZMocokZ78QJbH6NaM5RUC9ODQPhx5",
         },
         .xkbcommon = .{
             .url = "https://codeberg.org/ifreund/zig-xkbcommon/archive/6786ca619bb442c3f523b5bb894e6a1e48d7e897.tar.gz",
