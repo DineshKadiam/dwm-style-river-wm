@@ -843,3 +843,62 @@ const RiverColor = utils.RiverColor;
 const XkbBindings = @import("XkbBindings.zig");
 
 const log = std.log.scoped(.Config);
+
+const testing = std.testing;
+
+test "boolFromKdlStr" {
+    // True valid
+    try testing.expectEqual(@as(?bool, true), boolFromKdlStr("#true"));
+    try testing.expectEqual(@as(?bool, true), boolFromKdlStr("true"));
+    // False valid
+    try testing.expectEqual(@as(?bool, false), boolFromKdlStr("#false"));
+    try testing.expectEqual(@as(?bool, false), boolFromKdlStr("false"));
+    // Invalid
+    try testing.expectEqual(@as(?bool, null), boolFromKdlStr("yes"));
+    try testing.expectEqual(@as(?bool, null), boolFromKdlStr("1"));
+    try testing.expectEqual(@as(?bool, null), boolFromKdlStr(""));
+    try testing.expectEqual(@as(?bool, null), boolFromKdlStr("TRUE"));
+}
+
+test "parseButton named buttons" {
+    try testing.expectEqual(@as(?u32, 0x110), parseButton("btn_left"));
+    try testing.expectEqual(@as(?u32, 0x110), parseButton("button1"));
+    try testing.expectEqual(@as(?u32, 0x111), parseButton("btn_right"));
+    try testing.expectEqual(@as(?u32, 0x111), parseButton("button3"));
+    try testing.expectEqual(@as(?u32, 0x112), parseButton("btn_middle"));
+    try testing.expectEqual(@as(?u32, 0x112), parseButton("button2"));
+}
+
+test "parseButton case insensitive" {
+    try testing.expectEqual(@as(?u32, 0x110), parseButton("BTN_LEFT"));
+    try testing.expectEqual(@as(?u32, 0x110), parseButton("Btn_Left"));
+    try testing.expectEqual(@as(?u32, 0x110), parseButton("BUTTON1"));
+}
+
+test "parseButton numeric decimal" {
+    try testing.expectEqual(@as(?u32, 272), parseButton("272"));
+    try testing.expectEqual(@as(?u32, 0), parseButton("0"));
+}
+
+test "parseButton numeric hex" {
+    try testing.expectEqual(@as(?u32, 0x110), parseButton("0x110"));
+}
+
+test "parseButton invalid" {
+    try testing.expectEqual(@as(?u32, null), parseButton("bogus"));
+    try testing.expectEqual(@as(?u32, null), parseButton(""));
+}
+
+test "expandTilde with tilde" {
+    const result = try expandTilde("~/foo/bar");
+    defer utils.allocator.free(result);
+    const home = std.posix.getenv("HOME") orelse return;
+    try testing.expect(mem.startsWith(u8, result, home));
+    try testing.expect(mem.endsWith(u8, result, "/foo/bar"));
+}
+
+test "expandTilde without tilde" {
+    const result = try expandTilde("/absolute/path");
+    defer utils.allocator.free(result);
+    try testing.expectEqualStrings("/absolute/path", result);
+}

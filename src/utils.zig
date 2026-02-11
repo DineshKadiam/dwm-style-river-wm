@@ -142,3 +142,134 @@ const river = wayland.client.river;
 const utils = @import("utils.zig");
 
 const log = std.log.scoped(.utils);
+
+const testing = std.testing;
+
+test "parseRgba 0xRRGGBB" {
+    const color = try parseRgba("0x89b4fa");
+    try testing.expectEqual(@as(u32, 0x89 << 24), color.red);
+    try testing.expectEqual(@as(u32, 0xb4 << 24), color.green);
+    try testing.expectEqual(@as(u32, 0xfa << 24), color.blue);
+    try testing.expectEqual(@as(u32, 0xff << 24), color.alpha);
+}
+
+test "parseRgba 0xRRGGBBAA" {
+    const color = try parseRgba("0x1e1e2eff");
+    try testing.expectEqual(@as(u32, 0x1e << 24), color.red);
+    try testing.expectEqual(@as(u32, 0x1e << 24), color.green);
+    try testing.expectEqual(@as(u32, 0x2e << 24), color.blue);
+    try testing.expectEqual(@as(u32, 0xff << 24), color.alpha);
+}
+
+test "parseRgba invalid length" {
+    try testing.expectError(error.InvalidRgba, parseRgba("0x123"));
+    try testing.expectError(error.InvalidRgba, parseRgba("0x12345678a"));
+    try testing.expectError(error.InvalidRgba, parseRgba(""));
+}
+
+test "parseRgba missing 0x prefix" {
+    try testing.expectError(error.InvalidRgba, parseRgba("xx123456"));
+    try testing.expectError(error.InvalidRgba, parseRgba("12345678"));
+}
+
+test "parseRgba invalid hex characters" {
+    try testing.expectError(error.InvalidCharacter, parseRgba("0xGGGGGG"));
+}
+
+test "parseRgbaComptime" {
+    const color = parseRgbaComptime("0x89b4fa");
+    try testing.expectEqual(@as(u32, 0x89 << 24), color.red);
+    try testing.expectEqual(@as(u32, 0xb4 << 24), color.green);
+    try testing.expectEqual(@as(u32, 0xfa << 24), color.blue);
+    try testing.expectEqual(@as(u32, 0xff << 24), color.alpha);
+}
+
+test "parseRgbaComptime with alpha" {
+    const color = parseRgbaComptime("0x1e1e2eff");
+    try testing.expectEqual(@as(u32, 0x1e << 24), color.red);
+    try testing.expectEqual(@as(u32, 0x1e << 24), color.green);
+    try testing.expectEqual(@as(u32, 0x2e << 24), color.blue);
+    try testing.expectEqual(@as(u32, 0xff << 24), color.alpha);
+}
+
+test "stripQuotes removes surrounding quotes" {
+    try testing.expectEqualStrings("hello", stripQuotes("\"hello\""));
+}
+
+test "stripQuotes no quotes" {
+    try testing.expectEqualStrings("hello", stripQuotes("hello"));
+}
+
+test "stripQuotes empty string" {
+    try testing.expectEqualStrings("", stripQuotes(""));
+}
+
+test "stripQuotes single char" {
+    try testing.expectEqualStrings("\"", stripQuotes("\""));
+}
+
+test "stripQuotes only quotes" {
+    try testing.expectEqualStrings("", stripQuotes("\"\""));
+}
+
+test "stripQuotes mismatched quotes" {
+    try testing.expectEqualStrings("\"hello", stripQuotes("\"hello"));
+    try testing.expectEqualStrings("hello\"", stripQuotes("hello\""));
+}
+
+test "parseModifiers single modifier" {
+    const mods = (try parseModifiers("shift")).?;
+    try testing.expect(mods.shift);
+    try testing.expect(!mods.mod4);
+    try testing.expect(!mods.ctrl);
+    try testing.expect(!mods.mod1);
+}
+
+test "parseModifiers combined" {
+    const mods = (try parseModifiers("mod4+shift+ctrl")).?;
+    try testing.expect(mods.mod4);
+    try testing.expect(mods.shift);
+    try testing.expect(mods.ctrl);
+    try testing.expect(!mods.mod1);
+}
+
+test "parseModifiers super alias" {
+    const mods = (try parseModifiers("super")).?;
+    try testing.expect(mods.mod4);
+}
+
+test "parseModifiers alt alias" {
+    const mods = (try parseModifiers("alt")).?;
+    try testing.expect(mods.mod1);
+}
+
+test "parseModifiers none" {
+    const mods = (try parseModifiers("none")).?;
+    try testing.expect(!mods.shift);
+    try testing.expect(!mods.mod4);
+    try testing.expect(!mods.ctrl);
+    try testing.expect(!mods.mod1);
+}
+
+test "parseModifiers case insensitive" {
+    const mods = (try parseModifiers("SHIFT")).?;
+    try testing.expect(mods.shift);
+
+    const mods2 = (try parseModifiers("Mod4")).?;
+    try testing.expect(mods2.mod4);
+}
+
+test "parseModifiers unrecognized" {
+    try testing.expectEqual(@as(?river.SeatV1.Modifiers, null), try parseModifiers("bogus"));
+}
+
+test "parseModifiers invalid length" {
+    try testing.expectEqual(@as(?river.SeatV1.Modifiers, null), try parseModifiers("ab"));
+    try testing.expectEqual(@as(?river.SeatV1.Modifiers, null), try parseModifiers("toolong"));
+}
+
+test "parseModifiers mod3 and mod5" {
+    const mods = (try parseModifiers("mod3+mod5")).?;
+    try testing.expect(mods.mod3);
+    try testing.expect(mods.mod5);
+}

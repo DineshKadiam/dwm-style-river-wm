@@ -255,3 +255,8 @@ const WindowManager = @import("WindowManager.zig");
 const XkbBindings = @import("XkbBindings.zig");
 
 const log = std.log.scoped(.main);
+
+test {
+    _ = @import("utils.zig");
+    _ = @import("Config.zig");
+}
