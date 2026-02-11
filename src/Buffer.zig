@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Ben Buhse <me@benbuhse.email>
 //
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: GPL-3.0-only
 
 const Buffer = @This();
 

@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Ben Buhse <me@benbuhse.email>
 //
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: GPL-3.0-only
 
 /// Wayland globals that we need to bind listen in alphabetical order
 const Globals = struct {

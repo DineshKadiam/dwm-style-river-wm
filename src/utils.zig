@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Ben Buhse <me@benbuhse.email>
 //
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: GPL-3.0-only
 
 // Allocator used by the program. We use the c_allocator since we interact with C code
 // via zig-wayland (and, in the future as of 2026-01-26, other libraries, too).

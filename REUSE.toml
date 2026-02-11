@@ -1,0 +1,16 @@
+version = 1
+
+[[annotations]]
+path = ["README.md"]
+SPDX-FileCopyrightText = "2026 Ben Buhse <me@benbuhse.email>"
+SPDX-License-Identifier = "CC-BY-4.0"
+
+[[annotations]]
+path = ["protocol/wlr-layer-shell-unstable-v1.xml"]
+SPDX-FileCopyrightText = "2017 Drew DeVault"
+SPDX-License-Identifier = "HPND"
+
+[[annotations]]
+path = [".gitignore", "examples/**"]
+SPDX-FileCopyrightText = "2026 Ben Buhse <me@benbuhse.email>"
+SPDX-License-Identifier = "CC0-1.0"

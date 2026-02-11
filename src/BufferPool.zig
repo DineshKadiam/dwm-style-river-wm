@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Ben Buhse <me@benbuhse.email>
 //
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: GPL-3.0-only
 
 // Borrowed and adapted from https://git.sr.ht/~leon_plickat/wayprompt
 const BufferPool = @This();
