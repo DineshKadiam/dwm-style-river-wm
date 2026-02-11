@@ -194,10 +194,16 @@ pub fn destroy(config: *Config) void {
     utils.allocator.destroy(config);
 }
 
-// TODO: Support kdl properties to specific the hostname the config should affect
 fn load(config: *Config, reader: *Io.Reader) !void {
     var parser = try kdl.Parser.init(utils.allocator, reader, .{});
     defer parser.deinit(utils.allocator);
+
+    const hostname = blk: {
+        var uname = std.posix.uname();
+        const hostname = mem.sliceTo(&uname.nodename, 0);
+        if (hostname.len == 0) break :blk null;
+        break :blk hostname;
+    };
 
     var next_child_block: ?NodeName = null;
     var pending_input_name: ?[]const u8 = null;
@@ -217,6 +223,10 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                 // If it's a node, we check if it's a valid NodeName
                 const node_name = std.meta.stringToEnum(NodeName, node.name);
                 if (node_name) |name| {
+                    if (!hostMatches(node, &parser, hostname)) {
+                        logDebugHostMismatch(name);
+                        continue;
+                    }
                     // Next, we have to check the specifics for the NodeName
                     switch (name) {
                         .attach_mode => {
@@ -286,11 +296,11 @@ fn load(config: *Config, reader: *Io.Reader) !void {
             .child_block_begin => {
                 if (next_child_block) |child_block| {
                     switch (child_block) {
-                        .borders => try config.loadBordersChildBlock(&parser),
-                        .keybinds => try config.loadKeybindsChildBlock(&parser),
-                        .pointer_binds => try config.loadPointerBindsChildBlock(&parser),
+                        .borders => try config.loadBordersChildBlock(&parser, hostname),
+                        .keybinds => try config.loadKeybindsChildBlock(&parser, hostname),
+                        .pointer_binds => try config.loadPointerBindsChildBlock(&parser, hostname),
                         .input => {
-                            try config.loadInputChildBlock(&parser, pending_input_name);
+                            try config.loadInputChildBlock(&parser, pending_input_name, hostname);
                             pending_input_name = null; // ownership transferred
                         },
                         else => {
@@ -308,13 +318,17 @@ fn load(config: *Config, reader: *Io.Reader) !void {
     }
 }
 
-fn loadBordersChildBlock(config: *Config, parser: *kdl.Parser) !void {
+fn loadBordersChildBlock(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
     while (try parser.next()) |event| {
         switch (event) {
             .node => |node| {
                 // If it's a node, we check if it's a valid NodeName
                 const node_name = std.meta.stringToEnum(BorderNodeName, node.name);
                 if (node_name) |name| {
+                    if (!hostMatches(node, parser, hostname)) {
+                        logDebugHostMismatch(name);
+                        continue;
+                    }
                     switch (name) {
                         .width => {
                             const width_str = utils.stripQuotes(node.arg(parser, 0) orelse "");
@@ -357,10 +371,14 @@ fn loadBordersChildBlock(config: *Config, parser: *kdl.Parser) !void {
     }
 }
 
-fn loadKeybindsChildBlock(config: *Config, parser: *kdl.Parser) !void {
+fn loadKeybindsChildBlock(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
     while (try parser.next()) |event| {
         switch (event) {
             .node => |node| {
+                if (!hostMatches(node, parser, hostname)) {
+                    logDebugHostMismatch(node.name);
+                    continue;
+                }
                 // tag_bind is a special case node name
                 if (mem.eql(u8, node.name, "tag_bind")) {
                     const mod_str = utils.stripQuotes(node.arg(parser, 0) orelse {
@@ -516,12 +534,16 @@ fn loadKeybindsChildBlock(config: *Config, parser: *kdl.Parser) !void {
     }
 }
 
-fn loadPointerBindsChildBlock(config: *Config, parser: *kdl.Parser) !void {
+fn loadPointerBindsChildBlock(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
     while (try parser.next()) |event| {
         switch (event) {
             .node => |node| {
                 const node_name = std.meta.stringToEnum(PointerBindNodeName, node.name);
                 if (node_name) |name| {
+                    if (!hostMatches(node, parser, hostname)) {
+                        logDebugHostMismatch(name);
+                        continue;
+                    }
                     // Parse modifiers (arg 0)
                     const mod_str = utils.stripQuotes(node.arg(parser, 0) orelse {
                         logWarnMissingNodeArg(name, "modifier(s)");
@@ -568,7 +590,7 @@ fn loadPointerBindsChildBlock(config: *Config, parser: *kdl.Parser) !void {
     }
 }
 
-fn loadInputChildBlock(config: *Config, parser: *kdl.Parser, name: ?[]const u8) !void {
+fn loadInputChildBlock(config: *Config, parser: *kdl.Parser, name: ?[]const u8, hostname: ?[]const u8) !void {
     var input_config: InputConfig = .{ .name = name };
     errdefer if (input_config.name) |n| utils.allocator.free(n);
 
@@ -577,6 +599,10 @@ fn loadInputChildBlock(config: *Config, parser: *kdl.Parser, name: ?[]const u8) 
             .node => |node| {
                 const node_name = std.meta.stringToEnum(InputConfigNodeName, node.name);
                 if (node_name) |tag| {
+                    if (!hostMatches(node, parser, hostname)) {
+                        logDebugHostMismatch(tag);
+                        continue;
+                    }
                     const val_str = utils.stripQuotes(node.arg(parser, 0) orelse {
                         logWarnMissingNodeArg(tag, "value");
                         continue;
@@ -745,6 +771,18 @@ fn logWarnMissingChildBlock(child_block: anytype) void {
     }
 }
 
+fn logDebugHostMismatch(node_name: anytype) void {
+    const node_name_type = @TypeOf(node_name);
+    switch (node_name_type) {
+        NodeName => log.debug("Skipping \"{s}\" (host mismatch)", .{@tagName(node_name)}),
+        BorderNodeName => log.debug("Skipping \"border.{s}\" (host mismatch)", .{@tagName(node_name)}),
+        PointerBindNodeName => log.debug("Skipping \"pointer_binds.{s}\" (host mismatch)", .{@tagName(node_name)}),
+        InputConfigNodeName => log.debug("Skipping \"input.{s}\" (host mismatch)", .{@tagName(node_name)}),
+        []const u8 => log.debug("Skipping \"keybind.{s}\" (host mismatch)", .{node_name}),
+        else => @compileError("This function does not (yet) support type \"" ++ @typeName(node_name_type) ++ "\""),
+    }
+}
+
 fn logDebugSettingNode(node_name: anytype, node_value: []const u8) void {
     const node_name_type = @TypeOf(node_name);
     switch (node_name_type) {
@@ -760,6 +798,15 @@ fn expandTilde(path: []const u8) ![]const u8 {
         return std.fmt.allocPrint(utils.allocator, "{s}{s}", .{ home, path[1..] });
     }
     return utils.allocator.dupe(u8, path);
+}
+
+/// Check whether this machine's hostname matches the hostname property
+/// Always returns true if the "host" property is missing (no host = config applies to
+/// all hosts). Returns false if the hostname argument is null or does not match.
+fn hostMatches(node: kdl.Parser.Node, parser: *kdl.Parser, hostname: ?[]const u8) bool {
+    const host_property = utils.stripQuotes(node.prop(parser, "host") orelse return true);
+    const hostname_str = hostname orelse return false;
+    return mem.eql(u8, host_property, hostname_str);
 }
 
 const std = @import("std");

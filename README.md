@@ -10,7 +10,6 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 These are in rough order of my priority, though no promises I do them in this order.
 
-- [ ] Support per-host config using properties
 - [ ] Implement an optional clock bar
 - [ ] Implement a rivertile clone
 - [ ] Support overriding config location
@@ -31,3 +30,4 @@ These are in rough order of my priority, though no promises I do them in this or
 - [x] Implement runtime log levels
 - [x] Add input configuration, i.e. pointer acceleration and that type of thing
 - [x] Support `None` modifier for keybinds (needed for media/brightness keys)
+- [x] Support per-host config using properties

@@ -17,8 +17,8 @@
             .hash = "xkbcommon-0.4.0-dev-VDqIe0y2AgCNeWLthDZ3MUcUYzhyKXjK85ISm_zxk9Nk",
         },
         .kdl = .{
-            .url = "https://codeberg.org/desttinghim/zig-kdl/archive/9a92d2cc6bb25031778d321c6c1d87e9e4052eab.tar.gz",
-            .hash = "kdl-0.0.0-8rilEMFEAQCYVNhFIcJZWp8HLrjYaEIZGov6CSH05Dsv",
+            .url = "https://codeberg.org/bwbuhse/zig-kdl/archive/13d9d247324f79b854187d6becc47fffdf7fea3b.tar.gz",
+            .hash = "kdl-0.0.0-8rilEKdHAQC_NOLDNu3Ts6kJT8uqqJvrPduFScEjSm_g",
         },
         .known_folders = .{
             .url = "https://github.com/ziglibs/known-folders/archive/83d39161eac2ed6f37ad3cb4d9dd518696ce90bb.tar.gz",
