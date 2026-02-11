@@ -1,7 +1,7 @@
 .{
     .name = .beansprout,
 
-    .version = "0.0.0",
+    .version = "0.0.1",
 
     .fingerprint = 0x145dac71c283d187, // Changing this has security and trust implications.
 
@@ -9,16 +9,16 @@
 
     .dependencies = .{
         .wayland = .{
-            .url = "https://codeberg.org/ifreund/zig-wayland/archive/v0.4.0.tar.gz",
-            .hash = "wayland-0.4.0-lQa1khbMAQAsLS2eBR7M5lofyEGPIbu2iFDmoz8lPC27",
+            .url = "https://codeberg.org/ifreund/zig-wayland/archive/e57368ecbda85d564362779b253b744260a4b053.tar.gz",
+            .hash = "wayland-0.5.0-dev-lQa1kv_ZAQCZfnVZMocokZ78QJbH6NaM5RUC9ODQPhx5",
         },
         .xkbcommon = .{
             .url = "https://codeberg.org/ifreund/zig-xkbcommon/archive/6786ca619bb442c3f523b5bb894e6a1e48d7e897.tar.gz",
             .hash = "xkbcommon-0.4.0-dev-VDqIe0y2AgCNeWLthDZ3MUcUYzhyKXjK85ISm_zxk9Nk",
         },
         .kdl = .{
-            .url = "https://codeberg.org/desttinghim/zig-kdl/archive/edc943426ba1fc47606568a9fc7f402b2b1992e0.tar.gz",
-            .hash = "kdl-0.0.0-8rilEPw_AQDhyfjEIg9pzpBHUyz6bOQ6qCfZImzYn42A",
+            .url = "https://codeberg.org/desttinghim/zig-kdl/archive/9a92d2cc6bb25031778d321c6c1d87e9e4052eab.tar.gz",
+            .hash = "kdl-0.0.0-8rilEMFEAQCYVNhFIcJZWp8HLrjYaEIZGov6CSH05Dsv",
         },
         .known_folders = .{
             .url = "https://github.com/ziglibs/known-folders/archive/83d39161eac2ed6f37ad3cb4d9dd518696ce90bb.tar.gz",

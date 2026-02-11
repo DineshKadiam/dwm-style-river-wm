@@ -22,18 +22,22 @@ pub fn build(b: *std.Build) void {
     const xkbcommon = b.dependency("xkbcommon", .{}).module("xkbcommon");
     const zigimg = b.dependency("zigimg", .{}).module("zigimg");
 
+    scanner.addCustomProtocol(b.path("protocol/river-input-management-v1.xml"));
+    scanner.addCustomProtocol(b.path("protocol/river-libinput-config-v1.xml"));
+    scanner.addCustomProtocol(b.path("protocol/river-layer-shell-v1.xml"));
     scanner.addCustomProtocol(b.path("protocol/river-window-management-v1.xml"));
     scanner.addCustomProtocol(b.path("protocol/river-xkb-bindings-v1.xml"));
-    scanner.addCustomProtocol(b.path("protocol/river-layer-shell-v1.xml"));
     scanner.addSystemProtocol("stable/xdg-shell/xdg-shell.xml"); // dep of wlr-layer-shell-unstable-v1
     scanner.addCustomProtocol(b.path("protocol/wlr-layer-shell-unstable-v1.xml"));
 
     scanner.generate("wl_compositor", 4);
     scanner.generate("wl_shm", 1);
     scanner.generate("wl_output", 4);
+    scanner.generate("river_input_manager_v1", 1);
+    scanner.generate("river_libinput_config_v1", 1);
+    scanner.generate("river_layer_shell_v1", 1);
     scanner.generate("river_window_manager_v1", 3);
     scanner.generate("river_xkb_bindings_v1", 2);
-    scanner.generate("river_layer_shell_v1", 1);
     scanner.generate("zwlr_layer_shell_v1", 3);
 
     const options = b.addOptions();

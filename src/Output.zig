@@ -90,31 +90,31 @@ pub fn destroy(output: *Output) void {
 /// Get the next window in the list that shares at least one tag
 /// with the output, wrapping to first if at end.
 pub fn nextWindow(output: *Output, current: *Window) ?*Window {
-    var link = current.link.next orelse unreachable;
+    var link = current.link.next.?;
     // Walk forward, wrapping at sentinel, until we find a visible window or return to current
     while (true) {
         // If this is the sentinel, wrap to the beginning
         if (link == &output.windows.link) {
-            link = link.next orelse unreachable;
+            link = link.next.?;
         }
         const window: *Window = @fieldParentPtr("link", link);
         if (window.tags & output.tags != 0 or window == current) return window;
-        link = link.next orelse unreachable;
+        link = link.next.?;
     }
 }
 
 /// Get the previous window in the list that shares at least one tag
 /// with the output, wrapping to the last if at beginning
 pub fn prevWindow(output: *Output, current: *Window) ?*Window {
-    var link = current.link.prev orelse unreachable;
+    var link = current.link.prev.?;
     while (true) {
         // If this is the sentinel, wrap to the end
         if (link == &output.windows.link) {
-            link = link.prev orelse unreachable;
+            link = link.prev.?;
         }
         const window: *Window = @fieldParentPtr("link", link);
         if (window.tags & output.tags != 0 or window == current) return window;
-        link = link.prev orelse unreachable;
+        link = link.prev.?;
     }
 }
 
@@ -171,7 +171,7 @@ fn riverOutputListener(river_output_v1: *river.OutputV1, event: river.OutputV1.E
         },
         .wl_output => |ev| {
             // It's guaranteed for the wl_output global to advertised before this event happens
-            output.wl_output = output.context.wl_outputs.get(ev.name) orelse unreachable;
+            output.wl_output = output.context.wl_outputs.get(ev.name).?;
             output.wl_output.?.setListener(*Output, wlOutputListener, output);
 
             // The wl_output's initial events (mode, scale, name, done) were likely

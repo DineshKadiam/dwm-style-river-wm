@@ -69,4 +69,15 @@ pointer_binds {
     // tiled windows will automatically float if resized
     resize_window Mod4 BTN_RIGHT
 }
+// Default input config for all devices
+input {
+    accel_profile "flat"
+}
+// Framework 13 Touchpad
+input "PIXA3854:00 093A:0274 Touchpad" {
+    accel_profile "adaptive"
+    click_method "clickfinger"
+    natural_scroll "enabled"
+    tap "disabled"
+}
 

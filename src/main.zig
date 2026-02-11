@@ -4,6 +4,8 @@
 
 /// Wayland globals that we need to bind listen in alphabetical order
 const Globals = struct {
+    river_input_manager_v1: ?*river.InputManagerV1 = null,
+    river_libinput_config_v1: ?*river.LibinputConfigV1 = null,
     river_layer_shell_v1: ?*river.LayerShellV1 = null,
     river_window_manager_v1: ?*river.WindowManagerV1 = null,
     river_xkb_bindings_v1: ?*river.XkbBindingsV1 = null,
@@ -29,6 +31,8 @@ const usage: []const u8 =
     \\  -h                 Print this help message and exit.
     \\  -version           Print the version number and exit.
     \\  -log-level <level> Set the log level to error, warning, info, or debug.
+    \\
+    \\ Config belongs under $XDG_CONFIG_DIR or $HOME/.config at beansprout/config.kdl
     \\
 ;
 
@@ -100,6 +104,8 @@ pub fn main() !void {
     // We can theoretically start with zero wl_outputs; don't panic if it's empty.
     const wl_outputs = &globals.wl_outputs;
 
+    const river_input_manager_v1 = globals.river_input_manager_v1 orelse utils.interfaceNotAdvertised(river.InputManagerV1);
+    const river_libinput_config_v1 = globals.river_libinput_config_v1 orelse utils.interfaceNotAdvertised(river.LibinputConfigV1);
     const river_layer_shell_v1 = globals.river_layer_shell_v1 orelse utils.interfaceNotAdvertised(river.LayerShellV1);
     const river_window_manager_v1 = globals.river_window_manager_v1 orelse utils.interfaceNotAdvertised(river.WindowManagerV1);
     const river_xkb_bindings_v1 = globals.river_xkb_bindings_v1 orelse utils.interfaceNotAdvertised(river.XkbBindingsV1);
@@ -114,6 +120,8 @@ pub fn main() !void {
         .wl_outputs = wl_outputs,
         .wl_registry = wl_registry,
         .wl_shm = wl_shm,
+        .river_input_manager_v1 = river_input_manager_v1,
+        .river_libinput_config_v1 = river_libinput_config_v1,
         .river_layer_shell_v1 = river_layer_shell_v1,
         .river_window_manager_v1 = river_window_manager_v1,
         .river_xkb_bindings_v1 = river_xkb_bindings_v1,
@@ -155,6 +163,14 @@ fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, globals: *
                 globals.wl_shm = registry.bind(ev.name, wl.Shm, 1) catch |e| {
                     fatal("Failed to bind to wl_shm: {any}", .{@errorName(e)});
                 };
+            } else if (mem.orderZ(u8, ev.interface, river.InputManagerV1.interface.name) == .eq) {
+                globals.river_input_manager_v1 = registry.bind(ev.name, river.InputManagerV1, 1) catch |e| {
+                    fatal("Failed to bind to river_input_manager_v1: {any}", .{@errorName(e)});
+                };
+            } else if (mem.orderZ(u8, ev.interface, river.LibinputConfigV1.interface.name) == .eq) {
+                globals.river_libinput_config_v1 = registry.bind(ev.name, river.LibinputConfigV1, 1) catch |e| {
+                    fatal("Failed to bind to river_libinput_config_v1: {any}", .{@errorName(e)});
+                };
             } else if (mem.orderZ(u8, ev.interface, river.LayerShellV1.interface.name) == .eq) {
                 globals.river_layer_shell_v1 = registry.bind(ev.name, river.LayerShellV1, 1) catch |e| {
                     fatal("Failed to bind to river_layer_shell_v1: {any}", .{@errorName(e)});
@@ -174,7 +190,6 @@ fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, globals: *
                 };
             }
         },
-        // We don't need .global_remove
         .global_remove => |ev| {
             // The only remove we care about is for wl_outputs
             if (!globals.wl_outputs.remove(ev.name)) {
@@ -211,8 +226,6 @@ pub fn logFn(
     args: anytype,
 ) void {
     if (@intFromEnum(level) > @intFromEnum(runtime_log_level)) return;
-
-    if (scope != .default) return;
 
     const scope_prefix = if (scope == .default) ": " else "(" ++ @tagName(scope) ++ "): ";
 
