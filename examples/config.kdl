@@ -85,7 +85,7 @@ input {
     accel_profile "flat"
 }
 // Framework 13 Touchpad
-input "PIXA3854:00 093A:0274 Touchpad" {
+input name="PIXA3854:00 093A:0274 Touchpad" {
     accel_profile "adaptive"
     click_method "clickfinger"
     natural_scroll "enabled"

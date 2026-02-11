@@ -282,8 +282,8 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                             next_child_block = .pointer_binds;
                         },
                         .input => {
-                            pending_input_name = if (node.argcount() > 0)
-                                try utils.allocator.dupe(u8, utils.stripQuotes(node.arg(&parser, 0).?))
+                            pending_input_name = if (node.prop(&parser, "name")) |n|
+                                try utils.allocator.dupe(u8, utils.stripQuotes(n))
                             else
                                 null;
                             next_child_block = .input;
