@@ -166,8 +166,12 @@ fn riverLibinputDeviceV1Listener(river_libinput_device_v1: *river.LibinputDevice
 
 pub fn manage(libinput_device: *LibinputDevice) void {
     if (libinput_device.should_manage) {
-        libinput_device.should_manage = false;
-        libinput_device.applyInputConfigs();
+        if (libinput_device.input_device) |input_device| {
+            if (input_device.name) |_| {
+                libinput_device.should_manage = false;
+                libinput_device.applyInputConfigs();
+            }
+        }
     }
 }
 
