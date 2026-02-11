@@ -11,7 +11,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 These are in rough order of my priority, though no promises I do them in this order.
 
 - [ ] Implement an optional clock bar
-- [ ] Implement a rivertile clone
+- [ ] Implement a river-tag-overlay clone
 - [ ] Support overriding config location
 - [ ] Support window rules (float/tags/SSD by app-id/title)
 - [ ] Support switch handling (e.g. lid close)
