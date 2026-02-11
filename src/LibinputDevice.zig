@@ -8,6 +8,15 @@ context: *Context,
 
 river_libinput_device_v1: *river.LibinputDeviceV1,
 
+/// The river_input_device_v1 associated with this Libinput device.
+input_device: ?*InputDevice = null,
+
+/// Set to true whenever we want to apply input configurations.
+/// At first, we wait for the first manage_start because it's after all of the
+/// _support events. After that, it's set to true whenever the config is
+/// reloaded.
+should_manage: bool = true,
+
 send_events_support: SendEventsModes = .{},
 send_events_current: ?SendEventsModes = null,
 
@@ -87,14 +96,18 @@ pub fn create(context: *Context, river_libinput_device_v1: *river.LibinputDevice
     return libinput_device;
 }
 
-pub fn destroy(input_device: *LibinputDevice) void {
-    input_device.link.remove();
-    utils.allocator.destroy(input_device);
+pub fn destroy(libinput_device: *LibinputDevice) void {
+    if (libinput_device.input_device) |input_device| {
+        input_device.libinput_device = null;
+    }
+    libinput_device.link.remove();
+    utils.allocator.destroy(libinput_device);
 }
 
 fn riverLibinputDeviceV1Listener(river_libinput_device_v1: *river.LibinputDeviceV1, event: river.LibinputDeviceV1.Event, libinput_device: *LibinputDevice) void {
     assert(libinput_device.river_libinput_device_v1 == river_libinput_device_v1);
     const im = libinput_device.context.im;
+    log.debug("bwbuhse: {s} for {d}", .{ @tagName(event), river_libinput_device_v1.getId() });
     switch (event) {
         .removed => {
             river_libinput_device_v1.destroy();
@@ -105,9 +118,8 @@ fn riverLibinputDeviceV1Listener(river_libinput_device_v1: *river.LibinputDevice
             var it = im.input_devices.iterator(.forward);
             while (it.next()) |input_device| {
                 if (input_device.river_input_device_v1 == river_input_device_v1) {
-                    // This event is only sent once when the object is created
-                    assert(input_device.libinput_device == null);
                     input_device.libinput_device = libinput_device;
+                    libinput_device.input_device = input_device;
                     log.info("input dev {} is associated to libinput {}", .{ river_libinput_device_v1.getId(), river_input_device_v1.getId() });
                 }
             }
@@ -152,8 +164,143 @@ fn riverLibinputDeviceV1Listener(river_libinput_device_v1: *river.LibinputDevice
     }
 }
 
+pub fn manage(libinput_device: *LibinputDevice) void {
+    if (libinput_device.should_manage) {
+        libinput_device.should_manage = false;
+        libinput_device.applyInputConfigs();
+    }
+}
+
+pub fn applyInputConfigs(libinput_device: *LibinputDevice) void {
+    const input_device = libinput_device.input_device orelse return;
+    const device_name = input_device.name orelse return;
+    const config = libinput_device.context.config;
+    const dev = libinput_device.river_libinput_device_v1;
+
+    for (config.input_configs.items) |input_config| {
+        if (input_config.name) |config_name| {
+            if (!mem.eql(u8, config_name, device_name)) continue;
+        }
+
+        log.debug("Applying input config to {s}", .{device_name});
+
+        if (@as(u32, @bitCast(libinput_device.send_events_support)) != 0) {
+            if (input_config.send_events) |val| {
+                const mode: SendEventsModes = @bitCast(@as(u32, @intCast(@intFromEnum(val))));
+                const mode_bits: u32 = @bitCast(mode);
+                const support_bits: u32 = @bitCast(libinput_device.send_events_support);
+                if (mode_bits == 0 or mode_bits & support_bits == mode_bits) {
+                    applyResult(dev.setSendEvents(mode));
+                }
+            }
+        }
+
+        if (libinput_device.tap_support > 0) {
+            if (input_config.tap) |val| applyResult(dev.setTap(val));
+            if (input_config.tap_button_map) |val| applyResult(dev.setTapButtonMap(val));
+            if (input_config.drag) |val| applyResult(dev.setDrag(val));
+            if (input_config.drag_lock) |val| applyResult(dev.setDragLock(val));
+        }
+
+        if (libinput_device.three_finger_drag_support >= 3) {
+            if (input_config.three_finger_drag) |val| applyResult(dev.setThreeFingerDrag(val));
+        }
+
+        if (libinput_device.accel_profiles_support) |support| {
+            if (input_config.accel_profile) |val| {
+                if (isSupported(AccelProfile, AccelProfiles, val, support)) {
+                    applyResult(dev.setAccelProfile(val));
+                }
+            }
+            if (input_config.accel_speed) |speed| {
+                var speed_val: f64 = speed;
+                var speed_array: wl.Array = .{
+                    .size = @sizeOf(f64),
+                    .alloc = @sizeOf(f64),
+                    .data = @ptrCast(&speed_val),
+                };
+                applyResult(dev.setAccelSpeed(&speed_array));
+            }
+        }
+
+        if (libinput_device.natural_scroll_support) {
+            if (input_config.natural_scroll) |val| applyResult(dev.setNaturalScroll(val));
+        }
+
+        if (libinput_device.left_handed_support) {
+            if (input_config.left_handed) |val| applyResult(dev.setLeftHanded(val));
+        }
+
+        if (libinput_device.click_method_support) |support| {
+            if (input_config.click_method) |val| {
+                if (isSupported(ClickMethod, ClickMethods, val, support)) {
+                    applyResult(dev.setClickMethod(val));
+                }
+            }
+            if (input_config.clickfinger_button_map) |val| applyResult(dev.setClickfingerButtonMap(val));
+        }
+
+        if (libinput_device.middle_emulation_support) {
+            if (input_config.middle_emulation) |val| applyResult(dev.setMiddleEmulation(val));
+        }
+
+        if (libinput_device.scroll_method_support) |support| {
+            if (input_config.scroll_method) |val| {
+                if (isSupported(ScrollMethod, ScrollMethods, val, support)) {
+                    applyResult(dev.setScrollMethod(val));
+                }
+            }
+            if (support.on_button_down) {
+                if (input_config.scroll_button) |val| applyResult(dev.setScrollButton(val));
+                if (input_config.scroll_button_lock) |val| applyResult(dev.setScrollButtonLock(val));
+            }
+        }
+
+        if (libinput_device.dwt_support) {
+            if (input_config.dwt) |val| applyResult(dev.setDwt(val));
+        }
+
+        if (libinput_device.dwtp_support) {
+            if (input_config.dwtp) |val| applyResult(dev.setDwtp(val));
+        }
+
+        if (libinput_device.rotation_support) {
+            if (input_config.rotation) |val| applyResult(dev.setRotation(val));
+        }
+    }
+}
+
+fn isSupported(comptime E: type, comptime S: type, val: E, support: S) bool {
+    const int_val: u32 = @intCast(@intFromEnum(val));
+    if (int_val == 0) return true;
+    const support_bits: u32 = @bitCast(support);
+    return int_val & support_bits == int_val;
+}
+
+/// Handles the result of a set_* request by setting a listener to
+/// log any unsupported or invalid config responses from the compositor.
+fn applyResult(result: anyerror!*river.LibinputResultV1) void {
+    const Listener = struct {
+        fn resultListener(_: *river.LibinputResultV1, event: river.LibinputResultV1.Event, _: ?*anyopaque) void {
+            switch (event) {
+                .success => {},
+                .unsupported => log.debug("Config option unsupported by device", .{}),
+                .invalid => log.warn("Invalid config value for device", .{}),
+            }
+        }
+    };
+
+    const r = result catch |err| {
+        log.err("Failed to send input config request: {}", .{err});
+        return;
+    };
+    // We don't need any userdata in this listener
+    r.setListener(?*anyopaque, Listener.resultListener, null);
+}
+
 const std = @import("std");
 const assert = std.debug.assert;
+const mem = std.mem;
 
 const wayland = @import("wayland");
 const wl = wayland.client.wl;
@@ -180,5 +327,6 @@ const ThreeFingerDragState = river.LibinputDeviceV1.ThreeFingerDragState;
 
 const utils = @import("utils.zig");
 const Context = @import("Context.zig");
+const InputDevice = @import("InputDevice.zig");
 
 const log = std.log.scoped(.InputDevice);

@@ -36,6 +36,12 @@ pub fn create(river_input_device_v1: *river.InputDeviceV1) !*InputDevice {
 }
 
 pub fn destroy(input_device: *InputDevice) void {
+    if (input_device.libinput_device) |libinput_device| {
+        libinput_device.input_device = null;
+    }
+    if (input_device.name) |name| {
+        utils.allocator.free(name);
+    }
     input_device.link.remove();
     utils.allocator.destroy(input_device);
 }
@@ -47,16 +53,8 @@ fn riverInputDeviceV1Listener(river_input_device_v1: *river.InputDeviceV1, event
             river_input_device_v1.destroy();
             input_device.destroy();
         },
-        .type => |ev| {
-            // This event is only sent once when the object is created
-            assert(input_device.type == null);
-            input_device.type = ev.type;
-        },
-        .name => |ev| {
-            // This event is only sent once when the object is created
-            assert(input_device.name == null);
-            input_device.name = mem.span(ev.name);
-        },
+        .type => |ev| input_device.type = ev.type,
+        .name => |ev| input_device.name = utils.allocator.dupe(u8, mem.span(ev.name)) catch @panic("Out of memory"),
     }
 }
 

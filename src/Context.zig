@@ -112,6 +112,12 @@ pub fn manage(context: *Context) void {
         context.config = new_config;
         context.initialized = false;
 
+        // Mark all libinput devices as needing config re-application
+        var dev_it = context.im.libinput_devices.iterator(.forward);
+        while (dev_it.next()) |libinput_device| {
+            libinput_device.should_manage = true;
+        }
+
         if (wallpaper_changed) {
             if (context.wallpaper_image) |img| img.destroy();
             context.wallpaper_image = loadWallpaperImage(new_config);
@@ -131,6 +137,12 @@ pub fn manage(context: *Context) void {
                 }
             }
         }
+    }
+
+    // Apply input configs for new or reconfigured devices
+    var dev_it = context.im.libinput_devices.iterator(.forward);
+    while (dev_it.next()) |libinput_device| {
+        libinput_device.manage();
     }
 }
 

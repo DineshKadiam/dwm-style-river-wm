@@ -213,11 +213,11 @@ var runtime_log_level: std.log.Level = switch (builtin.mode) {
     .ReleaseSafe, .ReleaseFast, .ReleaseSmall => .info,
 };
 
-// pub const std_options: std.Options = .{
-//     // Tell std.log to leave all log level filtering to us.
-//     .log_level = .debug,
-//     .logFn = logFn,
-// };
+pub const std_options: std.Options = .{
+    // Tell std.log to leave all log level filtering to us.
+    .log_level = .debug,
+    .logFn = logFn,
+};
 
 pub fn logFn(
     comptime level: std.log.Level,
@@ -226,8 +226,6 @@ pub fn logFn(
     args: anytype,
 ) void {
     if (@intFromEnum(level) > @intFromEnum(runtime_log_level)) return;
-
-    if (scope != .default) return;
 
     const scope_prefix = if (scope == .default) ": " else "(" ++ @tagName(scope) ++ "): ";
 
