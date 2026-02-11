@@ -82,7 +82,9 @@ pub fn parseModifiers(s: []const u8) !?river.SeatV1.Modifiers {
         const lower = try std.ascii.allocLowerString(utils.allocator, part);
         defer utils.allocator.free(lower);
 
-        if (mem.eql(u8, lower, "mod4") or mem.eql(u8, lower, "super")) {
+        if (mem.eql(u8, lower, "none")) {
+            // No modifier bits to set
+        } else if (mem.eql(u8, lower, "mod4") or mem.eql(u8, lower, "super")) {
             modifiers.mod4 = true;
         } else if (mem.eql(u8, lower, "shift")) {
             modifiers.shift = true;
