@@ -22,6 +22,12 @@ All configuration is applied top down, so later options will overwrite earlier o
 // Whether new windows should go to the top or bottom of the window stack
 attach_mode "top"
 
+// Number of windows in the primary stack
+primary_count 1
+
+// Proportion of output width taken by the primary stack
+primary_ratio 0.55
+
 // Whether mousing over a new window should move focus
 focus_follows_pointer #true
 
@@ -37,6 +43,8 @@ wallpaper_image_path "~/Pictures/wallpaper.png"
 | Setting                      | Type   | Default | Description                                         |
 |------------------------------|--------|---------|-----------------------------------------------------|
 | `attach_mode`                | enum   | `top`   | Where new windows go in the stack (`top` or `bottom`) |
+| `primary_count`              | u8     | `1`     | Number of windows in the primary stack (0+)         |
+| `primary_ratio`              | float  | `0.55`  | Proportion of output width for the primary stack (0.10–0.90) |
 | `focus_follows_pointer`      | bool   | `#true` | Focus follows the pointer between windows           |
 | `pointer_warp_on_focus_change` | bool | `#true` | Warp pointer to center of newly-focused windows     |
 | `wallpaper_image_path`       | string | none    | Path to wallpaper image                             |

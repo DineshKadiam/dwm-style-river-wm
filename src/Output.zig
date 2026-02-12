@@ -25,10 +25,15 @@ wl_surface: ?*wl.Surface = null,
 layer_surface: ?*zwlr.LayerSurfaceV1 = null,
 
 /// Proportion of output width taken by the primary stack
-primary_ratio: f32 = 0.55,
+primary_ratio: f32,
 
 /// Number of windows in the primary stack
-primary_count: u8 = 1,
+primary_count: u8,
+
+/// Per-tagmask layout overrides
+/// These only get added when the user modifies primary count or ratio
+/// Any tagmask NOT in this map keeps using the defaults from Config
+tag_layout_overrides: std.AutoHashMapUnmanaged(u32, TagLayoutOverride) = .{},
 
 /// Tags are 32-bit bitfield. A window can be active on one(?) or more tags.
 tags: u32 = 0x0001,
@@ -45,6 +50,12 @@ configured: bool = false,
 windows: wl.list.Head(Window, .link),
 
 link: wl.list.Link,
+
+/// Struct used for tagmask-specific count/ratio overrides
+pub const TagLayoutOverride = struct {
+    primary_count: u8,
+    primary_ratio: f32,
+};
 
 pub const PendingManage = struct {
     width: ?u31 = null,
@@ -64,6 +75,8 @@ pub fn create(context: *Context, river_output_v1: *river.OutputV1) !*Output {
     output.* = .{
         .context = context,
         .river_output_v1 = river_output_v1,
+        .primary_count = context.config.primary_count,
+        .primary_ratio = context.config.primary_ratio,
         .windows = undefined, // we will initialize this shortly
         .link = undefined, // Handled by the wl.list
     };
@@ -82,6 +95,7 @@ pub fn destroy(output: *Output) void {
         window.destroy();
     }
 
+    output.tag_layout_overrides.deinit(utils.allocator);
     output.deinitWallpaperLayerSurface();
     output.river_output_v1.destroy();
     utils.allocator.destroy(output);
@@ -425,9 +439,6 @@ pub fn manage(output: *Output) void {
         output.y = y;
     }
 
-    if (output.pending_manage.tags) |tags| {
-        output.tags = tags;
-    }
     if (output.pending_manage.primary_ratio) |primary_ratio| {
         // Ratios outside of this range could cause crashes (when doing the layout calculation)
         output.primary_ratio = std.math.clamp(primary_ratio, 0.10, 0.90);
@@ -435,6 +446,24 @@ pub fn manage(output: *Output) void {
     if (output.pending_manage.primary_count) |primary_count| {
         // Don't allow less than 1 primary
         output.primary_count = @max(1, primary_count);
+    }
+    if (output.pending_manage.tags) |new_tags| {
+        // Save current layout for the old tagmask
+        output.tag_layout_overrides.put(utils.allocator, output.tags, .{
+            .primary_count = output.primary_count,
+            .primary_ratio = output.primary_ratio,
+        }) catch @panic("Out of memory");
+
+        // Restore layout for the new tagmask, or fall back to config defaults
+        if (output.tag_layout_overrides.get(new_tags)) |tag_layout_override| {
+            output.primary_count = tag_layout_override.primary_count;
+            output.primary_ratio = tag_layout_override.primary_ratio;
+        } else {
+            output.primary_count = output.context.config.primary_count;
+            output.primary_ratio = output.context.config.primary_ratio;
+        }
+
+        output.tags = new_tags;
     }
 
     // Calculate layout before managing windows

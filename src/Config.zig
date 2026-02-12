@@ -13,6 +13,13 @@ border_color_focused: RiverColor = utils.parseRgbaComptime("0x89b4fa"),
 /// Color of unfocused windows' borders in 0xRRGGBBAA or 0xRRGGBB form
 border_color_unfocused: RiverColor = utils.parseRgbaComptime("0x1e1e2e"),
 
+/// Number of windows in the primary stack
+/// This is a global default, but each tagmask can have its own value
+primary_count: u8 = 1,
+/// Proportion of output width taken by the primary stack
+/// This is a global default, but each tagmask can have its own value
+primary_ratio: f32 = 0.55,
+
 /// Where a new window should attach, top or bottom of the stack
 attach_mode: AttachMode = .top,
 /// Should focus change when the cursor moves onto a new window
@@ -80,6 +87,8 @@ pub const AttachMode = enum {
 
 const NodeName = enum {
     attach_mode,
+    primary_count,
+    primary_ratio,
     focus_follows_pointer,
     pointer_warp_on_focus_change,
     wallpaper_image_path,
@@ -229,6 +238,24 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                     }
                     // Next, we have to check the specifics for the NodeName
                     switch (name) {
+                        .primary_count => {
+                            const count_str = utils.stripQuotes(node.arg(&parser, 0) orelse "");
+                            // Use @max to ensure a minimum of 1
+                            config.primary_count = @max(1, fmt.parseInt(u8, count_str, 10) catch {
+                                logWarnInvalidNodeArg(name, count_str);
+                                continue;
+                            });
+                            logDebugSettingNode(name, count_str);
+                        },
+                        .primary_ratio => {
+                            const ratio_str = utils.stripQuotes(node.arg(&parser, 0) orelse "");
+                            const ratio = fmt.parseFloat(f32, ratio_str) catch {
+                                logWarnInvalidNodeArg(name, ratio_str);
+                                continue;
+                            };
+                            config.primary_ratio = std.math.clamp(ratio, 0.10, 0.90);
+                            logDebugSettingNode(name, ratio_str);
+                        },
                         .attach_mode => {
                             const attach_mode_str = utils.stripQuotes(node.arg(&parser, 0) orelse "");
                             if (std.meta.stringToEnum(AttachMode, attach_mode_str)) |mode| {

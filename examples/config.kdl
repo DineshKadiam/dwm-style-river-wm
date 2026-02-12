@@ -1,5 +1,9 @@
 // Whether new windows should go to the top or bottom of the window stack
 attach_mode top
+// Number of windows in the primary stack
+primary_count 1
+// Proportion of output width taken by the primary stack
+primary_ratio 0.55
 // Whether mousing over a new window should move focus
 focus_follows_pointer #true
 // Whether the focus should warp to the center of newly-focused windows

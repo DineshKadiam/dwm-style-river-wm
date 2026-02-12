@@ -2,8 +2,6 @@
 
 These are in rough order of my priority, though no promises I do them in this order.
 
-- [ ] Implement primary count/ratio per tagmask
-- [ ] Add primary_count and primary_ratio to Config
 - [ ] Implement a river-tag-overlay clone
 - [ ] Implement an optional clock bar
 - [ ] Support window rules (float/tags/SSD by app-id/title)
@@ -26,3 +24,5 @@ These are in rough order of my priority, though no promises I do them in this or
 - [x] Add input configuration, i.e. pointer acceleration and that type of thing
 - [x] Support `None` modifier for keybinds (needed for media/brightness keys)
 - [x] Support per-host config using properties
+- [x] Implement primary count/ratio per tagmask
+- [x] Add primary_count and primary_ratio to Config
