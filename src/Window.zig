@@ -68,7 +68,7 @@ pub const PendingRender = struct {
 };
 
 pub fn create(context: *Context, river_window_v1: *river.WindowV1, output: ?*Output) !*Window {
-    var window = try utils.allocator.create(Window);
+    var window = try utils.gpa.create(Window);
     errdefer window.destroy();
 
     window.* = .{
@@ -89,7 +89,7 @@ pub fn destroy(window: *Window) void {
     window.river_window_v1.destroy();
     window.river_node_v1.destroy();
 
-    utils.allocator.destroy(window);
+    utils.gpa.destroy(window);
 }
 
 fn windowListener(river_window_v1: *river.WindowV1, event: river.WindowV1.Event, window: *Window) void {

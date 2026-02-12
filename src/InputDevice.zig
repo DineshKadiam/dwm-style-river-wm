@@ -18,7 +18,7 @@ name: ?[]const u8 = null,
 link: wl.list.Link,
 
 pub fn create(river_input_device_v1: *river.InputDeviceV1) !*InputDevice {
-    const input_device = try utils.allocator.create(InputDevice);
+    const input_device = try utils.gpa.create(InputDevice);
     errdefer input_device.destroy();
 
     input_device.* = .{
@@ -40,10 +40,10 @@ pub fn destroy(input_device: *InputDevice) void {
         libinput_device.input_device = null;
     }
     if (input_device.name) |name| {
-        utils.allocator.free(name);
+        utils.gpa.free(name);
     }
     input_device.link.remove();
-    utils.allocator.destroy(input_device);
+    utils.gpa.destroy(input_device);
 }
 
 fn riverInputDeviceV1Listener(river_input_device_v1: *river.InputDeviceV1, event: river.InputDeviceV1.Event, input_device: *InputDevice) void {
@@ -54,7 +54,7 @@ fn riverInputDeviceV1Listener(river_input_device_v1: *river.InputDeviceV1, event
             input_device.destroy();
         },
         .type => |ev| input_device.type = ev.type,
-        .name => |ev| input_device.name = utils.allocator.dupe(u8, mem.span(ev.name)) catch @panic("Out of memory"),
+        .name => |ev| input_device.name = utils.gpa.dupe(u8, mem.span(ev.name)) catch @panic("Out of memory"),
     }
 }
 

@@ -55,7 +55,7 @@ const XkbBinding = struct {
     const FocusDirection = enum { next, prev };
 
     fn create(xkb_binding_v1: *river.XkbBindingV1, command: Command, context: *Context) !*XkbBinding {
-        var xkb_binding = try utils.allocator.create(XkbBinding);
+        var xkb_binding = try utils.gpa.create(XkbBinding);
         errdefer xkb_binding.destroy();
 
         xkb_binding.* = .{
@@ -72,7 +72,7 @@ const XkbBinding = struct {
 
     pub fn destroy(xkb_binding: *XkbBinding) void {
         xkb_binding.xkb_binding_v1.destroy();
-        utils.allocator.destroy(xkb_binding);
+        utils.gpa.destroy(xkb_binding);
     }
 
     fn xkbBindingListener(river_xkb_binding_v1: *river.XkbBindingV1, event: river.XkbBindingV1.Event, xkb_binding: *XkbBinding) void {
@@ -93,7 +93,7 @@ const XkbBinding = struct {
         // TODO: Should I log.warn when commands return early?
         switch (xkb_binding.command) {
             .spawn => |cmd| {
-                var child = std.process.Child.init(cmd, utils.allocator);
+                var child = std.process.Child.init(cmd, utils.gpa);
                 _ = child.spawn() catch |err| {
                     log.err("Failed to spawn \"{s}\": {}", .{ cmd[0], err });
                 };
@@ -404,7 +404,7 @@ xkb_bindings_v1: *river.XkbBindingsV1,
 bindings: wl.list.Head(XkbBinding, .link),
 
 pub fn create(context: *Context, xkb_bindings_v1: *river.XkbBindingsV1) !*XkbBindings {
-    const xkb_bindings = try utils.allocator.create(XkbBindings);
+    const xkb_bindings = try utils.gpa.create(XkbBindings);
     errdefer xkb_bindings.destroy();
 
     xkb_bindings.* = .{
@@ -423,9 +423,9 @@ pub fn destroy(xkb_bindings: *XkbBindings) void {
     while (it.next()) |binding| {
         binding.link.remove();
         binding.xkb_binding_v1.destroy();
-        utils.allocator.destroy(binding);
+        utils.gpa.destroy(binding);
     }
-    utils.allocator.destroy(xkb_bindings);
+    utils.gpa.destroy(xkb_bindings);
 }
 
 pub fn addBinding(xkb_bindings: *XkbBindings, river_seat_v1: *river.SeatV1, keysym: xkbcommon.Keysym, modifiers: river.SeatV1.Modifiers, command: Command) void {

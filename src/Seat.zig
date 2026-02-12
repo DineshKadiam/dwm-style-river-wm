@@ -57,7 +57,7 @@ pub const PointerOp = union(enum) {
 };
 
 pub fn create(context: *Context, river_seat_v1: *river.SeatV1) !*Seat {
-    var seat = try utils.allocator.create(Seat);
+    var seat = try utils.gpa.create(Seat);
     errdefer seat.destroy();
 
     seat.* = .{
@@ -77,7 +77,7 @@ pub fn destroy(seat: *Seat) void {
     if (seat.move_pointer_binding) |binding| binding.destroy();
     if (seat.resize_pointer_binding) |binding| binding.destroy();
     seat.river_seat_v1.destroy();
-    utils.allocator.destroy(seat);
+    utils.gpa.destroy(seat);
 }
 
 fn seatListener(river_seat_v1: *river.SeatV1, event: river.SeatV1.Event, seat: *Seat) void {

@@ -58,7 +58,7 @@ pub const Options = struct {
 };
 
 pub fn create(options: Options) !*Context {
-    const context = try utils.allocator.create(Context);
+    const context = try utils.gpa.create(Context);
     errdefer context.destroy();
 
     context.* = .{
@@ -88,7 +88,7 @@ pub fn destroy(context: *Context) void {
     }
     context.buffer_pool.deinit();
 
-    utils.allocator.destroy(context);
+    utils.gpa.destroy(context);
 }
 
 pub fn manage(context: *Context) void {

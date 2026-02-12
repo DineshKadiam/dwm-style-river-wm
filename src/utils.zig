@@ -2,9 +2,8 @@
 //
 // SPDX-License-Identifier: GPL-3.0-only
 
-// Allocator used by the program. We use the c_allocator since we interact with C code
-// via zig-wayland (and, in the future as of 2026-01-26, other libraries, too).
-pub const allocator = std.heap.c_allocator;
+// Allocator used by the program. We use the c_allocator since we interact with C code via our dependencies.
+pub const gpa = std.heap.c_allocator;
 
 pub const RiverColor = struct {
     red: u32,
@@ -79,8 +78,8 @@ pub fn parseModifiers(s: []const u8) !?river.SeatV1.Modifiers {
         if (part.len < 3 or part.len > 5) return null;
 
         // Case-insensitive comparison by lowercasing
-        const lower = try std.ascii.allocLowerString(utils.allocator, part);
-        defer utils.allocator.free(lower);
+        const lower = try std.ascii.allocLowerString(utils.gpa, part);
+        defer utils.gpa.free(lower);
 
         if (mem.eql(u8, lower, "none")) {
             // No modifier bits to set
@@ -108,10 +107,10 @@ pub fn tokenizeToOwnedSlices(input: []const u8, delimiter: u8) ![]const []const 
     var list: std.ArrayList([]const u8) = .empty;
     var it = std.mem.tokenizeScalar(u8, input, delimiter);
     while (it.next()) |part| {
-        const duped = try allocator.dupe(u8, part);
-        try list.append(utils.allocator, duped);
+        const duped = try gpa.dupe(u8, part);
+        try list.append(utils.gpa, duped);
     }
-    return list.toOwnedSlice(utils.allocator);
+    return list.toOwnedSlice(utils.gpa);
 }
 
 pub fn stripQuotes(s: []const u8) []const u8 {

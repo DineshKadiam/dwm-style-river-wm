@@ -21,7 +21,7 @@ const Globals = struct {
         while (it.next()) |output| {
             output.*.release();
         }
-        globals.wl_outputs.deinit(utils.allocator);
+        globals.wl_outputs.deinit(utils.gpa);
     }
 };
 
@@ -78,10 +78,10 @@ pub fn main() !void {
         }
     }
 
-    const wayland_display_var = try utils.allocator.dupeZ(u8, process.getEnvVarOwned(utils.allocator, "WAYLAND_DISPLAY") catch {
+    const wayland_display_var = try utils.gpa.dupeZ(u8, process.getEnvVarOwned(utils.gpa, "WAYLAND_DISPLAY") catch {
         fatal("Error getting WAYLAND_DISPLAY environment variable. Exiting", .{});
     });
-    defer utils.allocator.free(wayland_display_var);
+    defer utils.gpa.free(wayland_display_var);
 
     const wl_display = wl.Display.connect(null) catch {
         fatal("Error connecting to Wayland server. Exiting", .{});
@@ -156,7 +156,7 @@ fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, globals: *
 
                 // We can get multiple wl_outputs, so we have to try add them to our HashMap
                 // instead of just keeping the one
-                globals.wl_outputs.put(utils.allocator, ev.name, wl_output) catch |e| {
+                globals.wl_outputs.put(utils.gpa, ev.name, wl_output) catch |e| {
                     fatal("Failed to add wl_output to hashmap: {any}", .{@errorName(e)});
                 };
             } else if (mem.orderZ(u8, ev.interface, wl.Shm.interface.name) == .eq) {

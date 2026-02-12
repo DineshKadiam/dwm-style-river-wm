@@ -17,7 +17,7 @@ libinput_devices: wl.list.Head(LibinputDevice, .link),
 
 pub fn create(context: *Context, river_input_manager_v1: *river.InputManagerV1, river_libinput_config_v1: *river.LibinputConfigV1) !*InputManager {
     log.debug("Creating new InputManager", .{});
-    const im = try utils.allocator.create(InputManager);
+    const im = try utils.gpa.create(InputManager);
     errdefer im.destroy();
 
     im.* = .{
@@ -38,7 +38,7 @@ pub fn create(context: *Context, river_input_manager_v1: *river.InputManagerV1, 
 }
 
 pub fn destroy(im: *InputManager) void {
-    utils.allocator.destroy(im);
+    utils.gpa.destroy(im);
 }
 
 pub fn inputManagerV1Listener(river_input_manager_v1: *river.InputManagerV1, event: river.InputManagerV1.Event, im: *InputManager) void {

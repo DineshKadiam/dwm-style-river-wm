@@ -69,7 +69,7 @@ pub const PendingManage = struct {
 };
 
 pub fn create(context: *Context, river_output_v1: *river.OutputV1) !*Output {
-    var output = try utils.allocator.create(Output);
+    var output = try utils.gpa.create(Output);
     errdefer output.destroy();
 
     output.* = .{
@@ -95,10 +95,10 @@ pub fn destroy(output: *Output) void {
         window.destroy();
     }
 
-    output.tag_layout_overrides.deinit(utils.allocator);
+    output.tag_layout_overrides.deinit(utils.gpa);
     output.deinitWallpaperLayerSurface();
     output.river_output_v1.destroy();
-    utils.allocator.destroy(output);
+    utils.gpa.destroy(output);
 }
 
 /// Get the next window in the list that shares at least one tag
@@ -239,7 +239,7 @@ fn wlOutputListener(_: *wl.Output, event: wl.Output.Event, output: *Output) void
             output.scale = @intCast(ev.factor);
         },
         .name => |ev| {
-            output.name = utils.allocator.dupe(u8, mem.span(ev.name)) catch @panic("Out of memory");
+            output.name = utils.gpa.dupe(u8, mem.span(ev.name)) catch @panic("Out of memory");
         },
         else => {},
     }
@@ -449,7 +449,7 @@ pub fn manage(output: *Output) void {
     }
     if (output.pending_manage.tags) |new_tags| {
         // Save current layout for the old tagmask
-        output.tag_layout_overrides.put(utils.allocator, output.tags, .{
+        output.tag_layout_overrides.put(utils.gpa, output.tags, .{
             .primary_count = output.primary_count,
             .primary_ratio = output.primary_ratio,
         }) catch @panic("Out of memory");

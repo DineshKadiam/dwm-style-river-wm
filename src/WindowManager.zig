@@ -17,7 +17,7 @@ outputs: wl.list.Head(Output, .link),
 orphan_windows: wl.list.Head(Window, .link),
 
 pub fn create(context: *Context, window_manager_v1: *river.WindowManagerV1) !*WindowManager {
-    const wm = try utils.allocator.create(WindowManager);
+    const wm = try utils.gpa.create(WindowManager);
     errdefer wm.destroy();
 
     wm.* = .{
@@ -53,7 +53,7 @@ pub fn destroy(wm: *WindowManager) void {
         }
     }
 
-    utils.allocator.destroy(wm);
+    utils.gpa.destroy(wm);
 }
 
 /// Get the next output in the list, wrapping to first if at end

@@ -136,15 +136,15 @@ const InputConfigNodeName = enum {
 const KeybindNodeName = @typeInfo(XkbBindings.Command).@"union".tag_type.?;
 
 pub fn create() !*Config {
-    var config: *Config = try utils.allocator.create(Config);
+    var config: *Config = try utils.gpa.create(Config);
     errdefer config.destroy();
     config.* = .{}; // create() gives us undefined memory
 
-    if (try known_folders.getPath(utils.allocator, .local_configuration)) |config_dir| blk: {
-        defer utils.allocator.free(config_dir);
+    if (try known_folders.getPath(utils.gpa, .local_configuration)) |config_dir| blk: {
+        defer utils.gpa.free(config_dir);
 
-        const config_path = try std.fmt.allocPrint(utils.allocator, "{s}/{s}", .{ config_dir, CONFIG_FILE });
-        defer utils.allocator.free(config_path);
+        const config_path = try std.fmt.allocPrint(utils.gpa, "{s}/{s}", .{ config_dir, CONFIG_FILE });
+        defer utils.gpa.free(config_path);
 
         const file = fs.openFileAbsolute(config_path, .{}) catch break :blk;
 
@@ -157,21 +157,21 @@ pub fn create() !*Config {
             for (config.keybinds.items) |keybind| {
                 switch (keybind.command) {
                     .spawn => |argv| {
-                        for (argv) |arg| utils.allocator.free(arg);
-                        utils.allocator.free(argv);
+                        for (argv) |arg| utils.gpa.free(arg);
+                        utils.gpa.free(argv);
                     },
                     else => {},
                 }
             }
-            config.keybinds.clearAndFree(utils.allocator);
-            config.tag_binds.clearAndFree(utils.allocator);
-            config.pointer_binds.clearAndFree(utils.allocator);
+            config.keybinds.clearAndFree(utils.gpa);
+            config.tag_binds.clearAndFree(utils.gpa);
+            config.pointer_binds.clearAndFree(utils.gpa);
             for (config.input_configs.items) |ic| {
-                if (ic.name) |name| utils.allocator.free(name);
+                if (ic.name) |name| utils.gpa.free(name);
             }
-            config.input_configs.clearAndFree(utils.allocator);
+            config.input_configs.clearAndFree(utils.gpa);
             if (config.wallpaper_image_path) |path| {
-                utils.allocator.free(path);
+                utils.gpa.free(path);
             }
             config.* = .{};
         };
@@ -184,28 +184,28 @@ pub fn destroy(config: *Config) void {
     for (config.keybinds.items) |keybind| {
         switch (keybind.command) {
             .spawn => |argv| {
-                for (argv) |arg| utils.allocator.free(arg);
-                utils.allocator.free(argv);
+                for (argv) |arg| utils.gpa.free(arg);
+                utils.gpa.free(argv);
             },
             else => {},
         }
     }
-    config.keybinds.deinit(utils.allocator);
-    config.tag_binds.deinit(utils.allocator);
-    config.pointer_binds.deinit(utils.allocator);
+    config.keybinds.deinit(utils.gpa);
+    config.tag_binds.deinit(utils.gpa);
+    config.pointer_binds.deinit(utils.gpa);
     for (config.input_configs.items) |ic| {
-        if (ic.name) |name| utils.allocator.free(name);
+        if (ic.name) |name| utils.gpa.free(name);
     }
-    config.input_configs.deinit(utils.allocator);
+    config.input_configs.deinit(utils.gpa);
     if (config.wallpaper_image_path) |path| {
-        utils.allocator.free(path);
+        utils.gpa.free(path);
     }
-    utils.allocator.destroy(config);
+    utils.gpa.destroy(config);
 }
 
 fn load(config: *Config, reader: *Io.Reader) !void {
-    var parser = try kdl.Parser.init(utils.allocator, reader, .{});
-    defer parser.deinit(utils.allocator);
+    var parser = try kdl.Parser.init(utils.gpa, reader, .{});
+    defer parser.deinit(utils.gpa);
 
     const hostname = blk: {
         var uname = std.posix.uname();
@@ -216,7 +216,7 @@ fn load(config: *Config, reader: *Io.Reader) !void {
 
     var next_child_block: ?NodeName = null;
     var pending_input_name: ?[]const u8 = null;
-    defer if (pending_input_name) |n| utils.allocator.free(n);
+    defer if (pending_input_name) |n| utils.gpa.free(n);
 
     // Parse the KDL config
     while (try parser.next()) |event| {
@@ -226,7 +226,7 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                 if (next_child_block) |child_block| {
                     logWarnMissingChildBlock(child_block);
                     next_child_block = null;
-                    if (pending_input_name) |n| utils.allocator.free(n);
+                    if (pending_input_name) |n| utils.gpa.free(n);
                     pending_input_name = null;
                 }
                 // If it's a node, we check if it's a valid NodeName
@@ -310,7 +310,7 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                         },
                         .input => {
                             pending_input_name = if (node.prop(&parser, "name")) |n|
-                                try utils.allocator.dupe(u8, utils.stripQuotes(n))
+                                try utils.gpa.dupe(u8, utils.stripQuotes(n))
                             else
                                 null;
                             next_child_block = .input;
@@ -437,7 +437,7 @@ fn loadKeybindsChildBlock(config: *Config, parser: *kdl.Parser, hostname: ?[]con
                         },
                     };
 
-                    try config.tag_binds.append(utils.allocator, .{
+                    try config.tag_binds.append(utils.gpa, .{
                         .modifiers = modifiers,
                         .command = command,
                         .keysym = null, // Tag binds don't need a keysym (automatically 1-9)
@@ -466,8 +466,8 @@ fn loadKeybindsChildBlock(config: *Config, parser: *kdl.Parser, hostname: ?[]con
                         continue;
                     });
                     // Keysym.fromName() needs a [*:0]const u8
-                    const z = try utils.allocator.dupeZ(u8, key_str);
-                    defer utils.allocator.free(z);
+                    const z = try utils.gpa.dupeZ(u8, key_str);
+                    defer utils.gpa.free(z);
                     const keysym = xkbcommon.Keysym.fromName(z, .case_insensitive);
 
                     const command: XkbBindings.Command = sw: switch (name) {
@@ -540,7 +540,7 @@ fn loadKeybindsChildBlock(config: *Config, parser: *kdl.Parser, hostname: ?[]con
                         },
                     };
 
-                    try config.keybinds.append(utils.allocator, .{
+                    try config.keybinds.append(utils.gpa, .{
                         .modifiers = modifiers,
                         .command = command,
                         .keysym = keysym,
@@ -596,7 +596,7 @@ fn loadPointerBindsChildBlock(config: *Config, parser: *kdl.Parser, hostname: ?[
                         .resize_window => .resize_window,
                     };
 
-                    try config.pointer_binds.append(utils.allocator, .{
+                    try config.pointer_binds.append(utils.gpa, .{
                         .modifiers = modifiers,
                         .button = button,
                         .action = action,
@@ -619,7 +619,7 @@ fn loadPointerBindsChildBlock(config: *Config, parser: *kdl.Parser, hostname: ?[
 
 fn loadInputChildBlock(config: *Config, parser: *kdl.Parser, name: ?[]const u8, hostname: ?[]const u8) !void {
     var input_config: InputConfig = .{ .name = name };
-    errdefer if (input_config.name) |n| utils.allocator.free(n);
+    errdefer if (input_config.name) |n| utils.gpa.free(n);
 
     while (try parser.next()) |event| {
         switch (event) {
@@ -697,7 +697,7 @@ fn loadInputChildBlock(config: *Config, parser: *kdl.Parser, name: ?[]const u8, 
                 try config.skipChildBlock(parser);
             },
             .child_block_end => {
-                try config.input_configs.append(utils.allocator, input_config);
+                try config.input_configs.append(utils.gpa, input_config);
                 return;
             },
         }
@@ -822,9 +822,9 @@ fn logDebugSettingNode(node_name: anytype, node_value: []const u8) void {
 fn expandTilde(path: []const u8) ![]const u8 {
     if (path.len > 0 and path[0] == '~') {
         const home = std.posix.getenv("HOME") orelse return error.HomeNotSet;
-        return std.fmt.allocPrint(utils.allocator, "{s}{s}", .{ home, path[1..] });
+        return std.fmt.allocPrint(utils.gpa, "{s}{s}", .{ home, path[1..] });
     }
-    return utils.allocator.dupe(u8, path);
+    return utils.gpa.dupe(u8, path);
 }
 
 /// Check whether this machine's hostname matches the hostname property
@@ -918,7 +918,7 @@ test "parseButton invalid" {
 
 test "expandTilde with tilde" {
     const result = try expandTilde("~/foo/bar");
-    defer utils.allocator.free(result);
+    defer utils.gpa.free(result);
     const home = std.posix.getenv("HOME") orelse return;
     try testing.expect(mem.startsWith(u8, result, home));
     try testing.expect(mem.endsWith(u8, result, "/foo/bar"));
@@ -926,6 +926,6 @@ test "expandTilde with tilde" {
 
 test "expandTilde without tilde" {
     const result = try expandTilde("/absolute/path");
-    defer utils.allocator.free(result);
+    defer utils.gpa.free(result);
     try testing.expectEqualStrings("/absolute/path", result);
 }

@@ -30,7 +30,7 @@ pub fn deinit(buffer_pool: *BufferPool) void {
         it = node.next;
         const buffer: *Buffer = @fieldParentPtr("node", node);
         buffer.deinit();
-        utils.allocator.destroy(buffer);
+        utils.gpa.destroy(buffer);
     }
 }
 
@@ -82,8 +82,8 @@ fn findSuitableBuffer(buffer_pool: *BufferPool, wl_shm: *wl.Shm, width: u31, hei
 
 fn newBuffer(buffer_pool: *BufferPool, wl_shm: *wl.Shm, width: u31, height: u31) !*Buffer {
     log.debug("creating new buffer {}x{}", .{ width, height });
-    const buffer = try utils.allocator.create(Buffer);
-    errdefer utils.allocator.destroy(buffer);
+    const buffer = try utils.gpa.create(Buffer);
+    errdefer utils.gpa.destroy(buffer);
     buffer.* = try Buffer.init(wl_shm, width, height);
     buffer.setListener();
     buffer_pool.buffers.append(&buffer.node);
@@ -103,7 +103,7 @@ fn cullBuffers(buffer_pool: *BufferPool) void {
         if (!buffer.busy) {
             buffer.deinit();
             buffer_pool.buffers.remove(node);
-            utils.allocator.destroy(buffer);
+            utils.gpa.destroy(buffer);
             buffer_pool.len -= 1;
             overhead -= 1;
         }

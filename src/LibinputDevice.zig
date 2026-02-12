@@ -78,7 +78,7 @@ rotation_current: ?u32 = null,
 link: wl.list.Link,
 
 pub fn create(context: *Context, river_libinput_device_v1: *river.LibinputDeviceV1) !*LibinputDevice {
-    const libinput_device = try utils.allocator.create(LibinputDevice);
+    const libinput_device = try utils.gpa.create(LibinputDevice);
     errdefer libinput_device.destroy();
 
     libinput_device.* = .{
@@ -101,7 +101,7 @@ pub fn destroy(libinput_device: *LibinputDevice) void {
         input_device.libinput_device = null;
     }
     libinput_device.link.remove();
-    utils.allocator.destroy(libinput_device);
+    utils.gpa.destroy(libinput_device);
 }
 
 fn riverLibinputDeviceV1Listener(river_libinput_device_v1: *river.LibinputDeviceV1, event: river.LibinputDeviceV1.Event, libinput_device: *LibinputDevice) void {
