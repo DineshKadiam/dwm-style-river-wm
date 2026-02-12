@@ -2,10 +2,13 @@
 
 These are in rough order of my priority, though no promises I do them in this order.
 
-- [ ] Implement an optional clock bar
+- [ ] Implement primary count/ratio per tagmask
+- [ ] Add primary_count and primary_ratio to Config
 - [ ] Implement a river-tag-overlay clone
-- [ ] Support overriding config location
+- [ ] Implement an optional clock bar
 - [ ] Support window rules (float/tags/SSD by app-id/title)
+- [ ] Support overriding config location
+- [ ] Support configuring primary vs secondary stack side
 - [ ] Support switch handling (e.g. lid close)
 - [ ] Support keybind modes (e.g. passthrough)
 - [ ] Support solid `background-color` fallback (no wallpaper)

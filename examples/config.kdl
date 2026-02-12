@@ -66,7 +66,7 @@ keybinds {
     // Brightness keys (no modifier)
     spawn None XF86MonBrightnessUp "~/.config/river/brightness-up.sh"
     spawn None XF86MonBrightnessDown "~/.config/river/brightness-down.sh"
-    // Special command to generate keybinds for keys 1-9 and tags 1<<0 through 1<<9
+    // Special command to generate keybinds for keys 1-9 and tags 1<<0 through 1<<8
     tag_bind Mod4 set_output_tags
     tag_bind Mod4+Shift set_window_tags
     tag_bind Mod4+Ctrl toggle_output_tags

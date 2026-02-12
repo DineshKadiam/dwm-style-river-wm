@@ -1,7 +1,7 @@
 version = 1
 
 [[annotations]]
-path = ["README.md", "docs/TODO.md"]
+path = ["README.md", "docs/**"]
 SPDX-FileCopyrightText = "2026 Ben Buhse <me@benbuhse.email>"
 SPDX-License-Identifier = "CC-BY-4.0"
 
