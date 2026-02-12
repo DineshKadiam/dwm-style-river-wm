@@ -78,8 +78,8 @@ pub fn parseModifiers(s: []const u8) !?river.SeatV1.Modifiers {
         if (part.len < 3 or part.len > 5) return null;
 
         // Case-insensitive comparison by lowercasing
-        const lower = try std.ascii.allocLowerString(utils.gpa, part);
-        defer utils.gpa.free(lower);
+        var lower_buf: [5]u8 = undefined;
+        const lower = std.ascii.lowerString(lower_buf[0..part.len], part);
 
         if (mem.eql(u8, lower, "none")) {
             // No modifier bits to set

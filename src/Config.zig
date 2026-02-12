@@ -143,8 +143,8 @@ pub fn create() !*Config {
     if (try known_folders.getPath(utils.gpa, .local_configuration)) |config_dir| blk: {
         defer utils.gpa.free(config_dir);
 
-        const config_path = try std.fmt.allocPrint(utils.gpa, "{s}/{s}", .{ config_dir, CONFIG_FILE });
-        defer utils.gpa.free(config_path);
+        var path_buf: [std.fs.max_path_bytes]u8 = undefined;
+        const config_path = std.fmt.bufPrint(&path_buf, "{s}/{s}", .{ config_dir, CONFIG_FILE }) catch return config;
 
         const file = fs.openFileAbsolute(config_path, .{}) catch break :blk;
 
