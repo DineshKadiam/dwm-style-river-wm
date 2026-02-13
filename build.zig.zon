@@ -35,6 +35,14 @@
             .url = "https://github.com/zigimg/zigimg/archive/fb74dfb7c6d83f2bd01a229826669451525a4ba8.tar.gz",
             .hash = "zigimg-0.1.0-8_eo2kSGFwADIkeZYTgfnLOV-khh6ZRoGmK6F2-s_QbY",
         },
+        .fcft = .{
+            .url = "https://git.sr.ht/~novakane/zig-fcft/archive/4bf5be61c869d08d5bcb0306049c63a9cb0795a7.tar.gz",
+            .hash = "fcft-3.0.0-zcx6CxQfAADhnwm8SjyCkQF-VFHGiVarigc2de3ciInC",
+        },
+        .zeit = .{
+            .url = "https://github.com/rockorager/zeit/archive/7ac64d72dbfb1a4ad549102e7d4e232a687d32d8.tar.gz",
+            .hash = "zeit-0.6.0-5I6bk36tAgATpSl9wjFmRPMqYN2Mn0JQHgIcRNcqDpJA",
+        },
     },
 
     .paths = .{

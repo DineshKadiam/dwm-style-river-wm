@@ -36,6 +36,7 @@ const usage: []const u8 =
     \\
 ;
 
+// TODO: I'd like to clean this function up a bit and move some bits into helpers
 pub fn main() !void {
     const result = flags.parser([*:0]const u8, &.{
         .{ .name = "h", .kind = .boolean },
@@ -77,6 +78,16 @@ pub fn main() !void {
             posix.exit(1);
         }
     }
+
+    // Initialize fcft
+    const fcft_log_level: fcft.LogClass = switch (runtime_log_level) {
+        .err => .err,
+        .warn => .warning,
+        .info => .info,
+        .debug => .debug,
+    };
+    _ = fcft.init(.auto, false, fcft_log_level);
+    defer fcft.fini();
 
     const wayland_display_var = try utils.gpa.dupeZ(u8, process.getEnvVarOwned(utils.gpa, "WAYLAND_DISPLAY") catch {
         fatal("Error getting WAYLAND_DISPLAY environment variable. Exiting", .{});
@@ -246,6 +257,7 @@ const wayland = @import("wayland");
 const river = wayland.client.river;
 const wl = wayland.client.wl;
 const zwlr = wayland.client.zwlr;
+const fcft = @import("fcft");
 
 const flags = @import("flags.zig");
 const utils = @import("utils.zig");
