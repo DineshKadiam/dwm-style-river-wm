@@ -281,21 +281,21 @@ pub fn initWallpaperLayerSurface(output: *Output) !void {
 
     const context = output.context;
 
-    const wl_surface: *wl.Surface = try context.wl_compositor.createSurface();
+    const wl_surface = try context.wl_compositor.createSurface();
     errdefer wl_surface.destroy();
 
     // We don't want our surface to have any input region (default is infinite)
-    const empty_region: *wl.Region = try context.wl_compositor.createRegion();
+    const empty_region = try context.wl_compositor.createRegion();
     defer empty_region.destroy();
     wl_surface.setInputRegion(empty_region);
 
     // Full surface should be opaque
-    const opaque_region: *wl.Region = try context.wl_compositor.createRegion();
+    const opaque_region = try context.wl_compositor.createRegion();
     opaque_region.add(0, 0, output.width, output.height);
     defer opaque_region.destroy();
     wl_surface.setOpaqueRegion(opaque_region);
 
-    const layer_surface: *zwlr.LayerSurfaceV1 = try context.zwlr_layer_shell_v1.getLayerSurface(wl_surface, output.wl_output, .background, "beansprout-wallpaper");
+    const layer_surface = try context.zwlr_layer_shell_v1.getLayerSurface(wl_surface, output.wl_output, .background, "beansprout-wallpaper");
     layer_surface.setExclusiveZone(-1);
     layer_surface.setAnchor(.{ .top = true, .right = true, .bottom = true, .left = true });
 
@@ -395,7 +395,7 @@ pub fn renderWallpaper(output: *Output) !void {
 
     const pix = pixman.Image.createBitsNoClear(image_format, image_width, image_height, image_data, image_stride) orelse {
         log.err("Failed to copy the wallpaper image for rendering", .{});
-        return error.ImageCopyError;
+        return error.FailedToCreatePixmanImage;
     };
     defer _ = pix.unref();
 

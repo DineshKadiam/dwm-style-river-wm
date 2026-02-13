@@ -7,7 +7,9 @@ const Bar = @This();
 context: *Context,
 
 // TODO: Get this in Config then save in Context
-font: *fcft.Font,
+fonts: *fcft.Font,
+/// The timezone of the computer.
+timezone: zeit.timezone.TimeZone,
 
 /// The output that this Bar is on
 output: *Output,
@@ -22,9 +24,18 @@ layer_surface: ?*zwlr.LayerSurfaceV1 = null,
 configured: bool = false,
 
 pub fn init(context: *Context, output: *Output) !Bar {
+    // Get the local environment
+    // Needed for the timezone
+    // XXX: It might be better to store this in Context?
+    var env = try process.getEnvMap(utils.gpa);
+    defer env.deinit();
+
+    const timezone = try zeit.local(utils.gpa, &env);
+
     return .{
         .context = context,
-        .font = try getFcftFonts("monospace:size=14"),
+        .fonts = try getFcftFonts("monospace:size=14"),
+        .timezone = timezone,
         .output = output,
     };
 }
@@ -40,18 +51,18 @@ pub fn initSurface(bar: *Bar) !void {
 
     // TODO: Add padding to config
     const padding = 5;
-    const bar_height: u31 = @intCast(bar.font.height + 2 * padding);
+    const bar_height: u31 = @intCast(bar.fonts.height + 2 * padding);
 
-    const wl_surface: *wl.Surface = try context.wl_compositor.createSurface();
+    const wl_surface = try context.wl_compositor.createSurface();
     errdefer wl_surface.destroy();
 
     // TODO: Allow clicking on tags to switch between them?
     // We don't want our surface to have any input region (default is infinite)
-    const empty_region: *wl.Region = try context.wl_compositor.createRegion();
+    const empty_region = try context.wl_compositor.createRegion();
     defer empty_region.destroy();
     wl_surface.setInputRegion(empty_region);
 
-    const layer_surface: *zwlr.LayerSurfaceV1 = try context
+    const layer_surface = try context
         .zwlr_layer_shell_v1
         .getLayerSurface(wl_surface, bar.output.wl_output, .top, "beansprout-bar");
     layer_surface.setSize(0, bar_height);
@@ -127,14 +138,72 @@ pub fn layerSurfaceListener(
 // TODO: Configure number of visible tags
 /// Renders the bar and its components
 pub fn render(bar: *Bar) !void {
-    const buffer = try bar.context.buffer_pool.nextBuffer(bar.context.wl_shm, bar.width, bar.height);
+    const context = bar.context;
+
+    const scale = bar.output.scale;
+
+    // Scaled width/height
+    const render_width = bar.width * scale;
+    const render_height = bar.height * scale;
+
+    // Don't have anything to render
+    if (render_width == 0 or render_height == 0 or scale == 0) {
+        return;
+    }
+    const buffer = try context.buffer_pool.nextBuffer(bar.context.wl_shm, render_width, render_height);
 
     // Fill with a solid color (e.g., dark background)
-    const bg_color = pixman.Color{ .red = 0x1e1e, .green = 0x1e1e, .blue = 0x2e2e, .alpha = 0xffff };
-    const fill = pixman.Image.createSolidFill(&bg_color) orelse return;
-    defer _ = fill.unref();
-    pixman.Image.composite32(.src, fill, null, buffer.pixman_image, 0, 0, 0, 0, 0, 0, bar.width, bar.height);
+    // TODO: Configure text/bg colors
+    const bg_color: pixman.Color = .{ .red = 0x1e1e, .green = 0x1e1e, .blue = 0x2e2e, .alpha = 0xffff };
+    _ = pixman.Image.fillRectangles(
+        .src,
+        buffer.pixman_image,
+        &bg_color,
+        1,
+        &[1]pixman.Rectangle16{.{
+            .x = 0,
+            .y = 0,
+            .width = @intCast(render_width),
+            .height = @intCast(render_height),
+        }},
+    );
 
+    // Set-up text color
+    const text_color: pixman.Color = .{ .red = 0xffff, .green = 0xffff, .blue = 0xffff, .alpha = 0xffff };
+    const color = pixman.Image.createSolidFill(&text_color) orelse return error.FailedToCreatePixmanImage;
+    defer _ = color.unref();
+
+    // Get the current time in seconds since the epoch,
+    // then load the local timezone,
+    // then convert `now` to the `local` timezone
+    const now = try zeit.instant(.{});
+    const now_local = now.in(&bar.timezone);
+
+    // Generate date/time info for this instant
+    const dt = now_local.time();
+
+    // Convert time to a string
+    var buf: [255:0]u8 = undefined;
+    var fbs = io.fixedBufferStream(&buf);
+    // TODO: Support 12-hour clock (%I:%M)
+    try dt.strftime(fbs.writer(), "%H:%M");
+
+    // Convert ASCII text string to unicode
+    // XXX: Not sure if this even needs to be converted to unicode
+    var codepoint_it = (try unicode.Utf8View.init(fbs.getWritten())).iterator();
+    const codepoint_count = try unicode.utf8CountCodepoints(fbs.getWritten());
+    // We use u32 for fcft even if zig uses u21
+    var codepoints: []u32 = try utils.gpa.alloc(u32, codepoint_count);
+    defer utils.gpa.free(codepoints);
+    var i: usize = 0;
+    while (codepoint_it.nextCodepoint()) |cp| : (i += 1) {
+        codepoints[i] = cp;
+    }
+
+    // Actually render the unicode codepoints
+    try bar.renderChars(codepoints, buffer, color);
+
+    // Finally, attach the buffer to the surface
     const wl_surface = bar.wl_surface orelse return;
     wl_surface.attach(buffer.wl_buffer, 0, 0);
     wl_surface.damageBuffer(0, 0, bar.width, bar.height);
@@ -142,7 +211,7 @@ pub fn render(bar: *Bar) !void {
 }
 
 // Borrowed and modified from https://git.sr.ht/~novakane/zig-fcft-example
-fn renderChars(output: *Output, text: []const u32, buffer: *Buffer, color: *pixman.Image) !void {
+fn renderChars(bar: *Bar, text: []const u32, buffer: *Buffer, color: *pixman.Image) !void {
     const glyphs = try utils.gpa.alloc(*const fcft.Glyph, text.len);
     const kerns = try utils.gpa.alloc(c_long, text.len);
     defer utils.gpa.free(glyphs);
@@ -152,12 +221,12 @@ fn renderChars(output: *Output, text: []const u32, buffer: *Buffer, color: *pixm
 
     var i: usize = 0;
     while (i < text.len) : (i += 1) {
-        glyphs[i] = try output.ctx.fonts.rasterizeCharUtf32(text[i], .default);
+        glyphs[i] = try bar.fonts.rasterizeCharUtf32(text[i], .default);
 
         kerns[i] = 0;
         if (i > 0) {
             var x_kern: c_long = 0;
-            if (output.ctx.fonts.kerning(text[i - 1], text[i], &x_kern, null)) {
+            if (bar.fonts.kerning(text[i - 1], text[i], &x_kern, null)) {
                 kerns[i] = x_kern;
             }
         }
@@ -165,14 +234,18 @@ fn renderChars(output: *Output, text: []const u32, buffer: *Buffer, color: *pixm
         text_width += @intCast(kerns[i] + glyphs[i].advance.x);
     }
 
+    // TODO: Take a x pos and left/center/right justification args so text can
+    // be put in different places
     var x: i32 = @divFloor(buffer.width - text_width, 2);
-    const y: i32 = @divFloor(buffer.height - output.ctx.fonts.height, 2);
-    output.render_glyphs(buffer, &x, y, color, text.len, glyphs.ptr, kerns);
+    // const side_padding = 5;
+    // var x: i32 = buffer.width - text_width - side_padding;
+    const y: i32 = @divFloor(buffer.height - bar.fonts.height, 2);
+    bar.renderGlyphs(buffer, &x, y, color, text.len, glyphs.ptr, kerns);
 }
 
 // Borrowed https://git.sr.ht/~novakane/zig-fcft-example
 fn renderGlyphs(
-    output: *Output,
+    bar: *Bar,
     buffer: *Buffer,
     x: *i32,
     y: i32,
@@ -198,7 +271,7 @@ fn renderGlyphs(
                     0,
                     0,
                     x.* + @as(i32, @intCast(glyphs[i].x)),
-                    y + output.ctx.fonts.ascent - @as(i32, @intCast(glyphs[i].y)),
+                    y + bar.fonts.ascent - @as(i32, @intCast(glyphs[i].y)),
                     glyphs[i].width,
                     glyphs[i].height,
                 );
@@ -215,7 +288,7 @@ fn renderGlyphs(
                     0,
                     0,
                     x.* + @as(i32, @intCast(glyphs[i].x)),
-                    y + output.ctx.fonts.ascent - @as(i32, @intCast(glyphs[i].y)),
+                    y + bar.fonts.ascent - @as(i32, @intCast(glyphs[i].y)),
                     glyphs[i].width,
                     glyphs[i].height,
                 );
@@ -249,13 +322,17 @@ fn getFcftFonts(fonts: []const u8) !*fcft.Font {
 }
 
 const std = @import("std");
+const io = std.io;
 const mem = std.mem;
+const process = std.process;
+const unicode = std.unicode;
 
 const wayland = @import("wayland");
 const wl = wayland.client.wl;
 const zwlr = wayland.client.zwlr;
 const fcft = @import("fcft");
 const pixman = @import("pixman");
+const zeit = @import("zeit");
 
 const utils = @import("utils.zig");
 const Buffer = @import("Buffer.zig");

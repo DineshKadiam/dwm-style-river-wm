@@ -61,7 +61,7 @@ pub fn init(shm: *wl.Shm, width: u31, height: u31) !Buffer {
         @as(c_int, @intCast(height)),
         @as([*c]u32, @ptrCast(data)),
         @as(c_int, @intCast(stride)),
-    ) orelse return error.NoPixmanImage;
+    ) orelse return error.FailedToCreatePixmanImage;
 
     // The pixman image and the Wayland buffer now share the same memory.
     return .{
