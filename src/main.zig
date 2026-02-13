@@ -36,48 +36,8 @@ const usage: []const u8 =
     \\
 ;
 
-// TODO: I'd like to clean this function up a bit and move some bits into helpers
 pub fn main() !void {
-    const result = flags.parser([*:0]const u8, &.{
-        .{ .name = "h", .kind = .boolean },
-        .{ .name = "version", .kind = .boolean },
-        .{ .name = "log-level", .kind = .arg },
-    }).parse(std.os.argv[1..]) catch {
-        try stderr.writeAll(usage);
-        try stderr.flush();
-        posix.exit(1);
-    };
-    if (result.flags.h) {
-        try stdout.writeAll(usage);
-        try stdout.flush();
-        posix.exit(0);
-    }
-    if (result.args.len != 0) {
-        log.err("unknown option '{s}'", .{result.args[0]});
-        try stderr.writeAll(usage);
-        try stderr.flush();
-        posix.exit(1);
-    }
-
-    if (result.flags.version) {
-        try stdout.writeAll(build_options.version ++ "\n");
-        try stdout.flush();
-        posix.exit(0);
-    }
-    if (result.flags.@"log-level") |level| {
-        if (mem.eql(u8, level, "error")) {
-            runtime_log_level = .err;
-        } else if (mem.eql(u8, level, "warning")) {
-            runtime_log_level = .warn;
-        } else if (mem.eql(u8, level, "info")) {
-            runtime_log_level = .info;
-        } else if (mem.eql(u8, level, "debug")) {
-            runtime_log_level = .debug;
-        } else {
-            log.err("invalid log level '{s}'", .{level});
-            posix.exit(1);
-        }
-    }
+    parseArgs();
 
     // Initialize fcft
     const fcft_log_level: fcft.LogClass = switch (runtime_log_level) {
@@ -141,13 +101,130 @@ pub fn main() !void {
     });
     defer context.destroy();
 
+    try run(wl_display, context);
+}
+
+/// Function to handle the main event loop
+///
+/// Since we've added a bar with a clock,we need
+fn run(wl_display: *wl.Display, context: *Context) !void {
+    var mask = posix.sigemptyset();
+
+    posix.sigaddset(&mask, posix.SIG.INT);
+    posix.sigaddset(&mask, posix.SIG.QUIT);
+
+    posix.sigprocmask(posix.SIG.BLOCK, &mask, null);
+
+    const sig_fd = try posix.signalfd(-1, &mask, 0);
+
+    const poll_wayland = 0;
+    const poll_sig = 1;
+
+    var pollfds: [2]posix.pollfd = undefined;
+
+    pollfds[poll_wayland] = .{
+        .fd = wl_display.getFd(),
+        .events = posix.POLL.IN,
+        .revents = 0,
+    };
+    pollfds[poll_sig] = .{
+        .fd = sig_fd,
+        .events = posix.POLL.IN,
+        .revents = 0,
+    };
+
     while (true) {
-        if (wl_display.dispatch() != .SUCCESS) {
-            fatal("wayland display dispatch failed", .{});
+        const errno = wl_display.flush();
+        if (errno != .SUCCESS) {
+            fatal("wl_display flush failed: E{s}", .{@tagName(errno)});
+        }
+
+        // Get the number of milliseconds to the top of the next minute
+        const time = std.time.timestamp();
+        if (time < 0) {
+            log.err("Got a negative time ({d})", .{time});
+            return error.InvalidTime;
+        }
+        const timeout: i32 = @intCast((@divTrunc(time, 60) * 60 + 60 - time) * 1000);
+
+        const poll_rc = posix.poll(&pollfds, timeout) catch |err| {
+            fatal("Failed to poll {s}", .{@errorName(err)});
+        };
+        if (poll_rc == 0) {
+            // If poll returns 0, it timed out, meaning we hit the top of the minute
+            // and need to update the clock.
+            var it = context.wm.outputs.iterator(.forward);
+            while (it.next()) |output| {
+                if (output.bar) |*bar| {
+                    bar.render() catch |err| {
+                        log.err("Bar timer render failed: {}", .{err});
+                    };
+                }
+            }
+        }
+
+        // Handle fds that became ready
+        if (pollfds[poll_wayland].revents & posix.POLL.HUP != 0) {
+            log.info("Disconnected by compositor", .{});
+            break;
+        }
+        if (pollfds[poll_wayland].revents & posix.POLL.IN != 0) {
+            if (wl_display.dispatch() != .SUCCESS) {
+                fatal("Wayland display dispatch failed", .{});
+            }
+        }
+
+        if (pollfds[poll_sig].revents & posix.POLL.HUP != 0) {
+            fatal("Signal fd hung up", .{});
+        }
+        if (pollfds[poll_sig].revents & posix.POLL.IN != 0) {
+            log.info("Exiting beansprout", .{});
+            break;
         }
     }
+}
 
-    log.info("Exiting beansprout", .{});
+fn parseArgs() void {
+    const result = flags.parser([*:0]const u8, &.{
+        .{ .name = "h", .kind = .boolean },
+        .{ .name = "version", .kind = .boolean },
+        .{ .name = "log-level", .kind = .arg },
+    }).parse(os.argv[1..]) catch {
+        stderr.writeAll(usage) catch {};
+        stderr.flush() catch {};
+        posix.exit(1);
+    };
+    if (result.flags.h) {
+        stdout.writeAll(usage) catch {};
+        stdout.flush() catch {};
+        posix.exit(0);
+    }
+    if (result.args.len != 0) {
+        log.err("unknown option '{s}'", .{result.args[0]});
+        stderr.writeAll(usage) catch {};
+        stderr.flush() catch {};
+        posix.exit(1);
+    }
+
+    if (result.flags.version) {
+        stdout.writeAll(build_options.version ++ "\n") catch {};
+        stdout.flush() catch {};
+        posix.exit(0);
+    }
+    if (result.flags.@"log-level") |level| {
+        if (mem.eql(u8, level, "error")) {
+            runtime_log_level = .err;
+        } else if (mem.eql(u8, level, "warning")) {
+            runtime_log_level = .warn;
+        } else if (mem.eql(u8, level, "info")) {
+            runtime_log_level = .info;
+        } else if (mem.eql(u8, level, "debug")) {
+            runtime_log_level = .debug;
+        } else {
+            log.err("invalid log level '{s}'", .{level});
+            posix.exit(1);
+        }
+    }
 }
 
 fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, globals: *Globals) void {
@@ -250,6 +327,7 @@ const std = @import("std");
 const fatal = std.process.fatal;
 const fs = std.fs;
 const mem = std.mem;
+const os = std.os;
 const posix = std.posix;
 const process = std.process;
 

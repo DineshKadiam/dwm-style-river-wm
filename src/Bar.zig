@@ -114,7 +114,6 @@ pub fn layerSurfaceListener(
 
             bar.configured = true;
 
-            log.debug("bwbuhse before render", .{});
             bar.render() catch |err| {
                 log.err("Bar render failed: {}", .{err});
             };
@@ -125,7 +124,9 @@ pub fn layerSurfaceListener(
     }
 }
 
-fn render(bar: *Bar) !void {
+// TODO: Configure number of visible tags
+/// Renders the bar and its components
+pub fn render(bar: *Bar) !void {
     const buffer = try bar.context.buffer_pool.nextBuffer(bar.context.wl_shm, bar.width, bar.height);
 
     // Fill with a solid color (e.g., dark background)
@@ -138,7 +139,6 @@ fn render(bar: *Bar) !void {
     wl_surface.attach(buffer.wl_buffer, 0, 0);
     wl_surface.damageBuffer(0, 0, bar.width, bar.height);
     wl_surface.commit();
-    log.debug("bwbuhse end of render", .{});
 }
 
 // Borrowed and modified from https://git.sr.ht/~novakane/zig-fcft-example
