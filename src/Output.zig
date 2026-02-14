@@ -118,10 +118,10 @@ pub fn destroy(output: *Output) void {
         window.link.remove();
         window.destroy();
     }
-
     output.tag_layout_overrides.deinit(utils.gpa);
     output.deinitWallpaperLayerSurface();
     output.river_output_v1.destroy();
+    output.river_layer_shell_output_v1.destroy();
     utils.gpa.destroy(output);
 }
 
