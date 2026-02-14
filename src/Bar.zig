@@ -200,8 +200,12 @@ pub fn render(bar: *Bar) !void {
         codepoints[i] = cp;
     }
 
+    const text_width = try bar.textWidth(codepoints);
+    var x: i32 = @divFloor(buffer.width - text_width, 2);
+    const y: i32 = @divFloor(buffer.height - bar.fonts.height, 2);
+
     // Actually render the unicode codepoints
-    try bar.renderChars(codepoints, buffer, color);
+    try bar.renderChars(codepoints, buffer, &x, y, color);
 
     // Finally, attach the buffer to the surface
     const wl_surface = bar.wl_surface orelse return;
@@ -210,14 +214,36 @@ pub fn render(bar: *Bar) !void {
     wl_surface.commit();
 }
 
+// TODO: This should be moved to utils once fonts are in config
+/// Computes the pixel width of a text string.
+fn textWidth(bar: *Bar, text: []const u32) !i32 {
+    var width: i32 = 0;
+    for (text, 0..) |cp, i| {
+        const glyph = try bar.fonts.rasterizeCharUtf32(cp, .default);
+        width += glyph.advance.x;
+        if (i > 0) {
+            var x_kern: c_long = 0;
+            if (bar.fonts.kerning(text[i - 1], cp, &x_kern, null)) {
+                width += @intCast(x_kern);
+            }
+        }
+    }
+    return width;
+}
+
 // Borrowed and modified from https://git.sr.ht/~novakane/zig-fcft-example
-fn renderChars(bar: *Bar, text: []const u32, buffer: *Buffer, color: *pixman.Image) !void {
+fn renderChars(
+    bar: *Bar,
+    text: []const u32,
+    buffer: *Buffer,
+    x: *i32,
+    y: i32,
+    color: *pixman.Image,
+) !void {
     const glyphs = try utils.gpa.alloc(*const fcft.Glyph, text.len);
     const kerns = try utils.gpa.alloc(c_long, text.len);
     defer utils.gpa.free(glyphs);
     defer utils.gpa.free(kerns);
-
-    var text_width: i32 = 0;
 
     var i: usize = 0;
     while (i < text.len) : (i += 1) {
@@ -230,17 +256,9 @@ fn renderChars(bar: *Bar, text: []const u32, buffer: *Buffer, color: *pixman.Ima
                 kerns[i] = x_kern;
             }
         }
-
-        text_width += @intCast(kerns[i] + glyphs[i].advance.x);
     }
 
-    // TODO: Take a x pos and left/center/right justification args so text can
-    // be put in different places
-    var x: i32 = @divFloor(buffer.width - text_width, 2);
-    // const side_padding = 5;
-    // var x: i32 = buffer.width - text_width - side_padding;
-    const y: i32 = @divFloor(buffer.height - bar.fonts.height, 2);
-    bar.renderGlyphs(buffer, &x, y, color, text.len, glyphs.ptr, kerns);
+    bar.renderGlyphs(buffer, x, y, color, text.len, glyphs.ptr, kerns);
 }
 
 // Borrowed https://git.sr.ht/~novakane/zig-fcft-example

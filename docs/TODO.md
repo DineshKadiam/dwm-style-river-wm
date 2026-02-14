@@ -12,6 +12,7 @@ These are in rough order of my priority, though no promises I do them in this or
 - [ ] Support solid `background-color` fallback (no wallpaper)
 - [ ] Support per-output wallpapers
 - [ ] Support `focus-follows-cursor` granularity (`normal` vs `always`)
+- [ ] Save window positions between restarts
 - [ ] Support multiple seats
 - [ ] Support clipping floating windows on edge of/between outputs
 - [x] Support changeable primary ratio
