@@ -74,7 +74,7 @@ pub const PendingManage = struct {
 
 pub fn create(context: *Context, river_output_v1: *river.OutputV1) !*Output {
     var output = try utils.gpa.create(Output);
-    errdefer output.destroy();
+    errdefer utils.gpa.destroy(output);
 
     const bar = Bar.init(context, output) catch |e| blk: {
         log.err("Failed to create a bar: {}", .{e});

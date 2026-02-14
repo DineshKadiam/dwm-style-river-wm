@@ -79,7 +79,7 @@ link: wl.list.Link,
 
 pub fn create(context: *Context, river_libinput_device_v1: *river.LibinputDeviceV1) !*LibinputDevice {
     const libinput_device = try utils.gpa.create(LibinputDevice);
-    errdefer libinput_device.destroy();
+    errdefer utils.gpa.destroy(libinput_device);
 
     libinput_device.* = .{
         .context = context,

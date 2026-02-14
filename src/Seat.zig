@@ -58,7 +58,7 @@ pub const PointerOp = union(enum) {
 
 pub fn create(context: *Context, river_seat_v1: *river.SeatV1) !*Seat {
     var seat = try utils.gpa.create(Seat);
-    errdefer seat.destroy();
+    errdefer utils.gpa.destroy(seat);
 
     seat.* = .{
         .context = context,

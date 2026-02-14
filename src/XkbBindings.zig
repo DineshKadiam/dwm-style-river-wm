@@ -56,7 +56,7 @@ const XkbBinding = struct {
 
     fn create(xkb_binding_v1: *river.XkbBindingV1, command: Command, context: *Context) !*XkbBinding {
         var xkb_binding = try utils.gpa.create(XkbBinding);
-        errdefer xkb_binding.destroy();
+        errdefer utils.gpa.destroy(xkb_binding);
 
         xkb_binding.* = .{
             .xkb_binding_v1 = xkb_binding_v1,
@@ -405,7 +405,7 @@ bindings: wl.list.Head(XkbBinding, .link),
 
 pub fn create(context: *Context, xkb_bindings_v1: *river.XkbBindingsV1) !*XkbBindings {
     const xkb_bindings = try utils.gpa.create(XkbBindings);
-    errdefer xkb_bindings.destroy();
+    errdefer utils.gpa.destroy(xkb_bindings);
 
     xkb_bindings.* = .{
         .context = context,

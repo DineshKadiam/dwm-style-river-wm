@@ -11,7 +11,7 @@ pub const Flag = struct {
     kind: enum { boolean, arg },
 };
 
-pub fn parser(comptime Arg: type, comptime flags: []const Flag) type {
+pub fn Parser(comptime Arg: type, comptime flags: []const Flag) type {
     switch (Arg) {
         // TODO consider allowing []const u8
         [:0]const u8, [*:0]const u8 => {}, // ok

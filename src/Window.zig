@@ -69,7 +69,7 @@ pub const PendingRender = struct {
 
 pub fn create(context: *Context, river_window_v1: *river.WindowV1, output: ?*Output) !*Window {
     var window = try utils.gpa.create(Window);
-    errdefer window.destroy();
+    errdefer utils.gpa.destroy(window);
 
     window.* = .{
         .context = context,

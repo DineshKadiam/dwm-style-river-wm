@@ -18,7 +18,7 @@ orphan_windows: wl.list.Head(Window, .link),
 
 pub fn create(context: *Context, window_manager_v1: *river.WindowManagerV1) !*WindowManager {
     const wm = try utils.gpa.create(WindowManager);
-    errdefer wm.destroy();
+    errdefer utils.gpa.destroy(wm);
 
     wm.* = .{
         .context = context,

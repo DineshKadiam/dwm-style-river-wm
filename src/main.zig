@@ -185,7 +185,7 @@ fn run(wl_display: *wl.Display, context: *Context) !void {
 }
 
 fn parseArgs() void {
-    const result = flags.parser([*:0]const u8, &.{
+    const result = flags.Parser([*:0]const u8, &.{
         .{ .name = "h", .kind = .boolean },
         .{ .name = "version", .kind = .boolean },
         .{ .name = "log-level", .kind = .arg },

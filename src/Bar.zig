@@ -78,6 +78,7 @@ pub fn initSurface(bar: *Bar) !void {
 
 pub fn deinit(bar: *Bar) void {
     bar.configured = false;
+    bar.timezone.deinit();
     if (bar.wl_surface) |wl_surface| {
         wl_surface.destroy();
     }
