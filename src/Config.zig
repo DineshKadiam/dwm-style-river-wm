@@ -506,6 +506,7 @@ fn loadKeybindsChildBlock(config: *Config, parser: *kdl.Parser, hostname: ?[]con
                         .decrement_primary_count,
                         .swap_next,
                         .swap_prev,
+                        .center_float,
                         => |cmd| {
                             // None of these have arguments, just create the union and give it back
                             break :sw @unionInit(XkbBindings.Command, @tagName(cmd), {});

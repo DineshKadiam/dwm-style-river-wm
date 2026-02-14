@@ -14,6 +14,7 @@ wl_registry: *wl.Registry,
 wl_shm: *wl.Shm,
 wl_outputs: *std.AutoHashMapUnmanaged(u32, *wl.Output),
 
+river_layer_shell_v1: *river.LayerShellV1,
 zwlr_layer_shell_v1: *zwlr.LayerShellV1,
 
 // Wayland globals that we have special structs for
@@ -68,6 +69,7 @@ pub fn create(options: Options) !*Context {
         .wl_registry = options.wl_registry,
         .wl_shm = options.wl_shm,
         .wl_outputs = options.wl_outputs,
+        .river_layer_shell_v1 = options.river_layer_shell_v1,
         .zwlr_layer_shell_v1 = options.zwlr_layer_shell_v1,
         .wallpaper_image = loadWallpaperImage(options.config),
         .im = try InputManager.create(context, options.river_input_manager_v1, options.river_libinput_config_v1),

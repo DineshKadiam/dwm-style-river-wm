@@ -159,8 +159,8 @@ pub fn manage(seat: *Seat) void {
             // Warp pointer to center of focused window;
             // because the x and y coords are set during render, we need to check if
             // there are new coordinates in window.pending_render.
-            const pointer_x: i32 = (window.pending_render.x orelse window.x) + @divTrunc(window.width, 2);
-            const pointer_y: i32 = (window.pending_render.y orelse window.y) + @divTrunc(window.height, 2);
+            const pointer_x: i32 = (window.pending_render.x orelse window.x) + @divFloor(window.width, 2);
+            const pointer_y: i32 = (window.pending_render.y orelse window.y) + @divFloor(window.height, 2);
             seat.river_seat_v1.pointerWarp(pointer_x, pointer_y);
         }
     }
@@ -204,17 +204,8 @@ pub fn manage(seat: *Seat) void {
         switch (seat.pointer_op) {
             .none => {},
             .move => |op| {
-                const output = op.window.output orelse {
-                    log.err("window has no output during move operation", .{});
-                    return;
-                };
-                const min_x = output.x;
-                const max_x = output.x + output.width - @as(i32, op.window.float_width);
-                const min_y = output.y;
-                const max_y = output.y + output.height - @as(i32, op.window.float_height);
-
-                op.window.float_x = std.math.clamp(op.start_x + delta.dx, min_x, @max(min_x, max_x));
-                op.window.float_y = std.math.clamp(op.start_y + delta.dy, min_y, @max(min_y, max_y));
+                op.window.float_x = op.start_x + delta.dx;
+                op.window.float_y = op.start_y + delta.dy;
                 op.window.pending_render.x = op.window.float_x;
                 op.window.pending_render.y = op.window.float_y;
             },
@@ -238,22 +229,10 @@ pub fn manage(seat: *Seat) void {
 
                 // Clamp to minimum size
                 const min_size: i32 = 50;
-                if (new_width < min_size) {
-                    if (op.edges.left) new_x -= min_size - new_width;
-                    new_width = min_size;
-                }
-                if (new_height < min_size) {
-                    if (op.edges.top) new_y -= min_size - new_height;
-                    new_height = min_size;
-                }
-
-                // Clamp position to output bounds
-                const output = op.window.output orelse {
-                    log.err("window has no output during resize operation", .{});
-                    return;
-                };
-                new_x = std.math.clamp(new_x, output.x, @max(output.x, output.x + output.width - new_width));
-                new_y = std.math.clamp(new_y, output.y, @max(output.y, output.y + output.height - new_height));
+                if (op.edges.left) new_x = @min(new_x, op.start_x + @as(i32, op.start_width) - min_size);
+                if (op.edges.top) new_y = @min(new_y, op.start_y + @as(i32, op.start_height) - min_size);
+                new_width = @max(new_width, min_size);
+                new_height = @max(new_height, min_size);
 
                 op.window.float_width = @intCast(new_width);
                 op.window.float_height = @intCast(new_height);

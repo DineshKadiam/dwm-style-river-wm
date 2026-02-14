@@ -4,6 +4,7 @@ These are in rough order of my priority, though no promises I do them in this or
 
 - [ ] Implement a river-tag-overlay clone
 - [ ] Implement an optional clock bar
+- [ ] Make a Rect struct to combine x, y, width, and height
 - [ ] Support window rules (float/tags/SSD by app-id/title)
 - [ ] Support overriding config location
 - [ ] Support configuring primary vs secondary stack side

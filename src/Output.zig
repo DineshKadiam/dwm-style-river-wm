@@ -7,6 +7,7 @@ const Output = @This();
 context: *Context,
 
 river_output_v1: *river.OutputV1,
+river_layer_shell_output_v1: *river.LayerShellOutputV1,
 
 // We have to wait for the rwm.wl_output event to get this
 wl_output: ?*wl.Output = null,
@@ -16,10 +17,16 @@ name: ?[]const u8 = null,
 
 // Output geometry
 scale: u31 = 1,
-width: u31 = 0,
-height: u31 = 0,
 x: i32 = 0,
 y: i32 = 0,
+width: u31 = 0,
+height: u31 = 0,
+
+// Area left after layer shell surfaces take exclusive area
+usable_x: i32 = 0,
+usable_y: i32 = 0,
+usable_width: u31 = 0,
+usable_height: u31 = 0,
 
 // Information for this Output's wallpaper
 wallpaper_render_width: u31 = 0,
@@ -62,10 +69,15 @@ pub const TagLayoutOverride = struct {
 };
 
 pub const PendingManage = struct {
-    width: ?u31 = null,
-    height: ?u31 = null,
     x: ?i32 = null,
     y: ?i32 = null,
+    width: ?u31 = null,
+    height: ?u31 = null,
+
+    usable_x: ?i32 = null,
+    usable_y: ?i32 = null,
+    usable_width: ?u31 = null,
+    usable_height: ?u31 = null,
 
     tags: ?u32 = null,
     primary_ratio: ?f32 = null,
@@ -84,6 +96,7 @@ pub fn create(context: *Context, river_output_v1: *river.OutputV1) !*Output {
     output.* = .{
         .context = context,
         .river_output_v1 = river_output_v1,
+        .river_layer_shell_output_v1 = try context.river_layer_shell_v1.getOutput(river_output_v1),
         .bar = bar,
         .primary_count = context.config.primary_count,
         .primary_ratio = context.config.primary_ratio,
@@ -94,6 +107,7 @@ pub fn create(context: *Context, river_output_v1: *river.OutputV1) !*Output {
     output.windows.init();
 
     output.river_output_v1.setListener(*Output, riverOutputListener, output);
+    output.river_layer_shell_output_v1.setListener(*Output, riverLayerShellOutputListener, output);
 
     return output;
 }
@@ -265,6 +279,24 @@ fn wlOutputListener(_: *wl.Output, event: wl.Output.Event, output: *Output) void
             output.name = utils.gpa.dupe(u8, mem.span(ev.name)) catch @panic("Out of memory");
         },
         else => {},
+    }
+}
+
+// Used for the river_layer_shell_output_v1 interface
+fn riverLayerShellOutputListener(
+    river_layer_shell_output_v1: *river.LayerShellOutputV1,
+    event: river.LayerShellOutputV1.Event,
+    output: *Output,
+) void {
+    assert(output.river_layer_shell_output_v1 == river_layer_shell_output_v1);
+    switch (event) {
+        .non_exclusive_area => |ev| {
+            output.pending_manage.usable_x = ev.x;
+            output.pending_manage.usable_y = ev.y;
+            output.pending_manage.usable_width = @intCast(ev.width);
+            output.pending_manage.usable_height = @intCast(ev.height);
+            output.context.wm.river_window_manager_v1.manageDirty();
+        },
     }
 }
 
@@ -446,17 +478,30 @@ pub fn renderWallpaper(output: *Output) !void {
 pub fn manage(output: *Output) void {
     defer output.pending_manage = .{};
 
+    if (output.pending_manage.x) |x| {
+        output.x = x;
+    }
+    if (output.pending_manage.y) |y| {
+        output.y = y;
+    }
     if (output.pending_manage.width) |width| {
         output.width = width;
     }
     if (output.pending_manage.height) |height| {
         output.height = height;
     }
-    if (output.pending_manage.x) |x| {
-        output.x = x;
+
+    if (output.pending_manage.usable_x) |usable_x| {
+        output.usable_x = usable_x;
     }
-    if (output.pending_manage.y) |y| {
-        output.y = y;
+    if (output.pending_manage.usable_y) |usable_y| {
+        output.usable_y = usable_y;
+    }
+    if (output.pending_manage.usable_width) |usable_width| {
+        output.usable_width = usable_width;
+    }
+    if (output.pending_manage.usable_height) |usable_height| {
+        output.usable_height = usable_height;
     }
 
     if (output.pending_manage.primary_ratio) |primary_ratio| {
@@ -542,12 +587,11 @@ fn calculatePrimaryStackLayout(output: *Output) void {
 
     if (active_count == 0) return;
 
-    // Output dimensions come as i32 from the protocol, convert to u31 for window dimensions
-    // since they can't be negative.
-    const output_width: u31 = @intCast(output.width);
-    const output_height: u31 = @intCast(output.height);
-    const output_x = output.x;
-    const output_y = output.y;
+    // We have to use the usable area for the layout so windows don't overlap with widgets
+    const output_x = output.usable_x;
+    const output_y = output.usable_y;
+    const output_width = output.usable_width;
+    const output_height = output.usable_height;
     const border_width = output.context.config.border_width;
 
     // Single window: maximize and return early
@@ -619,6 +663,15 @@ fn calculatePrimaryStackLayout(output: *Output) void {
 
     // Make sure we went through the whole list
     assert(active_list.first == null);
+}
+
+pub fn occupiedTags(output: *Output) u32 {
+    var occupied_tags: u32 = 0x0000;
+    var it = output.windows.iterator(.forward);
+    while (it.next()) |window| {
+        occupied_tags |= window.tags;
+    }
+    return occupied_tags;
 }
 
 const std = @import("std");

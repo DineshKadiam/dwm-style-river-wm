@@ -145,7 +145,7 @@ fn run(wl_display: *wl.Display, context: *Context) !void {
             log.err("Got a negative time ({d})", .{time});
             return error.InvalidTime;
         }
-        const timeout: i32 = @intCast((@divTrunc(time, 60) * 60 + 60 - time) * 1000);
+        const timeout: i32 = @intCast((@divFloor(time, 60) * 60 + 60 - time) * 1000);
 
         const poll_rc = posix.poll(&pollfds, timeout) catch |err| {
             fatal("Failed to poll {s}", .{@errorName(err)});
