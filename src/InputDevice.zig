@@ -19,7 +19,7 @@ link: wl.list.Link,
 
 pub fn create(river_input_device_v1: *river.InputDeviceV1) !*InputDevice {
     const input_device = try utils.gpa.create(InputDevice);
-    errdefer input_device.destroy();
+    errdefer utils.gpa.destroy(input_device);
 
     input_device.* = .{
         .river_input_device_v1 = river_input_device_v1,

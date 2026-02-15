@@ -16,10 +16,12 @@ pub fn build(b: *std.Build) void {
     const scanner = Scanner.create(b, .{});
     const wayland = b.createModule(.{ .root_source_file = scanner.result });
     // Rest of the deps
+    const fcft = b.dependency("fcft", .{}).module("fcft");
     const kdl = b.dependency("kdl", .{}).module("kdl");
     const known_folders = b.dependency("known_folders", .{}).module("known-folders");
     const pixman = b.dependency("pixman", .{}).module("pixman");
     const xkbcommon = b.dependency("xkbcommon", .{}).module("xkbcommon");
+    const zeit = b.dependency("zeit", .{}).module("zeit");
     const zigimg = b.dependency("zigimg", .{}).module("zigimg");
 
     scanner.addCustomProtocol(b.path("protocol/river-input-management-v1.xml"));
@@ -57,14 +59,17 @@ pub fn build(b: *std.Build) void {
     beansprout.root_module.addOptions("build_options", options);
 
     beansprout.root_module.addImport("wayland", wayland);
+    beansprout.root_module.addImport("fcft", fcft);
     beansprout.root_module.addImport("kdl", kdl);
     beansprout.root_module.addImport("known_folders", known_folders);
     beansprout.root_module.addImport("pixman", pixman);
     beansprout.root_module.addImport("xkbcommon", xkbcommon);
     beansprout.root_module.addImport("zigimg", zigimg);
+    beansprout.root_module.addImport("zeit", zeit);
 
     beansprout.linkLibC();
     beansprout.linkSystemLibrary("wayland-client");
+    beansprout.linkSystemLibrary("fcft");
     beansprout.linkSystemLibrary("pixman-1");
     beansprout.linkSystemLibrary("xkbcommon");
 
@@ -114,6 +119,14 @@ const manifest: struct {
             hash: []const u8,
         },
         zigimg: struct {
+            url: []const u8,
+            hash: []const u8,
+        },
+        fcft: struct {
+            url: []const u8,
+            hash: []const u8,
+        },
+        zeit: struct {
             url: []const u8,
             hash: []const u8,
         },

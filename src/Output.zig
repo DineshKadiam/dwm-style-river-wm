@@ -7,22 +7,37 @@ const Output = @This();
 context: *Context,
 
 river_output_v1: *river.OutputV1,
+river_layer_shell_output_v1: *river.LayerShellOutputV1,
 
 // We have to wait for the rwm.wl_output event to get this
 wl_output: ?*wl.Output = null,
 
+// Friendly name of this output
+name: ?[]const u8 = null,
+
 // Output geometry
 scale: u31 = 1,
-width: u31 = 0,
-height: u31 = 0,
 x: i32 = 0,
 y: i32 = 0,
+width: u31 = 0,
+height: u31 = 0,
+
+// Area left after layer shell surfaces take exclusive area
+usable_x: i32 = 0,
+usable_y: i32 = 0,
+usable_width: u31 = 0,
+usable_height: u31 = 0,
 
 // Information for this Output's wallpaper
-render_width: u31 = 0,
-render_height: u31 = 0,
+wallpaper_render_scale: u31 = 0,
+wallpaper_render_width: u31 = 0,
+wallpaper_render_height: u31 = 0,
 wl_surface: ?*wl.Surface = null,
 layer_surface: ?*zwlr.LayerSurfaceV1 = null,
+
+// TODO: Make Bar a user option, can disable if they want
+// This Output's bar
+bar: ?Bar,
 
 /// Proportion of output width taken by the primary stack
 primary_ratio: f32,
@@ -41,9 +56,6 @@ tags: u32 = 0x0001,
 /// State consumed in manage() phase, reset at end of manage().
 pending_manage: PendingManage = .{},
 
-// Friendly name of this output
-name: ?[]const u8 = null,
-
 /// Used for wallpaper rendering management
 configured: bool = false,
 
@@ -58,10 +70,15 @@ pub const TagLayoutOverride = struct {
 };
 
 pub const PendingManage = struct {
-    width: ?u31 = null,
-    height: ?u31 = null,
     x: ?i32 = null,
     y: ?i32 = null,
+    width: ?u31 = null,
+    height: ?u31 = null,
+
+    usable_x: ?i32 = null,
+    usable_y: ?i32 = null,
+    usable_width: ?u31 = null,
+    usable_height: ?u31 = null,
 
     tags: ?u32 = null,
     primary_ratio: ?f32 = null,
@@ -70,11 +87,18 @@ pub const PendingManage = struct {
 
 pub fn create(context: *Context, river_output_v1: *river.OutputV1) !*Output {
     var output = try utils.gpa.create(Output);
-    errdefer output.destroy();
+    errdefer utils.gpa.destroy(output);
+
+    const bar = Bar.init(context, output) catch |e| blk: {
+        log.err("Failed to create a bar: {}", .{e});
+        break :blk null;
+    };
 
     output.* = .{
         .context = context,
         .river_output_v1 = river_output_v1,
+        .river_layer_shell_output_v1 = try context.river_layer_shell_v1.getOutput(river_output_v1),
+        .bar = bar,
         .primary_count = context.config.primary_count,
         .primary_ratio = context.config.primary_ratio,
         .windows = undefined, // we will initialize this shortly
@@ -84,6 +108,7 @@ pub fn create(context: *Context, river_output_v1: *river.OutputV1) !*Output {
     output.windows.init();
 
     output.river_output_v1.setListener(*Output, riverOutputListener, output);
+    output.river_layer_shell_output_v1.setListener(*Output, riverLayerShellOutputListener, output);
 
     return output;
 }
@@ -94,10 +119,10 @@ pub fn destroy(output: *Output) void {
         window.link.remove();
         window.destroy();
     }
-
     output.tag_layout_overrides.deinit(utils.gpa);
     output.deinitWallpaperLayerSurface();
     output.river_output_v1.destroy();
+    output.river_layer_shell_output_v1.destroy();
     utils.gpa.destroy(output);
 }
 
@@ -188,14 +213,20 @@ fn riverOutputListener(river_output_v1: *river.OutputV1, event: river.OutputV1.E
             output.wl_output = output.context.wl_outputs.get(ev.name).?;
             output.wl_output.?.setListener(*Output, wlOutputListener, output);
 
-            // The wl_output's initial events (mode, scale, name, done) were likely
-            // already delivered during the initial roundtrip before we set our
-            // listener, so the .done event that triggers wallpaper init was lost.
-            // Explicitly init the wallpaper surface here.
+            // The wl_output's initial events come during the initial roundtrip
+            // before we set our listener, so the .done event that triggers
+            // wallpaper init was lost. Explicitly init the surfaces here.
             output.initWallpaperLayerSurface() catch |err| {
                 const output_name = output.name orelse "some output";
                 log.err("failed to add a surface to {s}: {}", .{ output_name, err });
             };
+            if (output.bar) |*bar| {
+                bar.initSurface() catch |err| {
+                    const output_name = output.name orelse "some output";
+                    log.err("failed to init bar for {s}: {}", .{ output_name, err });
+                    return;
+                };
+            }
         },
         .dimensions => |ev| {
             // Protocol guarantees that width and height are strictly greater than zero
@@ -229,6 +260,25 @@ fn wlOutputListener(_: *wl.Output, event: wl.Output.Event, output: *Output) void
                 log.err("failed to add a surface to {s}: {}", .{ output_name, err });
                 return;
             };
+            if (output.bar) |*bar| {
+                bar.initSurface() catch |err| {
+                    const output_name = output.name orelse "some output";
+                    log.err("failed to init bar for {s}: {}", .{ output_name, err });
+                    return;
+                };
+                // Re-render bar if the scale changed
+                if (bar.configured and output.scale != bar.font_scale) {
+                    bar.render() catch |err| {
+                        log.err("Bar render failed: {}", .{err});
+                    };
+                }
+            }
+            // Re-render wallpaper if scale changed
+            if (output.configured and output.scale != output.wallpaper_render_scale) {
+                output.renderWallpaper() catch |err| {
+                    log.err("Wallpaper render failed: {}", .{err});
+                };
+            }
         },
         .scale => |ev| {
             if (ev.factor < 0) {
@@ -245,32 +295,52 @@ fn wlOutputListener(_: *wl.Output, event: wl.Output.Event, output: *Output) void
     }
 }
 
+// Used for the river_layer_shell_output_v1 interface
+fn riverLayerShellOutputListener(
+    river_layer_shell_output_v1: *river.LayerShellOutputV1,
+    event: river.LayerShellOutputV1.Event,
+    output: *Output,
+) void {
+    assert(output.river_layer_shell_output_v1 == river_layer_shell_output_v1);
+    switch (event) {
+        .non_exclusive_area => |ev| {
+            output.pending_manage.usable_x = ev.x;
+            output.pending_manage.usable_y = ev.y;
+            output.pending_manage.usable_width = @intCast(ev.width);
+            output.pending_manage.usable_height = @intCast(ev.height);
+            output.context.wm.river_window_manager_v1.manageDirty();
+        },
+    }
+}
+
 pub fn initWallpaperLayerSurface(output: *Output) !void {
     if (output.context.wallpaper_image == null) {
         // No wallpaper image, so we don't need any surfaces
         return;
     }
 
-    if (output.wl_surface) |_| {
+    if (output.layer_surface) |_| {
         // This output already has a layer surface, we can exit early
         return;
     }
 
     const context = output.context;
 
-    const wl_surface: *wl.Surface = try context.wl_compositor.createSurface();
+    const wl_surface = try context.wl_compositor.createSurface();
+    errdefer wl_surface.destroy();
 
     // We don't want our surface to have any input region (default is infinite)
-    const empty_region: *wl.Region = try context.wl_compositor.createRegion();
+    const empty_region = try context.wl_compositor.createRegion();
     defer empty_region.destroy();
     wl_surface.setInputRegion(empty_region);
 
     // Full surface should be opaque
-    const opaque_region: *wl.Region = try context.wl_compositor.createRegion();
+    const opaque_region = try context.wl_compositor.createRegion();
+    opaque_region.add(0, 0, output.width, output.height);
     defer opaque_region.destroy();
     wl_surface.setOpaqueRegion(opaque_region);
 
-    const layer_surface: *zwlr.LayerSurfaceV1 = try context.zwlr_layer_shell_v1.getLayerSurface(wl_surface, output.wl_output, .background, "beansprout");
+    const layer_surface = try context.zwlr_layer_shell_v1.getLayerSurface(wl_surface, output.wl_output, .background, "beansprout-wallpaper");
     layer_surface.setExclusiveZone(-1);
     layer_surface.setAnchor(.{ .top = true, .right = true, .bottom = true, .left = true });
 
@@ -301,15 +371,14 @@ fn wallpaperLayerSurfaceListener(layer_surface: *zwlr.LayerSurfaceV1, event: zwl
         .configure => |ev| {
             layer_surface.ackConfigure(ev.serial);
 
-            if (ev.width < 0 or ev.height < 0) {
-                // I'm not actually sure if this is possible, but just to be safe
-                log.warn("Received zwlr_layer_surface_v1.configure event with a negative width or height ({d}x{d})", .{ ev.width, ev.height });
-                return;
-            }
             const width: u31 = @intCast(ev.width);
             const height: u31 = @intCast(ev.height);
 
-            if (output.configured and output.render_width == width and output.render_height == height) {
+            if (output.configured and
+                output.wallpaper_render_width == width and
+                output.wallpaper_render_height == height and
+                output.scale == output.wallpaper_render_scale)
+            {
                 if (output.wl_surface) |wl_surface| {
                     wl_surface.commit();
                 } else {
@@ -319,8 +388,8 @@ fn wallpaperLayerSurfaceListener(layer_surface: *zwlr.LayerSurfaceV1, event: zwl
             }
 
             log.debug("configuring wallpaper surface with width {} and height {}", .{ width, height });
-            output.render_width = width;
-            output.render_height = height;
+            output.wallpaper_render_width = width;
+            output.wallpaper_render_height = height;
             output.configured = true;
 
             output.renderWallpaper() catch |err| {
@@ -334,15 +403,15 @@ fn wallpaperLayerSurfaceListener(layer_surface: *zwlr.LayerSurfaceV1, event: zwl
 }
 
 /// Calculates image_dimension / (output_dimension * scale)
-fn calculate_scale(image_dimension: c_int, output_dimension: u31, scale: u31) f64 {
+fn calculateScale(image_dimension: c_int, output_dimension: u31, scale: u31) f64 {
     const numerator: f64 = @floatFromInt(image_dimension);
     const denominator: f64 = @floatFromInt(output_dimension * scale);
 
     return numerator / denominator;
 }
 
-/// Calculates (image_dimension / dimension_scale - output_dimension) / 2 / dimension_scale;
-fn calculate_transform(image_dimension: c_int, output_dimension: u31, dimension_scale: f64) f64 {
+/// Calculates (image_dimension / dimension_scale - output_dimension) / 2 / dimension_scale
+fn calculateTransform(image_dimension: c_int, output_dimension: u31, dimension_scale: f64) f64 {
     const numerator1: f64 = @floatFromInt(image_dimension);
     const denominator1: f64 = dimension_scale;
     const subtruend: f64 = @floatFromInt(output_dimension);
@@ -354,8 +423,8 @@ fn calculate_transform(image_dimension: c_int, output_dimension: u31, dimension_
 /// Render the wallpaper image onto the layer surface
 pub fn renderWallpaper(output: *Output) !void {
     const context = output.context;
-    const width = output.render_width;
-    const height = output.render_height;
+    const width = output.wallpaper_render_width;
+    const height = output.wallpaper_render_height;
     const scale = output.scale;
 
     // Don't have anything to render
@@ -375,13 +444,13 @@ pub fn renderWallpaper(output: *Output) !void {
 
     const pix = pixman.Image.createBitsNoClear(image_format, image_width, image_height, image_data, image_stride) orelse {
         log.err("Failed to copy the wallpaper image for rendering", .{});
-        return error.ImageCopyError;
+        return error.FailedToCreatePixmanImage;
     };
     defer _ = pix.unref();
 
     // Calculate image scale
     var sx: f64 = @as(f64, @floatFromInt(image_width)) / @as(f64, @floatFromInt(width * scale));
-    var sy: f64 = calculate_scale(image_height, height, scale);
+    var sy: f64 = calculateScale(image_height, height, scale);
 
     const s = if (sx > sy) sy else sx;
     sx = s;
@@ -389,8 +458,8 @@ pub fn renderWallpaper(output: *Output) !void {
 
     // Calculate translation offsets to center the image on the output.
     // If the scaled image is larger than the output, the offset crops equally from both sides.
-    const tx: f64 = calculate_transform(image_width, width, sx);
-    const ty: f64 = calculate_transform(image_height, height, sy);
+    const tx: f64 = calculateTransform(image_width, width * scale, sx);
+    const ty: f64 = calculateTransform(image_height, height * scale, sy);
 
     // Build a combined source-to-destination transform matrix.
     // Pixman transforms map destination pixels back to source pixels, so:
@@ -421,22 +490,37 @@ pub fn renderWallpaper(output: *Output) !void {
     wl_surface.attach(buffer.wl_buffer, 0, 0);
     wl_surface.damageBuffer(0, 0, width * scale, height * scale);
     wl_surface.commit();
+
+    output.wallpaper_render_scale = scale;
 }
 
 pub fn manage(output: *Output) void {
     defer output.pending_manage = .{};
 
+    if (output.pending_manage.x) |x| {
+        output.x = x;
+    }
+    if (output.pending_manage.y) |y| {
+        output.y = y;
+    }
     if (output.pending_manage.width) |width| {
         output.width = width;
     }
     if (output.pending_manage.height) |height| {
         output.height = height;
     }
-    if (output.pending_manage.x) |x| {
-        output.x = x;
+
+    if (output.pending_manage.usable_x) |usable_x| {
+        output.usable_x = usable_x;
     }
-    if (output.pending_manage.y) |y| {
-        output.y = y;
+    if (output.pending_manage.usable_y) |usable_y| {
+        output.usable_y = usable_y;
+    }
+    if (output.pending_manage.usable_width) |usable_width| {
+        output.usable_width = usable_width;
+    }
+    if (output.pending_manage.usable_height) |usable_height| {
+        output.usable_height = usable_height;
     }
 
     if (output.pending_manage.primary_ratio) |primary_ratio| {
@@ -522,12 +606,11 @@ fn calculatePrimaryStackLayout(output: *Output) void {
 
     if (active_count == 0) return;
 
-    // Output dimensions come as i32 from the protocol, convert to u31 for window dimensions
-    // since they can't be negative.
-    const output_width: u31 = @intCast(output.width);
-    const output_height: u31 = @intCast(output.height);
-    const output_x = output.x;
-    const output_y = output.y;
+    // We have to use the usable area for the layout so windows don't overlap with widgets
+    const output_x = output.usable_x;
+    const output_y = output.usable_y;
+    const output_width = output.usable_width;
+    const output_height = output.usable_height;
     const border_width = output.context.config.border_width;
 
     // Single window: maximize and return early
@@ -601,6 +684,15 @@ fn calculatePrimaryStackLayout(output: *Output) void {
     assert(active_list.first == null);
 }
 
+pub fn occupiedTags(output: *Output) u32 {
+    var occupied_tags: u32 = 0x0000;
+    var it = output.windows.iterator(.forward);
+    while (it.next()) |window| {
+        occupied_tags |= window.tags;
+    }
+    return occupied_tags;
+}
+
 const std = @import("std");
 const assert = std.debug.assert;
 const mem = std.mem;
@@ -613,6 +705,7 @@ const zwlr = wayland.client.zwlr;
 const pixman = @import("pixman");
 
 const utils = @import("utils.zig");
+const Bar = @import("Bar.zig");
 const Buffer = @import("Buffer.zig");
 const Context = @import("Context.zig");
 const Window = @import("Window.zig");

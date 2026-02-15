@@ -3,7 +3,8 @@
 These are in rough order of my priority, though no promises I do them in this order.
 
 - [ ] Implement a river-tag-overlay clone
-- [ ] Implement an optional clock bar
+- [ ] Add options to the bar and river-tag-overlay
+- [ ] Make a Rect struct to combine x, y, width, and height
 - [ ] Support window rules (float/tags/SSD by app-id/title)
 - [ ] Support overriding config location
 - [ ] Support configuring primary vs secondary stack side
@@ -12,6 +13,7 @@ These are in rough order of my priority, though no promises I do them in this or
 - [ ] Support solid `background-color` fallback (no wallpaper)
 - [ ] Support per-output wallpapers
 - [ ] Support `focus-follows-cursor` granularity (`normal` vs `always`)
+- [ ] Save window positions between restarts
 - [ ] Support multiple seats
 - [ ] Support clipping floating windows on edge of/between outputs
 - [x] Support changeable primary ratio
@@ -26,3 +28,4 @@ These are in rough order of my priority, though no promises I do them in this or
 - [x] Support per-host config using properties
 - [x] Implement primary count/ratio per tagmask
 - [x] Add primary_count and primary_ratio to Config
+- [x] Implement an optional clock bar

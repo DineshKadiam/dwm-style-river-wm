@@ -69,7 +69,7 @@ pub const PendingRender = struct {
 
 pub fn create(context: *Context, river_window_v1: *river.WindowV1, output: ?*Output) !*Window {
     var window = try utils.gpa.create(Window);
-    errdefer window.destroy();
+    errdefer utils.gpa.destroy(window);
 
     window.* = .{
         .context = context,
@@ -184,14 +184,17 @@ pub fn manage(window: *Window) void {
             river_window_v1.setTiled(.{});
 
             if (window.float_width == 0) {
-                // Never floated before; use current dimensions but centered on output
-                window.float_width = window.width;
-                window.float_height = window.height;
+                // Never floated before; use 75% of usable area, centered on output
                 if (window.output) |output| {
-                    // Need to find center and then subtract half of the window's width/height
-                    window.float_x = output.x + @divTrunc(output.width, 2) - @divTrunc(window.width, 2);
-                    window.float_y = output.y + @divTrunc(output.height, 2) - @divTrunc(window.height, 2);
+                    window.float_width = @divFloor(output.usable_width * 3, 4);
+                    window.float_height = @divFloor(output.usable_height * 3, 4);
+                    window.float_x = output.usable_x + @divFloor(output.usable_width, 2) - @divFloor(window.float_width, 2);
+                    window.float_y = output.usable_y + @divFloor(output.usable_height, 2) - @divFloor(window.float_height, 2);
+                } else {
+                    window.float_width = window.width;
+                    window.float_height = window.height;
                 }
+                river_window_v1.proposeDimensions(window.float_width, window.float_height);
             } else {
                 // Window has floated before; re-use its old dimensions
                 river_window_v1.proposeDimensions(window.float_width, window.float_height);

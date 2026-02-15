@@ -7,9 +7,11 @@ const Seat = @This();
 context: *Context,
 
 river_seat_v1: *river.SeatV1,
+river_layer_shell_seat_v1: *river.LayerShellSeatV1,
 
 focused_window: ?*Window,
 focused_output: ?*Output,
+layer_focus: LayerFocus = .focus_none,
 
 pointer_op: PointerOp = .none,
 
@@ -22,9 +24,14 @@ link: wl.list.Link,
 move_pointer_binding: ?*river.PointerBindingV1 = null,
 resize_pointer_binding: ?*river.PointerBindingV1 = null,
 
+// We just steal the Event's tag type to use as our enum. If another event is added
+// that's *not* for focus, we'll have to create our own enum and just keep it in sync.
+pub const LayerFocus = @typeInfo(river.LayerShellSeatV1.Event).@"union".tag_type.?;
+
 pub const PendingManage = struct {
     window: ?PendingWindow = null,
     output: ?PendingOutput = null,
+    layer_focus: ?LayerFocus = null,
     should_warp_pointer: bool = false,
 
     op_delta: ?struct { dx: i32, dy: i32 } = null,
@@ -58,17 +65,19 @@ pub const PointerOp = union(enum) {
 
 pub fn create(context: *Context, river_seat_v1: *river.SeatV1) !*Seat {
     var seat = try utils.gpa.create(Seat);
-    errdefer seat.destroy();
+    errdefer utils.gpa.destroy(seat);
 
     seat.* = .{
         .context = context,
         .river_seat_v1 = river_seat_v1,
+        .river_layer_shell_seat_v1 = try context.river_layer_shell_v1.getSeat(river_seat_v1),
         .focused_window = null,
         .focused_output = null,
         .link = undefined, // Handled by the wl.list
     };
 
     seat.river_seat_v1.setListener(*Seat, seatListener, seat);
+    seat.river_layer_shell_seat_v1.setListener(*Seat, riverLayerShellSeatListener, seat);
 
     return seat;
 }
@@ -77,6 +86,7 @@ pub fn destroy(seat: *Seat) void {
     if (seat.move_pointer_binding) |binding| binding.destroy();
     if (seat.resize_pointer_binding) |binding| binding.destroy();
     seat.river_seat_v1.destroy();
+    seat.river_layer_shell_seat_v1.destroy();
     utils.gpa.destroy(seat);
 }
 
@@ -103,6 +113,11 @@ fn seatListener(river_seat_v1: *river.SeatV1, event: river.SeatV1.Event, seat: *
     }
 }
 
+fn riverLayerShellSeatListener(river_layer_shell_seat_v1: *river.LayerShellSeatV1, event: river.LayerShellSeatV1.Event, seat: *Seat) void {
+    assert(seat.river_layer_shell_seat_v1 == river_layer_shell_seat_v1);
+    seat.pending_manage.layer_focus = std.meta.activeTag(event);
+}
+
 // river_window_v1 needs to be optional because ev.window is optional
 fn setWindowFocus(seat: *Seat, river_window_v1: ?*river.WindowV1) void {
     const wv1 = river_window_v1 orelse return;
@@ -116,33 +131,37 @@ fn setWindowFocus(seat: *Seat, river_window_v1: ?*river.WindowV1) void {
 pub fn manage(seat: *Seat) void {
     defer seat.pending_manage = .{};
 
-    if (seat.pending_manage.window) |pending_window| {
-        switch (pending_window) {
-            .window => |window| {
-                if (seat.focused_window) |focused| {
-                    // Tell the previously focused Window that it's no longer focused
-                    if (focused != window) {
+    // Focus events are ignored by the compositor when a layer shell has exclusive focus.
+    if (seat.layer_focus != .focus_exclusive) {
+        if (seat.pending_manage.window) |pending_window| {
+            switch (pending_window) {
+                .window => |window| {
+                    if (seat.focused_window) |focused| {
+                        // Tell the previously focused Window that it's no longer focused
+                        if (focused != window) {
+                            focused.pending_render.focused = false;
+                        }
+                    }
+                    seat.focused_window = window;
+                    seat.river_seat_v1.focusWindow(window.river_window_v1);
+                    window.pending_render.focused = true;
+                },
+                .clear_focus => {
+                    if (seat.focused_window) |focused| {
+                        // Tell the previously focused Window that it's no longer focused
                         focused.pending_render.focused = false;
                     }
-                }
-                seat.focused_window = window;
-                seat.river_seat_v1.focusWindow(window.river_window_v1);
-                window.pending_render.focused = true;
-            },
-            .clear_focus => {
-                if (seat.focused_window) |focused| {
-                    // Tell the previously focused Window that it's no longer focused
-                    focused.pending_render.focused = false;
-                }
-                seat.focused_window = null;
-                seat.river_seat_v1.clearFocus();
-            },
+                    seat.focused_window = null;
+                    seat.river_seat_v1.clearFocus();
+                },
+            }
         }
     }
     if (seat.pending_manage.output) |pending_output| {
         switch (pending_output) {
             .output => |output| {
                 seat.focused_output = output;
+                output.river_layer_shell_output_v1.setDefault();
             },
             .clear_focus => {
                 seat.focused_output = null;
@@ -150,18 +169,42 @@ pub fn manage(seat: *Seat) void {
         }
     }
 
-    if (seat.pending_manage.should_warp_pointer) blk: {
-        if (seat.context.config.pointer_warp_on_focus_change) {
-            const window = seat.focused_window orelse {
-                log.warn("Trying to warp-on-focus-change without a focused window.", .{});
-                break :blk;
-            };
-            // Warp pointer to center of focused window;
-            // because the x and y coords are set during render, we need to check if
-            // there are new coordinates in window.pending_render.
-            const pointer_x: i32 = (window.pending_render.x orelse window.x) + @divTrunc(window.width, 2);
-            const pointer_y: i32 = (window.pending_render.y orelse window.y) + @divTrunc(window.height, 2);
-            seat.river_seat_v1.pointerWarp(pointer_x, pointer_y);
+    // Handle layer focus changes after window focus so focused_window is up to date.
+    // This overrides whatever pending_render.focused the window focus block just set.
+    if (seat.pending_manage.layer_focus) |layer_focus| {
+        seat.layer_focus = layer_focus;
+        switch (layer_focus) {
+            .focus_exclusive,
+            .focus_non_exclusive,
+            => {
+                if (seat.focused_window) |focused_window| {
+                    focused_window.pending_render.focused = false;
+                }
+            },
+            .focus_none => {
+                if (seat.focused_window) |focused_window| {
+                    seat.river_seat_v1.focusWindow(focused_window.river_window_v1);
+                    focused_window.pending_render.focused = true;
+                }
+            },
+        }
+    }
+
+    // Focus doesn't change during .focus_exclusive, so pointer shouldn't get warped, either
+    if (seat.layer_focus != .focus_exclusive) {
+        if (seat.pending_manage.should_warp_pointer) blk: {
+            if (seat.context.config.pointer_warp_on_focus_change) {
+                const window = seat.focused_window orelse {
+                    log.warn("Trying to warp-on-focus-change without a focused window.", .{});
+                    break :blk;
+                };
+                // Warp pointer to center of focused window;
+                // because the x and y coords are set during render, we need to check if
+                // there are new coordinates in window.pending_render.
+                const pointer_x: i32 = (window.pending_render.x orelse window.x) + @divFloor(window.width, 2);
+                const pointer_y: i32 = (window.pending_render.y orelse window.y) + @divFloor(window.height, 2);
+                seat.river_seat_v1.pointerWarp(pointer_x, pointer_y);
+            }
         }
     }
 
@@ -204,17 +247,8 @@ pub fn manage(seat: *Seat) void {
         switch (seat.pointer_op) {
             .none => {},
             .move => |op| {
-                const output = op.window.output orelse {
-                    log.err("window has no output during move operation", .{});
-                    return;
-                };
-                const min_x = output.x;
-                const max_x = output.x + output.width - @as(i32, op.window.float_width);
-                const min_y = output.y;
-                const max_y = output.y + output.height - @as(i32, op.window.float_height);
-
-                op.window.float_x = std.math.clamp(op.start_x + delta.dx, min_x, @max(min_x, max_x));
-                op.window.float_y = std.math.clamp(op.start_y + delta.dy, min_y, @max(min_y, max_y));
+                op.window.float_x = op.start_x + delta.dx;
+                op.window.float_y = op.start_y + delta.dy;
                 op.window.pending_render.x = op.window.float_x;
                 op.window.pending_render.y = op.window.float_y;
             },
@@ -238,22 +272,10 @@ pub fn manage(seat: *Seat) void {
 
                 // Clamp to minimum size
                 const min_size: i32 = 50;
-                if (new_width < min_size) {
-                    if (op.edges.left) new_x -= min_size - new_width;
-                    new_width = min_size;
-                }
-                if (new_height < min_size) {
-                    if (op.edges.top) new_y -= min_size - new_height;
-                    new_height = min_size;
-                }
-
-                // Clamp position to output bounds
-                const output = op.window.output orelse {
-                    log.err("window has no output during resize operation", .{});
-                    return;
-                };
-                new_x = std.math.clamp(new_x, output.x, @max(output.x, output.x + output.width - new_width));
-                new_y = std.math.clamp(new_y, output.y, @max(output.y, output.y + output.height - new_height));
+                if (op.edges.left) new_x = @min(new_x, op.start_x + @as(i32, op.start_width) - min_size);
+                if (op.edges.top) new_y = @min(new_y, op.start_y + @as(i32, op.start_height) - min_size);
+                new_width = @max(new_width, min_size);
+                new_height = @max(new_height, min_size);
 
                 op.window.float_width = @intCast(new_width);
                 op.window.float_height = @intCast(new_height);

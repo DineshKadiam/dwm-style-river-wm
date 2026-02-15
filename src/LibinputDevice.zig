@@ -79,7 +79,7 @@ link: wl.list.Link,
 
 pub fn create(context: *Context, river_libinput_device_v1: *river.LibinputDeviceV1) !*LibinputDevice {
     const libinput_device = try utils.gpa.create(LibinputDevice);
-    errdefer libinput_device.destroy();
+    errdefer utils.gpa.destroy(libinput_device);
 
     libinput_device.* = .{
         .context = context,
@@ -107,7 +107,6 @@ pub fn destroy(libinput_device: *LibinputDevice) void {
 fn riverLibinputDeviceV1Listener(river_libinput_device_v1: *river.LibinputDeviceV1, event: river.LibinputDeviceV1.Event, libinput_device: *LibinputDevice) void {
     assert(libinput_device.river_libinput_device_v1 == river_libinput_device_v1);
     const im = libinput_device.context.im;
-    log.debug("bwbuhse: {s} for {d}", .{ @tagName(event), river_libinput_device_v1.getId() });
     switch (event) {
         .removed => {
             river_libinput_device_v1.destroy();

@@ -41,6 +41,9 @@ pub const Command = union(enum) {
     resize_width: i32,
     resize_height: i32,
 
+    // Center floating window on its output
+    center_float,
+
     // Swap window position in stack
     swap_next,
     swap_prev,
@@ -56,7 +59,7 @@ const XkbBinding = struct {
 
     fn create(xkb_binding_v1: *river.XkbBindingV1, command: Command, context: *Context) !*XkbBinding {
         var xkb_binding = try utils.gpa.create(XkbBinding);
-        errdefer xkb_binding.destroy();
+        errdefer utils.gpa.destroy(xkb_binding);
 
         xkb_binding.* = .{
             .xkb_binding_v1 = xkb_binding_v1,
@@ -237,6 +240,7 @@ const XkbBinding = struct {
             .move_right => |pixels| moveFloatingWindow(context, pixels, 0),
             .resize_width => |delta| resizeFloatingWindow(context, delta, 0),
             .resize_height => |delta| resizeFloatingWindow(context, 0, delta),
+            .center_float => centerFloatingWindow(context),
             .swap_next => swapWindow(context, .next),
             .swap_prev => swapWindow(context, .prev),
         }
@@ -336,18 +340,9 @@ const XkbBinding = struct {
         const seat = context.wm.seats.first() orelse return;
         const window = seat.focused_window orelse return;
         if (!window.floating) return;
-        const output = window.output orelse {
-            log.err("focused floating window has no output during move", .{});
-            return;
-        };
 
-        const min_x = output.x;
-        const max_x = output.x + output.width - @as(i32, window.float_width);
-        const min_y = output.y;
-        const max_y = output.y + output.height - @as(i32, window.float_height);
-
-        window.float_x = std.math.clamp(window.float_x + dx, min_x, @max(min_x, max_x));
-        window.float_y = std.math.clamp(window.float_y + dy, min_y, @max(min_y, max_y));
+        window.float_x += dx;
+        window.float_y += dy;
         window.pending_render.x = window.float_x;
         window.pending_render.y = window.float_y;
         context.wm.river_window_manager_v1.manageDirty();
@@ -357,25 +352,27 @@ const XkbBinding = struct {
         const seat = context.wm.seats.first() orelse return;
         const window = seat.focused_window orelse return;
         if (!window.floating) return;
-        const output = window.output orelse {
-            log.err("focused floating window has no output during resize", .{});
-            return;
-        };
 
         const new_width: i32 = @as(i32, window.float_width) + dw;
         const new_height: i32 = @as(i32, window.float_height) + dh;
         window.float_width = @intCast(@max(50, new_width));
         window.float_height = @intCast(@max(50, new_height));
 
-        // Clamp position to keep window on screen after resize
-        const max_x = output.x + output.width - @as(i32, window.float_width);
-        const max_y = output.y + output.height - @as(i32, window.float_height);
-        window.float_x = std.math.clamp(window.float_x, output.x, @max(output.x, max_x));
-        window.float_y = std.math.clamp(window.float_y, output.y, @max(output.y, max_y));
+        window.pending_manage.width = window.float_width;
+        window.pending_manage.height = window.float_height;
+        context.wm.river_window_manager_v1.manageDirty();
+    }
 
+    fn centerFloatingWindow(context: *Context) void {
+        const seat = context.wm.seats.first() orelse return;
+        const window = seat.focused_window orelse return;
+        if (!window.floating) return;
+        const output = window.output orelse return;
+
+        window.float_x = output.usable_x + @divFloor(output.usable_width, 2) - @divFloor(window.float_width, 2);
+        window.float_y = output.usable_y + @divFloor(output.usable_height, 2) - @divFloor(window.float_height, 2);
         window.pending_render.x = window.float_x;
         window.pending_render.y = window.float_y;
-        window.river_window_v1.proposeDimensions(window.float_width, window.float_height);
         context.wm.river_window_manager_v1.manageDirty();
     }
 
@@ -405,7 +402,7 @@ bindings: wl.list.Head(XkbBinding, .link),
 
 pub fn create(context: *Context, xkb_bindings_v1: *river.XkbBindingsV1) !*XkbBindings {
     const xkb_bindings = try utils.gpa.create(XkbBindings);
-    errdefer xkb_bindings.destroy();
+    errdefer utils.gpa.destroy(xkb_bindings);
 
     xkb_bindings.* = .{
         .context = context,

@@ -103,7 +103,7 @@ pub fn parseModifiers(s: []const u8) !?river.SeatV1.Modifiers {
     return modifiers;
 }
 
-pub fn tokenizeToOwnedSlices(input: []const u8, delimiter: u8) ![]const []const u8 {
+pub fn tokenizeToOwnedSlices(input: []const u8, delimiter: u8) ![][]const u8 {
     var list: std.ArrayList([]const u8) = .empty;
     var it = std.mem.tokenizeScalar(u8, input, delimiter);
     while (it.next()) |part| {

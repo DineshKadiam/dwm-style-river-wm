@@ -146,6 +146,7 @@ Full command reference:
 | `move_right`             | pixels           | Move floating window right                        |
 | `resize_width`           | pixels           | Resize floating window width (negative to shrink) |
 | `resize_height`          | pixels           | Resize floating window height (negative to shrink)|
+| `center_float`           |                  | Center the focused floating window on its output  |
 | `set_output_tags`        | tags (u32 bitmask) | Set the tags on the focused output              |
 | `set_window_tags`        | tags (u32 bitmask) | Set the tags on the focused window              |
 | `toggle_output_tags`     | tags (u32 bitmask) | Toggle a tag on the focused output              |
