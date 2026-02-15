@@ -7,6 +7,8 @@ const Context = @This();
 
 initialized: bool,
 
+env: process.EnvMap,
+
 // Wayland globals
 wl_compositor: *wl.Compositor,
 wl_display: *wl.Display,
@@ -60,10 +62,21 @@ pub const Options = struct {
 
 pub fn create(options: Options) !*Context {
     const context = try utils.gpa.create(Context);
-    errdefer context.destroy();
+    errdefer utils.gpa.destroy(context);
+
+    const im = try InputManager.create(context, options.river_input_manager_v1, options.river_libinput_config_v1);
+    errdefer im.destroy();
+    const wm = try WindowManager.create(context, options.river_window_manager_v1);
+    errdefer wm.destroy();
+    const xkb_bindings = try XkbBindings.create(context, options.river_xkb_bindings_v1);
+    errdefer xkb_bindings.destroy();
+
+    const env = try process.getEnvMap(utils.gpa);
+    errdefer env.deinit();
 
     context.* = .{
         .initialized = false,
+        .env = env,
         .wl_compositor = options.wl_compositor,
         .wl_display = options.wl_display,
         .wl_registry = options.wl_registry,
@@ -72,9 +85,9 @@ pub fn create(options: Options) !*Context {
         .river_layer_shell_v1 = options.river_layer_shell_v1,
         .zwlr_layer_shell_v1 = options.zwlr_layer_shell_v1,
         .wallpaper_image = loadWallpaperImage(options.config),
-        .im = try InputManager.create(context, options.river_input_manager_v1, options.river_libinput_config_v1),
-        .wm = try WindowManager.create(context, options.river_window_manager_v1),
-        .xkb_bindings = try XkbBindings.create(context, options.river_xkb_bindings_v1),
+        .im = im,
+        .wm = wm,
+        .xkb_bindings = xkb_bindings,
         .config = options.config,
     };
 
@@ -82,8 +95,10 @@ pub fn create(options: Options) !*Context {
 }
 
 pub fn destroy(context: *Context) void {
-    context.xkb_bindings.destroy();
+    context.env.deinit();
+    context.im.destroy();
     context.wm.destroy();
+    context.xkb_bindings.destroy();
 
     if (context.wallpaper_image) |wallpaper_image| {
         wallpaper_image.destroy();
@@ -165,6 +180,7 @@ fn pathsEqual(a: ?[]const u8, b: ?[]const u8) bool {
 
 const std = @import("std");
 const mem = std.mem;
+const process = std.process;
 
 const wayland = @import("wayland");
 const river = wayland.client.river;

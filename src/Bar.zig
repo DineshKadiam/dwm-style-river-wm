@@ -27,17 +27,15 @@ layer_surface: ?*zwlr.LayerSurfaceV1 = null,
 configured: bool = false,
 
 pub fn init(context: *Context, output: *Output) !Bar {
-    // Get the local environment
-    // Needed for the timezone
-    // XXX: It might be better to store this in Context?
-    var env = try process.getEnvMap(utils.gpa);
-    defer env.deinit();
+    const timezone = try zeit.local(utils.gpa, &context.env);
+    errdefer timezone.deinit();
 
-    const timezone = try zeit.local(utils.gpa, &env);
+    const fonts = try getFcftFonts("monospace:size=14", 1);
+    errdefer fonts.destroy();
 
     return .{
         .context = context,
-        .fonts = try getFcftFonts("monospace:size=14", 1),
+        .fonts = fonts,
         .timezone = timezone,
         .output = output,
     };
@@ -82,6 +80,7 @@ pub fn initSurface(bar: *Bar) !void {
 pub fn deinit(bar: *Bar) void {
     bar.configured = false;
     bar.timezone.deinit();
+    bar.fonts.destroy();
     if (bar.wl_surface) |wl_surface| {
         wl_surface.destroy();
     }
