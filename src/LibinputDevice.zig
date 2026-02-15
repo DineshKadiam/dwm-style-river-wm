@@ -17,65 +17,56 @@ input_device: ?*InputDevice = null,
 /// reloaded.
 should_manage: bool = true,
 
-send_events_support: SendEventsModes = .{},
-send_events_current: ?SendEventsModes = null,
-
-/// The number of fingers supported for tap-to-click/drag.
-/// If finger_count is 0, tap-to-click and drag are unsupported.
-tap_support: u31 = 0,
-tap_current: ?TapState = null,
-
-tap_button_map_current: ?TapButtonMap = null,
-
-drag_current: ?DragState = null,
-
-drag_lock_current: ?DragLockState = null,
-
-/// The number of fingers supported for three/four finger drag.
-/// If finger_count is less than 3, three finger drag is unsupported.
-three_finger_drag_support: u31 = 0,
-three_finger_drag_current: ?ThreeFingerDragState = null,
-
-/// A calibration matrix is supported if the supported argument is non-zero.
-calibration_matrix_support: bool = false,
-calibration_matrix_current: ?[]f32 = null,
-
-accel_profiles_support: ?AccelProfiles = null,
-accel_profile_current: ?AccelProfile = null,
-
-accel_speed_current: ?f64 = null,
-
-natural_scroll_support: bool = false,
-natural_scroll_current: ?NaturalScrollState = null,
-
-left_handed_support: bool = false,
-left_handed_current: ?LeftHandedState = null,
-
-click_method_support: ?ClickMethods = null,
-click_method_current: ?ClickMethod = null,
-
-clickfinger_button_map_current: ?ClickfingerButtonMap = null,
-
-middle_emulation_support: bool = false,
-middle_emulation_current: ?MiddleEmulationState = null,
-
-scroll_method_support: ?ScrollMethods = null,
-scroll_method_current: ?ScrollMethod = null,
-/// Supported if scroll_methods.on_button_down is supported.
-scroll_button_current: ?u32 = null,
-/// Supported if scroll_methods.on_button_down is supported.
-scroll_button_lock_current: ?ScrollButtonLockState = null,
-
-dwt_support: bool = false,
-dwt_current: ?DwtState = null,
-
-dwtp_support: bool = false,
-dwtp_current: ?DwtpState = null,
-
-rotation_support: bool = false,
-rotation_current: ?u32 = null,
+capabilities: Capabilities = .{},
+state: CurrentState = .{},
 
 link: wl.list.Link,
+
+pub const Capabilities = struct {
+    send_events: SendEventsModes = .{},
+    /// The number of fingers supported for tap-to-click/drag.
+    /// If finger_count is 0, tap-to-click and drag are unsupported.
+    tap: u31 = 0,
+    /// The number of fingers supported for three/four finger drag.
+    /// If finger_count is less than 3, three finger drag is unsupported.
+    three_finger_drag: u31 = 0,
+    /// A calibration matrix is supported if the supported argument is non-zero.
+    calibration_matrix: bool = false,
+    accel_profiles: ?AccelProfiles = null,
+    natural_scroll: bool = false,
+    left_handed: bool = false,
+    click_methods: ?ClickMethods = null,
+    middle_emulation: bool = false,
+    scroll_methods: ?ScrollMethods = null,
+    dwt: bool = false,
+    dwtp: bool = false,
+    rotation: bool = false,
+};
+
+pub const CurrentState = struct {
+    send_events: ?SendEventsModes = null,
+    tap: ?TapState = null,
+    tap_button_map: ?TapButtonMap = null,
+    drag: ?DragState = null,
+    drag_lock: ?DragLockState = null,
+    three_finger_drag: ?ThreeFingerDragState = null,
+    calibration_matrix: ?[]f32 = null,
+    accel_profile: ?AccelProfile = null,
+    accel_speed: ?f64 = null,
+    natural_scroll: ?NaturalScrollState = null,
+    left_handed: ?LeftHandedState = null,
+    click_method: ?ClickMethod = null,
+    clickfinger_button_map: ?ClickfingerButtonMap = null,
+    middle_emulation: ?MiddleEmulationState = null,
+    scroll_method: ?ScrollMethod = null,
+    /// Supported if scroll_methods.on_button_down is supported.
+    scroll_button: ?u32 = null,
+    /// Supported if scroll_methods.on_button_down is supported.
+    scroll_button_lock: ?ScrollButtonLockState = null,
+    dwt: ?DwtState = null,
+    dwtp: ?DwtpState = null,
+    rotation: ?u32 = null,
+};
 
 pub fn create(context: *Context, river_libinput_device_v1: *river.LibinputDeviceV1) !*LibinputDevice {
     const libinput_device = try utils.gpa.create(LibinputDevice);
@@ -123,39 +114,39 @@ fn riverLibinputDeviceV1Listener(river_libinput_device_v1: *river.LibinputDevice
                 }
             }
         },
-        .send_events_support => |ev| libinput_device.send_events_support = ev.modes,
-        .send_events_current => |ev| libinput_device.send_events_current = ev.mode,
-        .tap_support => |ev| libinput_device.tap_support = @intCast(ev.finger_count),
-        .tap_current => |ev| libinput_device.tap_current = ev.state,
-        .tap_button_map_current => |ev| libinput_device.tap_button_map_current = ev.button_map,
-        .drag_current => |ev| libinput_device.drag_current = ev.state,
-        .drag_lock_current => |ev| libinput_device.drag_lock_current = ev.state,
-        .three_finger_drag_support => |ev| libinput_device.three_finger_drag_support = @intCast(ev.finger_count),
-        .three_finger_drag_current => |ev| libinput_device.three_finger_drag_current = ev.state,
-        .calibration_matrix_support => |ev| libinput_device.calibration_matrix_support = ev.supported != 0,
-        .calibration_matrix_current => |ev| libinput_device.calibration_matrix_current = ev.matrix.slice(f32),
-        .accel_profiles_support => |ev| libinput_device.accel_profiles_support = ev.profiles,
-        .accel_profile_current => |ev| libinput_device.accel_profile_current = ev.profile,
-        .accel_speed_current => |ev| libinput_device.accel_speed_current = ev.speed.slice(f64)[0],
-        .natural_scroll_support => |ev| libinput_device.natural_scroll_support = ev.supported != 0,
-        .natural_scroll_current => |ev| libinput_device.natural_scroll_current = ev.state,
-        .left_handed_support => |ev| libinput_device.left_handed_support = ev.supported != 0,
-        .left_handed_current => |ev| libinput_device.left_handed_current = ev.state,
-        .click_method_support => |ev| libinput_device.click_method_support = ev.methods,
-        .click_method_current => |ev| libinput_device.click_method_current = ev.method,
-        .clickfinger_button_map_current => |ev| libinput_device.clickfinger_button_map_current = ev.button_map,
-        .middle_emulation_support => |ev| libinput_device.middle_emulation_support = ev.supported != 0,
-        .middle_emulation_current => |ev| libinput_device.middle_emulation_current = ev.state,
-        .scroll_method_support => |ev| libinput_device.scroll_method_support = ev.methods,
-        .scroll_method_current => |ev| libinput_device.scroll_method_current = ev.method,
-        .scroll_button_current => |ev| libinput_device.scroll_button_current = ev.button,
-        .scroll_button_lock_current => |ev| libinput_device.scroll_button_lock_current = ev.state,
-        .dwt_support => |ev| libinput_device.dwt_support = ev.supported != 0,
-        .dwt_current => |ev| libinput_device.dwt_current = ev.state,
-        .dwtp_support => |ev| libinput_device.dwtp_support = ev.supported != 0,
-        .dwtp_current => |ev| libinput_device.dwtp_current = ev.state,
-        .rotation_support => |ev| libinput_device.rotation_support = ev.supported != 0,
-        .rotation_current => |ev| libinput_device.rotation_current = ev.angle,
+        .send_events_support => |ev| libinput_device.capabilities.send_events = ev.modes,
+        .send_events_current => |ev| libinput_device.state.send_events = ev.mode,
+        .tap_support => |ev| libinput_device.capabilities.tap = @intCast(ev.finger_count),
+        .tap_current => |ev| libinput_device.state.tap = ev.state,
+        .tap_button_map_current => |ev| libinput_device.state.tap_button_map = ev.button_map,
+        .drag_current => |ev| libinput_device.state.drag = ev.state,
+        .drag_lock_current => |ev| libinput_device.state.drag_lock = ev.state,
+        .three_finger_drag_support => |ev| libinput_device.capabilities.three_finger_drag = @intCast(ev.finger_count),
+        .three_finger_drag_current => |ev| libinput_device.state.three_finger_drag = ev.state,
+        .calibration_matrix_support => |ev| libinput_device.capabilities.calibration_matrix = ev.supported != 0,
+        .calibration_matrix_current => |ev| libinput_device.state.calibration_matrix = ev.matrix.slice(f32),
+        .accel_profiles_support => |ev| libinput_device.capabilities.accel_profiles = ev.profiles,
+        .accel_profile_current => |ev| libinput_device.state.accel_profile = ev.profile,
+        .accel_speed_current => |ev| libinput_device.state.accel_speed = ev.speed.slice(f64)[0],
+        .natural_scroll_support => |ev| libinput_device.capabilities.natural_scroll = ev.supported != 0,
+        .natural_scroll_current => |ev| libinput_device.state.natural_scroll = ev.state,
+        .left_handed_support => |ev| libinput_device.capabilities.left_handed = ev.supported != 0,
+        .left_handed_current => |ev| libinput_device.state.left_handed = ev.state,
+        .click_method_support => |ev| libinput_device.capabilities.click_methods = ev.methods,
+        .click_method_current => |ev| libinput_device.state.click_method = ev.method,
+        .clickfinger_button_map_current => |ev| libinput_device.state.clickfinger_button_map = ev.button_map,
+        .middle_emulation_support => |ev| libinput_device.capabilities.middle_emulation = ev.supported != 0,
+        .middle_emulation_current => |ev| libinput_device.state.middle_emulation = ev.state,
+        .scroll_method_support => |ev| libinput_device.capabilities.scroll_methods = ev.methods,
+        .scroll_method_current => |ev| libinput_device.state.scroll_method = ev.method,
+        .scroll_button_current => |ev| libinput_device.state.scroll_button = ev.button,
+        .scroll_button_lock_current => |ev| libinput_device.state.scroll_button_lock = ev.state,
+        .dwt_support => |ev| libinput_device.capabilities.dwt = ev.supported != 0,
+        .dwt_current => |ev| libinput_device.state.dwt = ev.state,
+        .dwtp_support => |ev| libinput_device.capabilities.dwtp = ev.supported != 0,
+        .dwtp_current => |ev| libinput_device.state.dwtp = ev.state,
+        .rotation_support => |ev| libinput_device.capabilities.rotation = ev.supported != 0,
+        .rotation_current => |ev| libinput_device.state.rotation = ev.angle,
         else => |ev| {
             // We don't keep track of any default states right now
             log.debug("unhandled event: {s}", .{@tagName(ev)});
@@ -187,29 +178,29 @@ pub fn applyInputConfigs(libinput_device: *LibinputDevice) void {
 
         log.debug("Applying input config to {s}", .{device_name});
 
-        if (@as(u32, @bitCast(libinput_device.send_events_support)) != 0) {
+        if (@as(u32, @bitCast(libinput_device.capabilities.send_events)) != 0) {
             if (input_config.send_events) |val| {
                 const mode: SendEventsModes = @bitCast(@as(u32, @intCast(@intFromEnum(val))));
                 const mode_bits: u32 = @bitCast(mode);
-                const support_bits: u32 = @bitCast(libinput_device.send_events_support);
+                const support_bits: u32 = @bitCast(libinput_device.capabilities.send_events);
                 if (mode_bits == 0 or mode_bits & support_bits == mode_bits) {
                     applyResult(dev.setSendEvents(mode));
                 }
             }
         }
 
-        if (libinput_device.tap_support > 0) {
+        if (libinput_device.capabilities.tap > 0) {
             if (input_config.tap) |val| applyResult(dev.setTap(val));
             if (input_config.tap_button_map) |val| applyResult(dev.setTapButtonMap(val));
             if (input_config.drag) |val| applyResult(dev.setDrag(val));
             if (input_config.drag_lock) |val| applyResult(dev.setDragLock(val));
         }
 
-        if (libinput_device.three_finger_drag_support >= 3) {
+        if (libinput_device.capabilities.three_finger_drag >= 3) {
             if (input_config.three_finger_drag) |val| applyResult(dev.setThreeFingerDrag(val));
         }
 
-        if (libinput_device.accel_profiles_support) |support| {
+        if (libinput_device.capabilities.accel_profiles) |support| {
             if (input_config.accel_profile) |val| {
                 if (isSupported(AccelProfile, AccelProfiles, val, support)) {
                     applyResult(dev.setAccelProfile(val));
@@ -226,15 +217,15 @@ pub fn applyInputConfigs(libinput_device: *LibinputDevice) void {
             }
         }
 
-        if (libinput_device.natural_scroll_support) {
+        if (libinput_device.capabilities.natural_scroll) {
             if (input_config.natural_scroll) |val| applyResult(dev.setNaturalScroll(val));
         }
 
-        if (libinput_device.left_handed_support) {
+        if (libinput_device.capabilities.left_handed) {
             if (input_config.left_handed) |val| applyResult(dev.setLeftHanded(val));
         }
 
-        if (libinput_device.click_method_support) |support| {
+        if (libinput_device.capabilities.click_methods) |support| {
             if (input_config.click_method) |val| {
                 if (isSupported(ClickMethod, ClickMethods, val, support)) {
                     applyResult(dev.setClickMethod(val));
@@ -243,11 +234,11 @@ pub fn applyInputConfigs(libinput_device: *LibinputDevice) void {
             if (input_config.clickfinger_button_map) |val| applyResult(dev.setClickfingerButtonMap(val));
         }
 
-        if (libinput_device.middle_emulation_support) {
+        if (libinput_device.capabilities.middle_emulation) {
             if (input_config.middle_emulation) |val| applyResult(dev.setMiddleEmulation(val));
         }
 
-        if (libinput_device.scroll_method_support) |support| {
+        if (libinput_device.capabilities.scroll_methods) |support| {
             if (input_config.scroll_method) |val| {
                 if (isSupported(ScrollMethod, ScrollMethods, val, support)) {
                     applyResult(dev.setScrollMethod(val));
@@ -259,15 +250,15 @@ pub fn applyInputConfigs(libinput_device: *LibinputDevice) void {
             }
         }
 
-        if (libinput_device.dwt_support) {
+        if (libinput_device.capabilities.dwt) {
             if (input_config.dwt) |val| applyResult(dev.setDwt(val));
         }
 
-        if (libinput_device.dwtp_support) {
+        if (libinput_device.capabilities.dwtp) {
             if (input_config.dwtp) |val| applyResult(dev.setDwtp(val));
         }
 
-        if (libinput_device.rotation_support) {
+        if (libinput_device.capabilities.rotation) {
             if (input_config.rotation) |val| applyResult(dev.setRotation(val));
         }
     }
