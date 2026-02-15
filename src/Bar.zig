@@ -4,14 +4,17 @@
 
 const Bar = @This();
 
+/// Standard base DPI at a scale of 1
+const base_dpi = 96;
+
 context: *Context,
 
-// TODO: Get this in Config then save in Context
-fonts: *fcft.Font,
 /// The timezone of the computer.
 timezone: zeit.timezone.TimeZone,
 
-/// The output that this Bar is on
+fonts: *fcft.Font,
+font_scale: u31 = 0,
+
 output: *Output,
 
 // Bar geometry
@@ -34,7 +37,7 @@ pub fn init(context: *Context, output: *Output) !Bar {
 
     return .{
         .context = context,
-        .fonts = try getFcftFonts("monospace:size=14"),
+        .fonts = try getFcftFonts("monospace:size=14", 1),
         .timezone = timezone,
         .output = output,
     };
@@ -50,8 +53,8 @@ pub fn initSurface(bar: *Bar) !void {
     const context = bar.context;
 
     // TODO: Add padding to config
-    const padding = 5;
-    const bar_height: u31 = @intCast(bar.fonts.height + 2 * padding);
+    const vertical_padding = 5;
+    const bar_height: u31 = @intCast(bar.fonts.height + 2 * vertical_padding);
 
     const wl_surface = try context.wl_compositor.createSurface();
     errdefer wl_surface.destroy();
@@ -99,7 +102,11 @@ pub fn layerSurfaceListener(
             const width: u31 = @intCast(ev.width);
             const height: u31 = @intCast(ev.height);
 
-            if (bar.configured and bar.width == width and bar.height == height) {
+            if (bar.configured and
+                bar.width == width and
+                bar.height == height and
+                bar.output.scale == bar.font_scale)
+            {
                 if (bar.wl_surface) |wl_surface| {
                     wl_surface.commit();
                 } else {
@@ -142,6 +149,13 @@ pub fn render(bar: *Bar) !void {
     const context = bar.context;
 
     const scale = bar.output.scale;
+
+    // Recreate fonts at the output's new scale
+    if (scale != bar.font_scale) {
+        bar.fonts.destroy();
+        bar.fonts = try getFcftFonts("monospace:size=14", scale);
+        bar.font_scale = scale;
+    }
 
     // Scaled width/height
     const render_width = bar.width * scale;
@@ -210,8 +224,9 @@ pub fn render(bar: *Bar) !void {
 
     // Finally, attach the buffer to the surface
     const wl_surface = bar.wl_surface orelse return;
+    wl_surface.setBufferScale(scale);
     wl_surface.attach(buffer.wl_buffer, 0, 0);
-    wl_surface.damageBuffer(0, 0, bar.width, bar.height);
+    wl_surface.damageBuffer(0, 0, render_width, render_height);
     wl_surface.commit();
 }
 
@@ -318,8 +333,8 @@ fn renderGlyphs(
     }
 }
 
-// Borrowed from https://git.sr.ht/~novakane/zig-fcft-example
-fn getFcftFonts(fonts: []const u8) !*fcft.Font {
+// Borrowed and modified from https://git.sr.ht/~novakane/zig-fcft-example
+fn getFcftFonts(fonts: []const u8, scale: u31) !*fcft.Font {
     // Create an arena to free just for this function;
     // It makes cleaning up the ArrayList easier.
     var arena = std.heap.ArenaAllocator.init(utils.gpa);
@@ -330,7 +345,16 @@ fn getFcftFonts(fonts: []const u8) !*fcft.Font {
 
     var it = mem.tokenizeScalar(u8, fonts, ',');
     while (it.next()) |font| {
-        try list.append(arena_alloc, try arena_alloc.dupeZ(u8, font));
+        if (scale > 1) {
+            // If scale >1, we append :dpi so we can scale the font
+            const scaled = try arena_alloc.dupeZ(
+                u8,
+                try std.fmt.allocPrint(arena_alloc, "{s}:dpi={}", .{ font, @as(u32, base_dpi) * scale }),
+            );
+            try list.append(arena_alloc, scaled);
+        } else {
+            try list.append(arena_alloc, try arena_alloc.dupeZ(u8, font));
+        }
     }
 
     const fcft_fonts = try fcft.Font.fromName(list.items[0..], null);

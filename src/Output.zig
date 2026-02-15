@@ -29,6 +29,7 @@ usable_width: u31 = 0,
 usable_height: u31 = 0,
 
 // Information for this Output's wallpaper
+wallpaper_render_scale: u31 = 0,
 wallpaper_render_width: u31 = 0,
 wallpaper_render_height: u31 = 0,
 wl_surface: ?*wl.Surface = null,
@@ -265,6 +266,18 @@ fn wlOutputListener(_: *wl.Output, event: wl.Output.Event, output: *Output) void
                     log.err("failed to init bar for {s}: {}", .{ output_name, err });
                     return;
                 };
+                // Re-render bar if the scale changed
+                if (bar.configured and output.scale != bar.font_scale) {
+                    bar.render() catch |err| {
+                        log.err("Bar render failed: {}", .{err});
+                    };
+                }
+            }
+            // Re-render wallpaper if scale changed
+            if (output.configured and output.scale != output.wallpaper_render_scale) {
+                output.renderWallpaper() catch |err| {
+                    log.err("Wallpaper render failed: {}", .{err});
+                };
             }
         },
         .scale => |ev| {
@@ -361,7 +374,11 @@ fn wallpaperLayerSurfaceListener(layer_surface: *zwlr.LayerSurfaceV1, event: zwl
             const width: u31 = @intCast(ev.width);
             const height: u31 = @intCast(ev.height);
 
-            if (output.configured and output.wallpaper_render_width == width and output.wallpaper_render_height == height) {
+            if (output.configured and
+                output.wallpaper_render_width == width and
+                output.wallpaper_render_height == height and
+                output.scale == output.wallpaper_render_scale)
+            {
                 if (output.wl_surface) |wl_surface| {
                     wl_surface.commit();
                 } else {
@@ -393,7 +410,7 @@ fn calculateScale(image_dimension: c_int, output_dimension: u31, scale: u31) f64
     return numerator / denominator;
 }
 
-/// Calculates (image_dimension / dimension_scale - output_dimension) / 2 / dimension_scale;
+/// Calculates (image_dimension / dimension_scale - output_dimension) / 2 / dimension_scale
 fn calculateTransform(image_dimension: c_int, output_dimension: u31, dimension_scale: f64) f64 {
     const numerator1: f64 = @floatFromInt(image_dimension);
     const denominator1: f64 = dimension_scale;
@@ -441,8 +458,8 @@ pub fn renderWallpaper(output: *Output) !void {
 
     // Calculate translation offsets to center the image on the output.
     // If the scaled image is larger than the output, the offset crops equally from both sides.
-    const tx: f64 = calculateTransform(image_width, width, sx);
-    const ty: f64 = calculateTransform(image_height, height, sy);
+    const tx: f64 = calculateTransform(image_width, width * scale, sx);
+    const ty: f64 = calculateTransform(image_height, height * scale, sy);
 
     // Build a combined source-to-destination transform matrix.
     // Pixman transforms map destination pixels back to source pixels, so:
@@ -473,6 +490,8 @@ pub fn renderWallpaper(output: *Output) !void {
     wl_surface.attach(buffer.wl_buffer, 0, 0);
     wl_surface.damageBuffer(0, 0, width * scale, height * scale);
     wl_surface.commit();
+
+    output.wallpaper_render_scale = scale;
 }
 
 pub fn manage(output: *Output) void {

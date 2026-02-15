@@ -477,7 +477,22 @@ fn loadKeybindsChildBlock(config: *Config, parser: *kdl.Parser, hostname: ?[]con
                                 logWarnMissingNodeArg(name, "command");
                                 continue;
                             });
-                            const split_exec = try utils.tokenizeToOwnedSlices(exec_str, ' ');
+                            var split_exec = try utils.tokenizeToOwnedSlices(exec_str, ' ');
+                            if (split_exec.len > 0) {
+                                // Expand ~ in executable paths
+                                const expanded = expandTilde(split_exec[0]) catch |e| {
+                                    if (e == error.HomeNotSet) {
+                                        // No ~, just return what we had.
+                                        break :sw .{ .spawn = split_exec };
+                                    } else {
+                                        return e;
+                                    }
+                                };
+                                // tokenizeToOwnedSlices dupes each token, so we have to
+                                // free the original value before replacing it.
+                                utils.gpa.free(split_exec[0]);
+                                split_exec[0] = expanded;
+                            }
                             break :sw .{ .spawn = split_exec };
                         },
                         .change_ratio => {
