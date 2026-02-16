@@ -78,6 +78,10 @@ pub fn skipChildBlock(parser: *kdl.Parser) !void {
     }
 }
 
+pub inline fn logWarnInvalidNode(node_name: []const u8) void {
+    log.warn("Invalid KDL node {s}. Ignoring it and carrying on", .{node_name});
+}
+
 const std = @import("std");
 const fmt = std.fmt;
 const mem = std.mem;

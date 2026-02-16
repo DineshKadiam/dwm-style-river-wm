@@ -163,12 +163,6 @@ const NodeName = enum {
     tag_overlay,
 };
 
-const BorderNodeName = enum {
-    width,
-    color_focused,
-    color_unfocused,
-};
-
 const TagOverlayNodeName = enum {
     border_width,
     tag_amount,
@@ -408,13 +402,13 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                         },
                     }
                 } else {
-                    logWarnInvalidNode(node.name);
+                    helpers.logWarnInvalidNode(node.name);
                 }
             },
             .child_block_begin => {
                 if (next_child_block) |child_block| {
                     switch (child_block) {
-                        .borders => try config.loadBordersChildBlock(&parser, hostname),
+                        .borders => try borders.load(config, &parser, hostname),
                         .keybinds => try config.loadKeybindsChildBlock(&parser, hostname),
                         .pointer_binds => try config.loadPointerBindsChildBlock(&parser, hostname),
                         .input => {
@@ -433,59 +427,6 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                 }
             },
             .child_block_end => log.err("Reached unexpected .child_block_end. Ignoring it", .{}),
-        }
-    }
-}
-
-fn loadBordersChildBlock(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
-    while (try parser.next()) |event| {
-        switch (event) {
-            .node => |node| {
-                // If it's a node, we check if it's a valid NodeName
-                const node_name = std.meta.stringToEnum(BorderNodeName, node.name);
-                if (node_name) |name| {
-                    if (!helpers.hostMatches(node, parser, hostname)) {
-                        logDebugHostMismatch(name);
-                        continue;
-                    }
-                    switch (name) {
-                        .width => {
-                            const width_str = utils.stripQuotes(node.arg(parser, 0) orelse "");
-                            config.border_width = fmt.parseInt(u8, width_str, 10) catch {
-                                logWarnInvalidNodeArg(name, width_str);
-                                continue;
-                            };
-                            logDebugSettingNode(name, width_str);
-                        },
-                        .color_focused => {
-                            const color_str = utils.stripQuotes(node.arg(parser, 0) orelse "");
-                            config.border_color_focused = utils.parseRgba(color_str) catch {
-                                logWarnInvalidNodeArg(name, color_str);
-                                continue;
-                            };
-                            logDebugSettingNode(name, color_str);
-                        },
-                        .color_unfocused => {
-                            const color_str = utils.stripQuotes(node.arg(parser, 0) orelse "");
-                            config.border_color_unfocused = utils.parseRgba(color_str) catch {
-                                logWarnInvalidNodeArg(name, color_str);
-                                continue;
-                            };
-                            logDebugSettingNode(name, color_str);
-                        },
-                    }
-                } else {
-                    logWarnInvalidNode(node.name);
-                }
-            },
-            .child_block_begin => {
-                // borders should never have a nested child block
-                try helpers.skipChildBlock(parser);
-            },
-            .child_block_end => {
-                // Done parsing the borders block; return
-                return;
-            },
         }
     }
 }
@@ -553,7 +494,7 @@ fn loadTagOverlayChildBlock(config: *Config, parser: *kdl.Parser, hostname: ?[]c
                         },
                     }
                 } else {
-                    logWarnInvalidNode(node.name);
+                    helpers.logWarnInvalidNode(node.name);
                 }
             },
             .child_block_begin => {
@@ -595,7 +536,7 @@ fn loadTagOverlayAnchorsBlock(config: *Config, parser: *kdl.Parser, hostname: ?[
                         logWarnInvalidNodeArg(name, val_str);
                     }
                 } else {
-                    logWarnInvalidNode(node.name);
+                    helpers.logWarnInvalidNode(node.name);
                 }
             },
             .child_block_begin => try helpers.skipChildBlock(parser),
@@ -627,7 +568,7 @@ fn loadTagOverlayMarginsBlock(config: *Config, parser: *kdl.Parser, hostname: ?[
                     }
                     logDebugSettingNode(name, val_str);
                 } else {
-                    logWarnInvalidNode(node.name);
+                    helpers.logWarnInvalidNode(node.name);
                 }
             },
             .child_block_begin => try helpers.skipChildBlock(parser),
@@ -803,7 +744,7 @@ fn loadKeybindsChildBlock(config: *Config, parser: *kdl.Parser, hostname: ?[]con
                         .keysym = keysym,
                     });
                 } else {
-                    logWarnInvalidNode(node.name);
+                    helpers.logWarnInvalidNode(node.name);
                 }
             },
             .child_block_begin => {
@@ -861,7 +802,7 @@ fn loadPointerBindsChildBlock(config: *Config, parser: *kdl.Parser, hostname: ?[
 
                     log.debug("pointer_binds.{s}: {s} {s}", .{ @tagName(name), mod_str, button_str });
                 } else {
-                    logWarnInvalidNode(node.name);
+                    helpers.logWarnInvalidNode(node.name);
                 }
             },
             .child_block_begin => {
@@ -947,7 +888,7 @@ fn loadInputChildBlock(config: *Config, parser: *kdl.Parser, name: ?[]const u8, 
                         },
                     }
                 } else {
-                    logWarnInvalidNode(node.name);
+                    helpers.logWarnInvalidNode(node.name);
                 }
             },
             .child_block_begin => {
@@ -965,7 +906,6 @@ fn logWarnInvalidNodeArg(node_name: anytype, node_value: []const u8) void {
     const node_name_type = @TypeOf(node_name);
     switch (node_name_type) {
         NodeName => log.warn("Invalid \"{s}\" ({s}). Using default value", .{ @tagName(node_name), node_value }),
-        BorderNodeName => log.warn("Invalid \"border.{s}\" ({s}). Using default value", .{ @tagName(node_name), node_value }),
         KeybindNodeName => log.warn("Invalid \"keybind.{s}\" ({s}). Ignoring", .{ @tagName(node_name), node_value }),
         PointerBindNodeName => log.warn("Invalid \"pointer_binds.{s}\" ({s}). Ignoring", .{ @tagName(node_name), node_value }),
         InputConfigNodeName => log.warn("Invalid \"input.{s}\" ({s}). Ignoring", .{ @tagName(node_name), node_value }),
@@ -988,10 +928,6 @@ fn logWarnMissingNodeArg(node_name: anytype, comptime arg: []const u8) void {
     }
 }
 
-fn logWarnInvalidNode(node_name: []const u8) void {
-    log.warn("Invalid KDL node {s}. Ignoring it and carrying on", .{node_name});
-}
-
 fn logWarnMissingChildBlock(child_block: anytype) void {
     const child_block_type = @TypeOf(child_block);
     switch (child_block_type) {
@@ -1004,7 +940,6 @@ fn logDebugHostMismatch(node_name: anytype) void {
     const node_name_type = @TypeOf(node_name);
     switch (node_name_type) {
         NodeName => log.debug("Skipping \"{s}\" (host mismatch)", .{@tagName(node_name)}),
-        BorderNodeName => log.debug("Skipping \"border.{s}\" (host mismatch)", .{@tagName(node_name)}),
         PointerBindNodeName => log.debug("Skipping \"pointer_binds.{s}\" (host mismatch)", .{@tagName(node_name)}),
         InputConfigNodeName => log.debug("Skipping \"input.{s}\" (host mismatch)", .{@tagName(node_name)}),
         TagOverlayNodeName => log.debug("Skipping \"tag_overlay.{s}\" (host mismatch)", .{@tagName(node_name)}),
@@ -1019,7 +954,6 @@ fn logDebugSettingNode(node_name: anytype, node_value: []const u8) void {
     const node_name_type = @TypeOf(node_name);
     switch (node_name_type) {
         NodeName => log.debug("Setting {s} to {s}", .{ @tagName(node_name), node_value }),
-        BorderNodeName => log.debug("Setting border.{s} to {s}", .{ @tagName(node_name), node_value }),
         TagOverlayNodeName => log.debug("Setting tag_overlay.{s} to {s}", .{ @tagName(node_name), node_value }),
         TagOverlayAnchorsNodeName => log.debug("Setting tag_overlay.anchors.{s} to {s}", .{ @tagName(node_name), node_value }),
         TagOverlayMarginsNodeName => log.debug("Setting tag_overlay.margins.{s} to {s}", .{ @tagName(node_name), node_value }),
@@ -1062,6 +996,7 @@ const RiverColor = utils.RiverColor;
 const TagOverlay = @import("TagOverlay.zig");
 const XkbBindings = @import("XkbBindings.zig");
 
+const borders = @import("config/borders.zig");
 const helpers = @import("config/helpers.zig");
 
 const log = std.log.scoped(.Config);
