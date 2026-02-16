@@ -40,22 +40,9 @@ keybinds: std.ArrayList(Keybind) = .{},
 pointer_binds: std.ArrayList(PointerBind) = .{},
 input_configs: std.ArrayList(InputConfig) = .{},
 
-pub const Keybind = struct {
-    modifiers: river.SeatV1.Modifiers,
-    command: XkbBindings.Command,
-    keysym: ?xkbcommon.Keysym,
-};
-
-pub const PointerBind = struct {
-    modifiers: river.SeatV1.Modifiers,
-    button: u32, // Linux button code (BTN_LEFT=0x110, BTN_RIGHT=0x111, BTN_MIDDLE=0x112)
-    action: PointerAction,
-};
-
-pub const PointerAction = enum {
-    move_window,
-    resize_window,
-};
+// Re-exports
+pub const Keybind = keybind_helper.Keybind;
+pub const PointerBind = pointer_bind_helper.PointerBind;
 
 pub const InputConfig = struct {
     /// Device name to match
@@ -101,11 +88,6 @@ const NodeName = enum {
     pointer_binds,
     input,
     tag_overlay,
-};
-
-const PointerBindNodeName = enum {
-    move_window,
-    resize_window,
 };
 
 const InputConfigNodeName = enum {
@@ -323,7 +305,7 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                     switch (child_block) {
                         .borders => try borders_helper.load(config, &parser, hostname),
                         .keybinds => try keybind_helper.load(config, &parser, hostname),
-                        .pointer_binds => try config.loadPointerBindsChildBlock(&parser, hostname),
+                        .pointer_binds => try pointer_bind_helper.load(config, &parser, hostname),
                         .input => {
                             try config.loadInputChildBlock(&parser, pending_input_name, hostname);
                             pending_input_name = null; // ownership transferred
@@ -340,62 +322,6 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                 }
             },
             .child_block_end => log.err("Reached unexpected .child_block_end. Ignoring it", .{}),
-        }
-    }
-}
-
-fn loadPointerBindsChildBlock(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
-    while (try parser.next()) |event| {
-        switch (event) {
-            .node => |node| {
-                const node_name = std.meta.stringToEnum(PointerBindNodeName, node.name);
-                if (node_name) |name| {
-                    if (!helpers.hostMatches(node, parser, hostname)) {
-                        logDebugHostMismatch(name);
-                        continue;
-                    }
-                    // Parse modifiers (arg 0)
-                    const mod_str = utils.stripQuotes(node.arg(parser, 0) orelse {
-                        logWarnMissingNodeArg(name, "modifier(s)");
-                        continue;
-                    });
-                    const modifiers = try utils.parseModifiers(mod_str) orelse {
-                        logWarnInvalidNodeArg(name, mod_str);
-                        continue;
-                    };
-
-                    // Parse button (arg 1)
-                    const button_str = utils.stripQuotes(node.arg(parser, 1) orelse {
-                        logWarnMissingNodeArg(name, "button");
-                        continue;
-                    });
-                    const button = helpers.parseButton(button_str) orelse {
-                        logWarnInvalidNodeArg(name, button_str);
-                        continue;
-                    };
-
-                    const action: PointerAction = switch (name) {
-                        .move_window => .move_window,
-                        .resize_window => .resize_window,
-                    };
-
-                    try config.pointer_binds.append(utils.gpa, .{
-                        .modifiers = modifiers,
-                        .button = button,
-                        .action = action,
-                    });
-
-                    log.debug("pointer_binds.{s}: {s} {s}", .{ @tagName(name), mod_str, button_str });
-                } else {
-                    helpers.logWarnInvalidNode(node.name);
-                }
-            },
-            .child_block_begin => {
-                try helpers.skipChildBlock(parser);
-            },
-            .child_block_end => {
-                return;
-            },
         }
     }
 }
@@ -491,7 +417,6 @@ fn logWarnInvalidNodeArg(node_name: anytype, node_value: []const u8) void {
     const node_name_type = @TypeOf(node_name);
     switch (node_name_type) {
         NodeName => log.warn("Invalid \"{s}\" ({s}). Using default value", .{ @tagName(node_name), node_value }),
-        PointerBindNodeName => log.warn("Invalid \"pointer_binds.{s}\" ({s}). Ignoring", .{ @tagName(node_name), node_value }),
         InputConfigNodeName => log.warn("Invalid \"input.{s}\" ({s}). Ignoring", .{ @tagName(node_name), node_value }),
         else => @compileError("This function does not (yet) support type \"" ++ @typeName(node_name_type) ++ "\""),
     }
@@ -501,7 +426,6 @@ fn logWarnMissingNodeArg(node_name: anytype, comptime arg: []const u8) void {
     const node_name_type = @TypeOf(node_name);
     switch (node_name_type) {
         NodeName => log.warn("\"{s}\" missing " ++ arg ++ " argument. Ignoring", .{@tagName(node_name)}),
-        PointerBindNodeName => log.warn("\"pointer_binds.{s}\" missing " ++ arg ++ " argument. Ignoring", .{@tagName(node_name)}),
         InputConfigNodeName => log.warn("\"input.{s}\" missing " ++ arg ++ " argument. Ignoring", .{@tagName(node_name)}),
         else => @compileError("This function does not (yet) support type \"" ++ @typeName(node_name_type) ++ "\""),
     }
@@ -519,7 +443,6 @@ fn logDebugHostMismatch(node_name: anytype) void {
     const node_name_type = @TypeOf(node_name);
     switch (node_name_type) {
         NodeName => log.debug("Skipping \"{s}\" (host mismatch)", .{@tagName(node_name)}),
-        PointerBindNodeName => log.debug("Skipping \"pointer_binds.{s}\" (host mismatch)", .{@tagName(node_name)}),
         InputConfigNodeName => log.debug("Skipping \"input.{s}\" (host mismatch)", .{@tagName(node_name)}),
         else => @compileError("This function does not (yet) support type \"" ++ @typeName(node_name_type) ++ "\""),
     }
@@ -568,6 +491,7 @@ const XkbBindings = @import("XkbBindings.zig");
 
 const borders_helper = @import("config/borders.zig");
 const keybind_helper = @import("config/keybinds.zig");
+const pointer_bind_helper = @import("config/pointer_binds.zig");
 const tag_overlay_helper = @import("config/tag_overlay.zig");
 const helpers = @import("config/helpers.zig");
 const TagOverlayConfig = tag_overlay_helper.TagOverlayConfig;

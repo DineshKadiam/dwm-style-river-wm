@@ -5,6 +5,12 @@
 // We can just directly use the tag type from Command as our node name
 const NodeName = @typeInfo(XkbBindings.Command).@"union".tag_type.?;
 
+pub const Keybind = struct {
+    modifiers: river.SeatV1.Modifiers,
+    command: XkbBindings.Command,
+    keysym: ?xkbcommon.Keysym,
+};
+
 pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
     while (try parser.next()) |event| {
         switch (event) {
@@ -199,6 +205,8 @@ const std = @import("std");
 const fmt = std.fmt;
 const mem = std.mem;
 
+const wayland = @import("wayland");
+const river = wayland.client.river;
 const kdl = @import("kdl");
 const xkbcommon = @import("xkbcommon");
 
