@@ -2,7 +2,6 @@
 
 These are in rough order of my priority, though no promises I do them in this order.
 
-- [ ] Add options to the bar
 - [ ] Make a Rect struct to combine x, y, width, and height
 - [ ] Support window rules (float/tags/SSD by app-id/title)
 - [ ] Support overriding config location
@@ -31,3 +30,4 @@ These are in rough order of my priority, though no promises I do them in this or
 - [x] Implement an optional clock bar
 - [x] Implement a river-tag-overlay clone
 - [x] Add options to the tag overlay
+- [x] Add options to the bar

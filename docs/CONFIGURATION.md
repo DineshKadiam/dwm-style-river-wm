@@ -71,6 +71,38 @@ borders {
 
 Colors are specified in `0xRRGGBB` or `0xRRGGBBAA` hex format.
 
+## Bar
+
+The bar is an optional widget that shows the time on your screen. Right now, that's it.
+It is only created when a `bar` block is present in the config. All settings have
+defaults, with the color based on the Catppuccin Mocha theme. An empty block can be used
+to enable the widget with all defaults:
+
+```kdl
+bar {
+}
+```
+
+### Bar Settings
+
+| Setting            | Type   | Default            | Description                       |
+|--------------------|--------|--------------------|-----------------------------------|
+| `fonts`            | string | `monospace:size=14` | Comma-separated FontConfig fonts |
+| `text_color`       | color  | `0xcdd6f4`         | Text color                        |
+| `background_color` | color  | `0x1e1e2e`         | Background color                  |
+| `position`         | enum   | `top`              | Bar position (`top` or `bottom`)  |
+
+### Margins
+
+The `margins` child block sets pixel offsets from the anchored edge(s).
+
+| Setting  | Type | Default |
+|----------|------|---------|
+| `top`    | i32  | `0`     |
+| `right`  | i32  | `0`     |
+| `bottom` | i32  | `0`     |
+| `left`   | i32  | `0`     |
+
 ## Tag Overlay
 
 The tag overlay is an optional widget that briefly shows your tag state when switching tags.

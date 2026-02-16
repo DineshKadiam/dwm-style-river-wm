@@ -92,13 +92,15 @@ pub fn create(context: *Context, river_output_v1: *river.OutputV1) !*Output {
     var output = try utils.gpa.create(Output);
     errdefer utils.gpa.destroy(output);
 
-    var bar = Bar.init(context, output) catch |e| blk: {
-        log.err("Failed to create a bar: {}", .{e});
-        break :blk null;
-    };
+    var bar = if (context.config.bar_config) |bar_config| blk: {
+        break :blk Bar.init(context, output, bar_config.toBarOptions()) catch |e| {
+            log.err("Failed to create a bar: {}", .{e});
+            break :blk null;
+        };
+    } else null;
     errdefer if (bar) |*b| b.deinit();
 
-    var tag_overlay = if (context.config.tag_overlay) |tag_overlay_config| blk: {
+    var tag_overlay = if (context.config.tag_overlay_config) |tag_overlay_config| blk: {
         break :blk TagOverlay.init(context, output, tag_overlay_config.toTagOverlayOptions()) catch |e| {
             log.err("Failed to create a tag overlay: {}", .{e});
             break :blk null;
@@ -377,8 +379,8 @@ pub fn initWallpaperLayerSurface(output: *Output) !void {
 
 pub fn deinitWallpaperLayerSurface(output: *Output) void {
     if (output.surfaces) |surfaces| {
-        surfaces.wl_surface.destroy();
         surfaces.layer_surface.destroy();
+        surfaces.wl_surface.destroy();
         output.context.buffer_pool.surface_count -= 1;
     }
 

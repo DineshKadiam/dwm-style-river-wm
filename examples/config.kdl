@@ -18,7 +18,11 @@ borders {
     color_focused "0x89b4fa"
     color_unfocused "0x1e1e2e"
 }
-// Tag overlay widget — shown briefly when switching tags
+// Bar widget - shows the time
+bar {
+    position top
+}
+// Tag overlay widget - shown briefly when switching tags
 // Remove this block to disable the overlay entirely
 tag_overlay {
     tag_amount 10

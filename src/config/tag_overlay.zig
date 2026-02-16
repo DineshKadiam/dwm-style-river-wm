@@ -52,42 +52,42 @@ pub const TagOverlayConfig = struct {
     margin_bottom: i32 = 0,
     margin_left: i32 = 0,
 
-    pub fn toTagOverlayOptions(self: TagOverlayConfig) TagOverlay.Options {
+    pub fn toTagOverlayOptions(config: TagOverlayConfig) TagOverlay.Options {
         return .{
-            .border_width = self.border_width,
-            .tag_amount = @intCast(std.math.clamp(@as(u32, self.tag_amount), 1, 32)),
-            .tags_per_row = @intCast(std.math.clamp(@as(u32, self.tags_per_row), 1, 32)),
-            .square_size = self.square_size,
-            .square_inner_padding = self.square_inner_padding,
-            .square_padding = self.square_padding,
-            .square_border_width = self.square_border_width,
-            .background_color = self.background_color,
-            .border_color = self.border_color,
-            .square_active_background_color = self.square_active_background_color,
-            .square_active_border_color = self.square_active_border_color,
-            .square_active_occupied_color = self.square_active_occupied_color,
-            .square_inactive_background_color = self.square_inactive_background_color,
-            .square_inactive_border_color = self.square_inactive_border_color,
-            .square_inactive_occupied_color = self.square_inactive_occupied_color,
+            .border_width = config.border_width,
+            .tag_amount = @intCast(std.math.clamp(@as(u32, config.tag_amount), 1, 32)),
+            .tags_per_row = @intCast(std.math.clamp(@as(u32, config.tags_per_row), 1, 32)),
+            .square_size = config.square_size,
+            .square_inner_padding = config.square_inner_padding,
+            .square_padding = config.square_padding,
+            .square_border_width = config.square_border_width,
+            .background_color = config.background_color,
+            .border_color = config.border_color,
+            .square_active_background_color = config.square_active_background_color,
+            .square_active_border_color = config.square_active_border_color,
+            .square_active_occupied_color = config.square_active_occupied_color,
+            .square_inactive_background_color = config.square_inactive_background_color,
+            .square_inactive_border_color = config.square_inactive_border_color,
+            .square_inactive_occupied_color = config.square_inactive_occupied_color,
             .anchors = .{
-                .top = self.anchor_top,
-                .right = self.anchor_right,
-                .bottom = self.anchor_bottom,
-                .left = self.anchor_left,
+                .top = config.anchor_top,
+                .right = config.anchor_right,
+                .bottom = config.anchor_bottom,
+                .left = config.anchor_left,
             },
             .margins = .{
-                .top = self.margin_top,
-                .right = self.margin_right,
-                .bottom = self.margin_bottom,
-                .left = self.margin_left,
+                .top = config.margin_top,
+                .right = config.margin_right,
+                .bottom = config.margin_bottom,
+                .left = config.margin_left,
             },
-            .timeout = self.timeout,
+            .timeout = config.timeout,
         };
     }
 };
 
 pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
-    config.tag_overlay = .{}; // Presence of block = enabled; initialize with defaults
+    config.tag_overlay_config = .{}; // Presence of block = enabled; initialize with defaults
 
     const TagOverlayChild = enum { anchors, margins };
     var next_child_block: ?TagOverlayChild = null;
@@ -122,11 +122,11 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
                                 logWarnInvalidNodeArg(name, val_str);
                                 continue;
                             };
-                            @field(config.tag_overlay.?, @tagName(tag)) = val;
+                            @field(config.tag_overlay_config.?, @tagName(tag)) = val;
                             logDebugSettingNode(name, val_str);
                         },
                         .timeout => {
-                            config.tag_overlay.?.timeout = fmt.parseInt(u32, val_str, 10) catch {
+                            config.tag_overlay_config.?.timeout = fmt.parseInt(u32, val_str, 10) catch {
                                 logWarnInvalidNodeArg(name, val_str);
                                 continue;
                             };
@@ -141,7 +141,7 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
                         .square_inactive_border_color,
                         .square_inactive_occupied_color,
                         => |tag| {
-                            @field(config.tag_overlay.?, @tagName(tag)) = utils.parseRgbaPixman(val_str) catch {
+                            @field(config.tag_overlay_config.?, @tagName(tag)) = utils.parseRgbaPixman(val_str) catch {
                                 logWarnInvalidNodeArg(name, val_str);
                                 continue;
                             };
@@ -181,10 +181,10 @@ fn loadAnchorsBlock(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8)
                     const val_str = utils.stripQuotes(node.arg(parser, 0) orelse "");
                     if (helpers.boolFromKdlStr(val_str)) |val| {
                         switch (name) {
-                            .top => config.tag_overlay.?.anchor_top = val,
-                            .right => config.tag_overlay.?.anchor_right = val,
-                            .bottom => config.tag_overlay.?.anchor_bottom = val,
-                            .left => config.tag_overlay.?.anchor_left = val,
+                            .top => config.tag_overlay_config.?.anchor_top = val,
+                            .right => config.tag_overlay_config.?.anchor_right = val,
+                            .bottom => config.tag_overlay_config.?.anchor_bottom = val,
+                            .left => config.tag_overlay_config.?.anchor_left = val,
                         }
                         logDebugSettingNode(name, val_str);
                     } else {
@@ -216,10 +216,10 @@ fn loadMarginsBlock(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8)
                         continue;
                     };
                     switch (name) {
-                        .top => config.tag_overlay.?.margin_top = val,
-                        .right => config.tag_overlay.?.margin_right = val,
-                        .bottom => config.tag_overlay.?.margin_bottom = val,
-                        .left => config.tag_overlay.?.margin_left = val,
+                        .top => config.tag_overlay_config.?.margin_top = val,
+                        .right => config.tag_overlay_config.?.margin_right = val,
+                        .bottom => config.tag_overlay_config.?.margin_bottom = val,
+                        .left => config.tag_overlay_config.?.margin_left = val,
                     }
                     logDebugSettingNode(name, val_str);
                 } else {
@@ -231,6 +231,7 @@ fn loadMarginsBlock(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8)
         }
     }
 }
+
 inline fn logDebugSettingNode(node_name: anytype, node_value: []const u8) void {
     const node_name_type = @TypeOf(node_name);
     switch (node_name_type) {

@@ -78,7 +78,7 @@ pub fn create(options: Options) !*Context {
     const env = try process.getEnvMap(utils.gpa);
     errdefer env.deinit();
 
-    const tag_overlay_timer_fd: ?posix.fd_t = if (options.config.tag_overlay) |_|
+    const tag_overlay_timer_fd: ?posix.fd_t = if (options.config.tag_overlay_config) |_|
         posix.timerfd_create(.MONOTONIC, .{ .CLOEXEC = true }) catch |e| blk: {
             log.err("Failed to create tag overlay timer: {}", .{e});
             break :blk null;
@@ -133,6 +133,10 @@ pub fn manage(context: *Context) void {
             binding.destroy();
         }
 
+        // Capture old config state before destroying
+        const had_overlay = context.config.tag_overlay_config != null;
+        const had_bar = context.config.bar_config != null;
+
         // Check if wallpaper path changed before destroying old config
         const wallpaper_changed = !pathsEqual(
             context.config.wallpaper_image_path,
@@ -150,8 +154,7 @@ pub fn manage(context: *Context) void {
         }
 
         // Handle tag overlay config changes
-        const had_overlay = context.config.tag_overlay != null;
-        const has_overlay = new_config.tag_overlay != null;
+        const has_overlay = new_config.tag_overlay_config != null;
 
         if (!had_overlay and has_overlay) {
             // Create timerfd for newly enabled tag overlay
@@ -176,11 +179,37 @@ pub fn manage(context: *Context) void {
                 }
                 // Create new overlay if configured
                 // Create new overlay struct if configured (surfaces created on-demand)
-                if (new_config.tag_overlay) |tag_overlay_config| {
+                if (new_config.tag_overlay_config) |tag_overlay_config| {
                     output.tag_overlay = TagOverlay.init(context, output, tag_overlay_config.toTagOverlayOptions()) catch |e| {
                         log.err("Failed to create tag overlay: {}", .{e});
                         continue;
                     };
+                }
+            }
+        }
+
+        // Recreate or destroy bars on all outputs
+        const has_bar = new_config.bar_config != null;
+        if (had_bar or has_bar) {
+            var out_it = context.wm.outputs.iterator(.forward);
+            while (out_it.next()) |output| {
+                // Destroy existing bar
+                if (output.bar) |*bar| {
+                    bar.deinit();
+                    output.bar = null;
+                }
+                // Create new bar if configured
+                if (new_config.bar_config) |bar_config| {
+                    output.bar = Bar.init(context, output, bar_config.toBarOptions()) catch |e| {
+                        log.err("Failed to create bar: {}", .{e});
+                        continue;
+                    };
+                    // If the output already has a wl_output, init the surface immediately
+                    if (output.wl_output != null) {
+                        output.bar.?.initSurface() catch |e| {
+                            log.err("Failed to init bar surface: {}", .{e});
+                        };
+                    }
                 }
             }
         }
@@ -239,6 +268,7 @@ const wl = wayland.client.wl;
 const zwlr = wayland.client.zwlr;
 
 const utils = @import("utils.zig");
+const Bar = @import("Bar.zig");
 const BufferPool = @import("BufferPool.zig");
 const Config = @import("Config.zig");
 const InputManager = @import("InputManager.zig");

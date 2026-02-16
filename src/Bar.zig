@@ -12,8 +12,10 @@ context: *Context,
 /// The timezone of the computer.
 timezone: zeit.timezone.TimeZone,
 
-fonts: *fcft.Font,
-font_scale: u31 = 0,
+options: Options,
+
+fcft_fonts: *fcft.Font,
+font_scale: u31,
 
 output: *Output,
 
@@ -28,22 +30,40 @@ surfaces: ?struct {
 
 configured: bool = false,
 
-pub fn init(context: *Context, output: *Output) !Bar {
+pub const Position = enum { top, bottom };
+
+pub const Options = struct {
+    /// Comma separated list of FontConfig formatted font specifications
+    fonts: []const u8 = "monospace:size=14",
+    /// Color of text on the bar
+    text_color: pixman.Color = utils.parseRgbaPixmanComptime("0xcdd6f4"),
+    /// Background color of the bar
+    background_color: pixman.Color = utils.parseRgbaPixmanComptime("0x1e1e2e"),
+
+    /// Whether the bar is at the top or bottom of the screen
+    position: Position = .top,
+    /// Directional margins top, right, bottom, left, in pixels
+    margins: struct { top: i32 = 0, right: i32 = 0, bottom: i32 = 0, left: i32 = 0 } = .{},
+};
+
+pub fn init(context: *Context, output: *Output, options: Options) !Bar {
     const timezone = try zeit.local(utils.gpa, &context.env);
     errdefer timezone.deinit();
 
-    const fonts = try getFcftFonts("monospace:size=14", 1);
-    errdefer fonts.destroy();
+    const scale = output.scale;
+    const fcft_fonts = try getFcftFonts(options.fonts, scale);
+    errdefer fcft_fonts.destroy();
 
     return .{
         .context = context,
-        .fonts = fonts,
+        .options = options,
+        .fcft_fonts = fcft_fonts,
+        .font_scale = scale,
         .timezone = timezone,
         .output = output,
     };
 }
 
-// TODO: Add config options for whether it's top or bottom
 pub fn initSurface(bar: *Bar) !void {
     if (bar.surfaces) |_| {
         // This bar already has a surface, we can exit early
@@ -51,6 +71,7 @@ pub fn initSurface(bar: *Bar) !void {
     }
 
     const context = bar.context;
+    const options = bar.options;
 
     const wl_surface = try context.wl_compositor.createSurface();
     errdefer wl_surface.destroy();
@@ -60,7 +81,6 @@ pub fn initSurface(bar: *Bar) !void {
         .getLayerSurface(wl_surface, bar.output.wl_output, .top, "beansprout-bar");
     errdefer layer_surface.destroy();
 
-    // TODO: Allow clicking on tags to switch between them?
     // We don't want our surface to have any input region (default is infinite)
     const empty_region = try context.wl_compositor.createRegion();
     defer empty_region.destroy();
@@ -68,9 +88,11 @@ pub fn initSurface(bar: *Bar) !void {
 
     // TODO: Add padding to config
     const vertical_padding = 5;
-    const bar_height: u31 = @intCast(bar.fonts.height + 2 * vertical_padding);
+    const bar_height: u31 = @intCast(bar.fcft_fonts.height + 2 * vertical_padding);
     layer_surface.setSize(0, bar_height);
-    layer_surface.setAnchor(.{ .top = true, .right = true, .left = true });
+
+    layer_surface.setAnchor(.{ .top = options.position == .top, .bottom = options.position == .bottom, .left = true, .right = true });
+    layer_surface.setMargin(options.margins.top, options.margins.right, options.margins.bottom, options.margins.left);
 
     bar.surfaces = .{
         .wl_surface = wl_surface,
@@ -85,10 +107,9 @@ pub fn initSurface(bar: *Bar) !void {
 pub fn deinit(bar: *Bar) void {
     bar.configured = false;
     bar.timezone.deinit();
-    bar.fonts.destroy();
     if (bar.surfaces) |surfaces| {
-        surfaces.wl_surface.destroy();
         surfaces.layer_surface.destroy();
+        surfaces.wl_surface.destroy();
         bar.context.buffer_pool.surface_count -= 1;
     }
 }
@@ -144,13 +165,14 @@ pub fn layerSurfaceListener(
 /// Renders the bar and its components
 pub fn render(bar: *Bar) !void {
     const context = bar.context;
+    const options = bar.options;
 
     const scale = bar.output.scale;
 
     // Recreate fonts at the output's new scale
     if (scale != bar.font_scale) {
-        bar.fonts.destroy();
-        bar.fonts = try getFcftFonts("monospace:size=14", scale);
+        bar.fcft_fonts.destroy();
+        bar.fcft_fonts = try getFcftFonts(bar.options.fonts, scale);
         bar.font_scale = scale;
     }
 
@@ -165,8 +187,7 @@ pub fn render(bar: *Bar) !void {
     const buffer = try context.buffer_pool.nextBuffer(bar.context.wl_shm, render_width, render_height);
 
     // Fill with a solid color (e.g., dark background)
-    // TODO: Configure text/bg colors
-    const bg_color: pixman.Color = .{ .red = 0x1e1e, .green = 0x1e1e, .blue = 0x2e2e, .alpha = 0xffff };
+    const bg_color = options.background_color;
     _ = pixman.Image.fillRectangles(
         .src,
         buffer.pixman_image,
@@ -181,7 +202,7 @@ pub fn render(bar: *Bar) !void {
     );
 
     // Set-up text color
-    const text_color: pixman.Color = .{ .red = 0xffff, .green = 0xffff, .blue = 0xffff, .alpha = 0xffff };
+    const text_color = options.text_color;
     const color = pixman.Image.createSolidFill(&text_color) orelse return error.FailedToCreatePixmanImage;
     defer _ = color.unref();
 
@@ -214,7 +235,7 @@ pub fn render(bar: *Bar) !void {
 
     const text_width = try bar.textWidth(codepoints);
     var x: i32 = @divFloor(buffer.width - text_width, 2);
-    const y: i32 = @divFloor(buffer.height - bar.fonts.height, 2);
+    const y: i32 = @divFloor(buffer.height - bar.fcft_fonts.height, 2);
 
     // Actually render the unicode codepoints
     try bar.renderChars(codepoints, buffer, &x, y, color);
@@ -233,11 +254,11 @@ pub fn render(bar: *Bar) !void {
 fn textWidth(bar: *Bar, text: []const u32) !i32 {
     var width: i32 = 0;
     for (text, 0..) |cp, i| {
-        const glyph = try bar.fonts.rasterizeCharUtf32(cp, .default);
+        const glyph = try bar.fcft_fonts.rasterizeCharUtf32(cp, .default);
         width += glyph.advance.x;
         if (i > 0) {
             var x_kern: c_long = 0;
-            if (bar.fonts.kerning(text[i - 1], cp, &x_kern, null)) {
+            if (bar.fcft_fonts.kerning(text[i - 1], cp, &x_kern, null)) {
                 width += @intCast(x_kern);
             }
         }
@@ -261,12 +282,12 @@ fn renderChars(
 
     var i: usize = 0;
     while (i < text.len) : (i += 1) {
-        glyphs[i] = try bar.fonts.rasterizeCharUtf32(text[i], .default);
+        glyphs[i] = try bar.fcft_fonts.rasterizeCharUtf32(text[i], .default);
 
         kerns[i] = 0;
         if (i > 0) {
             var x_kern: c_long = 0;
-            if (bar.fonts.kerning(text[i - 1], text[i], &x_kern, null)) {
+            if (bar.fcft_fonts.kerning(text[i - 1], text[i], &x_kern, null)) {
                 kerns[i] = x_kern;
             }
         }
@@ -303,7 +324,7 @@ fn renderGlyphs(
                     0,
                     0,
                     x.* + @as(i32, @intCast(glyphs[i].x)),
-                    y + bar.fonts.ascent - @as(i32, @intCast(glyphs[i].y)),
+                    y + bar.fcft_fonts.ascent - @as(i32, @intCast(glyphs[i].y)),
                     glyphs[i].width,
                     glyphs[i].height,
                 );
@@ -320,7 +341,7 @@ fn renderGlyphs(
                     0,
                     0,
                     x.* + @as(i32, @intCast(glyphs[i].x)),
-                    y + bar.fonts.ascent - @as(i32, @intCast(glyphs[i].y)),
+                    y + bar.fcft_fonts.ascent - @as(i32, @intCast(glyphs[i].y)),
                     glyphs[i].width,
                     glyphs[i].height,
                 );

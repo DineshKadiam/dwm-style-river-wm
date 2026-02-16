@@ -32,7 +32,9 @@ pointer_warp_on_focus_change: bool = true,
 wallpaper_image_path: ?[]const u8 = null,
 
 /// Tag overlay configuration. If null, no overlay is created.
-tag_overlay: ?TagOverlayConfig = null,
+tag_overlay_config: ?TagOverlayConfig = null,
+/// Bar configuration. If null, no bar is created.
+bar_config: ?BarConfig = null,
 
 /// Tag bind entries parsed from config (tag_bind nodes in keybinds block)
 tag_binds: std.ArrayList(Keybind) = .{},
@@ -44,6 +46,7 @@ input_configs: std.ArrayList(InputConfig) = .{},
 pub const Keybind = keybind_helper.Keybind;
 pub const PointerBind = pointer_bind_helper.PointerBind;
 
+pub const BarConfig = bar_helper.BarConfig;
 pub const TagOverlayConfig = tag_overlay_helper.TagOverlayConfig;
 pub const InputConfig = input_helper.InputConfig;
 
@@ -60,10 +63,11 @@ const NodeName = enum {
     pointer_warp_on_focus_change,
     wallpaper_image_path,
     // Sections with child blocks
+    bar,
     borders,
+    input,
     keybinds,
     pointer_binds,
-    input,
     tag_overlay,
 };
 
@@ -102,6 +106,9 @@ pub fn create() !*Config {
                 if (ic.name) |name| utils.gpa.free(name);
             }
             config.input_configs.clearAndFree(utils.gpa);
+            if (config.bar_config) |bc| {
+                if (bc.fonts) |fonts| utils.gpa.free(fonts);
+            }
             if (config.wallpaper_image_path) |path| {
                 utils.gpa.free(path);
             }
@@ -129,6 +136,9 @@ pub fn destroy(config: *Config) void {
         if (ic.name) |name| utils.gpa.free(name);
     }
     config.input_configs.deinit(utils.gpa);
+    if (config.bar_config) |bc| {
+        if (bc.fonts) |fonts| utils.gpa.free(fonts);
+    }
     if (config.wallpaper_image_path) |path| {
         utils.gpa.free(path);
     }
@@ -231,21 +241,20 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                             };
                             logDebugSettingNode(name, path_str);
                         },
-                        .borders => {
-                            next_child_block = .borders;
-                        },
-                        .keybinds => {
-                            next_child_block = .keybinds;
-                        },
-                        .pointer_binds => {
-                            next_child_block = .pointer_binds;
-                        },
+                        .bar => next_child_block = .bar,
+                        .borders => next_child_block = .borders,
                         .input => {
                             pending_input_name = if (node.prop(&parser, "name")) |n|
                                 try utils.gpa.dupe(u8, utils.stripQuotes(n))
                             else
                                 null;
                             next_child_block = .input;
+                        },
+                        .keybinds => {
+                            next_child_block = .keybinds;
+                        },
+                        .pointer_binds => {
+                            next_child_block = .pointer_binds;
                         },
                         .tag_overlay => {
                             next_child_block = .tag_overlay;
@@ -258,6 +267,7 @@ fn load(config: *Config, reader: *Io.Reader) !void {
             .child_block_begin => {
                 if (next_child_block) |child_block| {
                     switch (child_block) {
+                        .bar => try bar_helper.load(config, &parser, hostname),
                         .borders => try borders_helper.load(config, &parser, hostname),
                         .keybinds => try keybind_helper.load(config, &parser, hostname),
                         .pointer_binds => try pointer_bind_helper.load(config, &parser, hostname),
@@ -311,6 +321,7 @@ const utils = @import("utils.zig");
 const RiverColor = utils.RiverColor;
 const XkbBindings = @import("XkbBindings.zig");
 
+const bar_helper = @import("config/bar.zig");
 const borders_helper = @import("config/borders.zig");
 const input_helper = @import("config/input.zig");
 const keybind_helper = @import("config/keybinds.zig");
