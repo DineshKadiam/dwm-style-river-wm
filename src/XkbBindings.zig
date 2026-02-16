@@ -367,8 +367,8 @@ const XkbBinding = struct {
         if (!window.floating) return;
         const output = window.output orelse return;
 
-        window.floating_rect.x = output.usable_x + @divFloor(output.usable_width, 2) - @divFloor(window.floating_rect.width, 2);
-        window.floating_rect.y = output.usable_y + @divFloor(output.usable_height, 2) - @divFloor(window.floating_rect.height, 2);
+        window.floating_rect.x = output.usable_geometry.x + @divFloor(output.usable_geometry.width, 2) - @divFloor(window.floating_rect.width, 2);
+        window.floating_rect.y = output.usable_geometry.y + @divFloor(output.usable_geometry.height, 2) - @divFloor(window.floating_rect.height, 2);
         window.pending_render.position = .{ .x = window.floating_rect.x, .y = window.floating_rect.y };
         context.wm.river_window_manager_v1.manageDirty();
     }

@@ -17,16 +17,20 @@ name: ?[]const u8 = null,
 
 // Output geometry
 scale: u31 = 1,
-x: i32 = 0,
-y: i32 = 0,
-width: u31 = 0,
-height: u31 = 0,
+geometry: Rect = .{
+    .x = 0,
+    .y = 0,
+    .width = 0,
+    .height = 0,
+},
 
 // Area left after layer shell surfaces take exclusive area
-usable_x: i32 = 0,
-usable_y: i32 = 0,
-usable_width: u31 = 0,
-usable_height: u31 = 0,
+usable_geometry: Rect = .{
+    .x = 0,
+    .y = 0,
+    .width = 0,
+    .height = 0,
+},
 
 // Information for this Output's wallpaper
 wallpaper_render_scale: u31 = 0,
@@ -73,15 +77,10 @@ pub const TagLayoutOverride = struct {
 };
 
 pub const PendingManage = struct {
-    x: ?i32 = null,
-    y: ?i32 = null,
-    width: ?u31 = null,
-    height: ?u31 = null,
+    position: ?struct { x: i32, y: i32 } = null,
+    dimensions: ?struct { width: u31, height: u31 } = null,
 
-    usable_x: ?i32 = null,
-    usable_y: ?i32 = null,
-    usable_width: ?u31 = null,
-    usable_height: ?u31 = null,
+    usable_geometry: ?Rect = null,
 
     tags: ?u32 = null,
     primary_ratio: ?f32 = null,
@@ -252,12 +251,16 @@ fn riverOutputListener(river_output_v1: *river.OutputV1, event: river.OutputV1.E
         .dimensions => |ev| {
             // Protocol guarantees that width and height are strictly greater than zero
             assert(ev.width > 0 and ev.height > 0);
-            output.pending_manage.width = @intCast(ev.width);
-            output.pending_manage.height = @intCast(ev.height);
+            output.pending_manage.dimensions = .{
+                .width = @intCast(ev.width),
+                .height = @intCast(ev.height),
+            };
         },
         .position => |ev| {
-            output.pending_manage.x = ev.x;
-            output.pending_manage.y = ev.y;
+            output.pending_manage.position = .{
+                .x = ev.x,
+                .y = ev.y,
+            };
         },
     }
 }
@@ -272,8 +275,8 @@ fn wlOutputListener(_: *wl.Output, event: wl.Output.Event, output: *Output) void
                 return;
             }
 
-            output.width = @intCast(ev.width);
-            output.height = @intCast(ev.height);
+            output.geometry.width = @intCast(ev.width);
+            output.geometry.height = @intCast(ev.height);
         },
         .done => {
             output.initWallpaperLayerSurface() catch |err| {
@@ -325,10 +328,12 @@ fn riverLayerShellOutputListener(
     assert(output.river_layer_shell_output_v1 == river_layer_shell_output_v1);
     switch (event) {
         .non_exclusive_area => |ev| {
-            output.pending_manage.usable_x = ev.x;
-            output.pending_manage.usable_y = ev.y;
-            output.pending_manage.usable_width = @intCast(ev.width);
-            output.pending_manage.usable_height = @intCast(ev.height);
+            output.pending_manage.usable_geometry = .{
+                .x = ev.x,
+                .y = ev.y,
+                .width = @intCast(ev.width),
+                .height = @intCast(ev.height),
+            };
             output.context.wm.river_window_manager_v1.manageDirty();
         },
     }
@@ -360,7 +365,7 @@ pub fn initWallpaperLayerSurface(output: *Output) !void {
 
     // Full surface should be opaque
     const opaque_region = try context.wl_compositor.createRegion();
-    opaque_region.add(0, 0, output.width, output.height);
+    opaque_region.add(0, 0, output.geometry.width, output.geometry.height);
     defer opaque_region.destroy();
     wl_surface.setOpaqueRegion(opaque_region);
 
@@ -520,30 +525,17 @@ pub fn renderWallpaper(output: *Output) !void {
 pub fn manage(output: *Output) void {
     defer output.pending_manage = .{};
 
-    if (output.pending_manage.x) |x| {
-        output.x = x;
+    if (output.pending_manage.position) |position| {
+        output.geometry.x = position.x;
+        output.geometry.y = position.y;
     }
-    if (output.pending_manage.y) |y| {
-        output.y = y;
-    }
-    if (output.pending_manage.width) |width| {
-        output.width = width;
-    }
-    if (output.pending_manage.height) |height| {
-        output.height = height;
+    if (output.pending_manage.dimensions) |dimensions| {
+        output.geometry.width = dimensions.width;
+        output.geometry.height = dimensions.height;
     }
 
-    if (output.pending_manage.usable_x) |usable_x| {
-        output.usable_x = usable_x;
-    }
-    if (output.pending_manage.usable_y) |usable_y| {
-        output.usable_y = usable_y;
-    }
-    if (output.pending_manage.usable_width) |usable_width| {
-        output.usable_width = usable_width;
-    }
-    if (output.pending_manage.usable_height) |usable_height| {
-        output.usable_height = usable_height;
+    if (output.pending_manage.usable_geometry) |usable_geometry| {
+        output.usable_geometry = usable_geometry;
     }
 
     if (output.pending_manage.primary_ratio) |primary_ratio| {
@@ -657,10 +649,10 @@ fn calculatePrimaryStackLayout(output: *Output) void {
     if (active_count == 0) return;
 
     // We have to use the usable area for the layout so windows don't overlap with widgets
-    const output_x = output.usable_x;
-    const output_y = output.usable_y;
-    const output_width = output.usable_width;
-    const output_height = output.usable_height;
+    const output_x = output.usable_geometry.x;
+    const output_y = output.usable_geometry.y;
+    const output_width = output.usable_geometry.width;
+    const output_height = output.usable_geometry.height;
     const border_width = output.context.config.border_width;
 
     // Single window: maximize and return early
@@ -767,6 +759,7 @@ const zwlr = wayland.client.zwlr;
 const pixman = @import("pixman");
 
 const utils = @import("utils.zig");
+const Rect = utils.Rect;
 const Bar = @import("Bar.zig");
 const Buffer = @import("Buffer.zig");
 const Context = @import("Context.zig");

@@ -189,10 +189,10 @@ pub fn manage(window: *Window) void {
             if (window.floating_rect.width == 0) {
                 // Never floated before; use 75% of usable area, centered on output
                 if (window.output) |output| {
-                    window.floating_rect.width = @divFloor(output.usable_width * 3, 4);
-                    window.floating_rect.height = @divFloor(output.usable_height * 3, 4);
-                    window.floating_rect.x = output.usable_x + @divFloor(output.usable_width, 2) - @divFloor(window.floating_rect.width, 2);
-                    window.floating_rect.y = output.usable_y + @divFloor(output.usable_height, 2) - @divFloor(window.floating_rect.height, 2);
+                    window.floating_rect.width = @divFloor(output.usable_geometry.width * 3, 4);
+                    window.floating_rect.height = @divFloor(output.usable_geometry.height * 3, 4);
+                    window.floating_rect.x = output.usable_geometry.x + @divFloor(output.usable_geometry.width, 2) - @divFloor(window.floating_rect.width, 2);
+                    window.floating_rect.y = output.usable_geometry.y + @divFloor(output.usable_geometry.height, 2) - @divFloor(window.floating_rect.height, 2);
                 } else {
                     window.floating_rect.width = window.rect.width;
                     window.floating_rect.height = window.rect.height;
