@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: GPL-3.0-only
 
-pub const BorderNodeName = enum {
+pub const NodeName = enum {
     width,
     color_focused,
     color_unfocused,
@@ -13,7 +13,7 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
         switch (event) {
             .node => |node| {
                 // If it's a node, we check if it's a valid NodeName
-                const node_name = std.meta.stringToEnum(BorderNodeName, node.name);
+                const node_name = std.meta.stringToEnum(NodeName, node.name);
                 if (node_name) |name| {
                     if (!helpers.hostMatches(node, parser, hostname)) {
                         log.debug("Skipping \"border.{s}\" (host mismatch)", .{@tagName(name)});
@@ -61,11 +61,11 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
     }
 }
 
-inline fn logDebugSettingNode(node_name: BorderNodeName, node_value: []const u8) void {
+inline fn logDebugSettingNode(node_name: NodeName, node_value: []const u8) void {
     log.debug("Setting border.{s} to {s}", .{ @tagName(node_name), node_value });
 }
 
-inline fn logWarnInvalidNodeArg(node_name: BorderNodeName, node_value: []const u8) void {
+inline fn logWarnInvalidNodeArg(node_name: NodeName, node_value: []const u8) void {
     log.warn("Invalid \"border.{s}\" ({s}). Ignoring", .{ @tagName(node_name), node_value });
 }
 
