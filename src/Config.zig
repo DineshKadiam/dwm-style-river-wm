@@ -320,7 +320,7 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                 // If it's a node, we check if it's a valid NodeName
                 const node_name = std.meta.stringToEnum(NodeName, node.name);
                 if (node_name) |name| {
-                    if (!hostMatches(node, &parser, hostname)) {
+                    if (!helpers.hostMatches(node, &parser, hostname)) {
                         logDebugHostMismatch(name);
                         continue;
                     }
@@ -356,7 +356,7 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                         },
                         .focus_follows_pointer => {
                             const focus_follows_pointer_str = utils.stripQuotes(node.arg(&parser, 0) orelse "");
-                            if (boolFromKdlStr(focus_follows_pointer_str)) |focus_follows_pointer| {
+                            if (helpers.boolFromKdlStr(focus_follows_pointer_str)) |focus_follows_pointer| {
                                 config.focus_follows_pointer = focus_follows_pointer;
                                 logDebugSettingNode(name, focus_follows_pointer_str);
                             } else {
@@ -366,7 +366,7 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                         },
                         .pointer_warp_on_focus_change => {
                             const pointer_warp_on_focus_change_str = utils.stripQuotes(node.arg(&parser, 0) orelse "");
-                            if (boolFromKdlStr(pointer_warp_on_focus_change_str)) |pointer_warp_on_focus_change| {
+                            if (helpers.boolFromKdlStr(pointer_warp_on_focus_change_str)) |pointer_warp_on_focus_change| {
                                 config.pointer_warp_on_focus_change = pointer_warp_on_focus_change;
                                 logDebugSettingNode(name, pointer_warp_on_focus_change_str);
                             } else {
@@ -381,7 +381,7 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                             }
 
                             const path_str = utils.stripQuotes(node.arg(&parser, 0).?);
-                            config.wallpaper_image_path = expandTilde(path_str) catch {
+                            config.wallpaper_image_path = helpers.expandTilde(path_str) catch {
                                 logWarnInvalidNodeArg(name, path_str);
                                 continue;
                             };
@@ -429,7 +429,7 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                     }
                     next_child_block = null;
                 } else {
-                    try config.skipChildBlock(&parser);
+                    try helpers.skipChildBlock(&parser);
                 }
             },
             .child_block_end => log.err("Reached unexpected .child_block_end. Ignoring it", .{}),
@@ -444,7 +444,7 @@ fn loadBordersChildBlock(config: *Config, parser: *kdl.Parser, hostname: ?[]cons
                 // If it's a node, we check if it's a valid NodeName
                 const node_name = std.meta.stringToEnum(BorderNodeName, node.name);
                 if (node_name) |name| {
-                    if (!hostMatches(node, parser, hostname)) {
+                    if (!helpers.hostMatches(node, parser, hostname)) {
                         logDebugHostMismatch(name);
                         continue;
                     }
@@ -480,7 +480,7 @@ fn loadBordersChildBlock(config: *Config, parser: *kdl.Parser, hostname: ?[]cons
             },
             .child_block_begin => {
                 // borders should never have a nested child block
-                try config.skipChildBlock(parser);
+                try helpers.skipChildBlock(parser);
             },
             .child_block_end => {
                 // Done parsing the borders block; return
@@ -505,7 +505,7 @@ fn loadTagOverlayChildBlock(config: *Config, parser: *kdl.Parser, hostname: ?[]c
                 }
                 const node_name = std.meta.stringToEnum(TagOverlayNodeName, node.name);
                 if (node_name) |name| {
-                    if (!hostMatches(node, parser, hostname)) {
+                    if (!helpers.hostMatches(node, parser, hostname)) {
                         logDebugHostMismatch(name);
                         continue;
                     }
@@ -564,7 +564,7 @@ fn loadTagOverlayChildBlock(config: *Config, parser: *kdl.Parser, hostname: ?[]c
                     }
                     next_child_block = null;
                 } else {
-                    try config.skipChildBlock(parser);
+                    try helpers.skipChildBlock(parser);
                 }
             },
             .child_block_end => return,
@@ -578,12 +578,12 @@ fn loadTagOverlayAnchorsBlock(config: *Config, parser: *kdl.Parser, hostname: ?[
             .node => |node| {
                 const node_name = std.meta.stringToEnum(TagOverlayAnchorsNodeName, node.name);
                 if (node_name) |name| {
-                    if (!hostMatches(node, parser, hostname)) {
+                    if (!helpers.hostMatches(node, parser, hostname)) {
                         logDebugHostMismatch(name);
                         continue;
                     }
                     const val_str = utils.stripQuotes(node.arg(parser, 0) orelse "");
-                    if (boolFromKdlStr(val_str)) |val| {
+                    if (helpers.boolFromKdlStr(val_str)) |val| {
                         switch (name) {
                             .top => config.tag_overlay.?.anchor_top = val,
                             .right => config.tag_overlay.?.anchor_right = val,
@@ -598,7 +598,7 @@ fn loadTagOverlayAnchorsBlock(config: *Config, parser: *kdl.Parser, hostname: ?[
                     logWarnInvalidNode(node.name);
                 }
             },
-            .child_block_begin => try config.skipChildBlock(parser),
+            .child_block_begin => try helpers.skipChildBlock(parser),
             .child_block_end => return,
         }
     }
@@ -610,7 +610,7 @@ fn loadTagOverlayMarginsBlock(config: *Config, parser: *kdl.Parser, hostname: ?[
             .node => |node| {
                 const node_name = std.meta.stringToEnum(TagOverlayMarginsNodeName, node.name);
                 if (node_name) |name| {
-                    if (!hostMatches(node, parser, hostname)) {
+                    if (!helpers.hostMatches(node, parser, hostname)) {
                         logDebugHostMismatch(name);
                         continue;
                     }
@@ -630,7 +630,7 @@ fn loadTagOverlayMarginsBlock(config: *Config, parser: *kdl.Parser, hostname: ?[
                     logWarnInvalidNode(node.name);
                 }
             },
-            .child_block_begin => try config.skipChildBlock(parser),
+            .child_block_begin => try helpers.skipChildBlock(parser),
             .child_block_end => return,
         }
     }
@@ -642,7 +642,7 @@ fn loadKeybindsChildBlock(config: *Config, parser: *kdl.Parser, hostname: ?[]con
             .node => |node| {
                 // tag_bind is a special case node name not in KeybindNodeName
                 if (mem.eql(u8, node.name, "tag_bind")) {
-                    if (!hostMatches(node, parser, hostname)) {
+                    if (!helpers.hostMatches(node, parser, hostname)) {
                         log.debug("Skipping \"keybind.tag_bind\" (host mismatch)", .{});
                         continue;
                     }
@@ -687,7 +687,7 @@ fn loadKeybindsChildBlock(config: *Config, parser: *kdl.Parser, hostname: ?[]con
                 // Handle the rest of the possibilities like all the other types of block
                 const node_name = std.meta.stringToEnum(KeybindNodeName, node.name);
                 if (node_name) |name| {
-                    if (!hostMatches(node, parser, hostname)) {
+                    if (!helpers.hostMatches(node, parser, hostname)) {
                         logDebugHostMismatch(name);
                         continue;
                     }
@@ -721,7 +721,7 @@ fn loadKeybindsChildBlock(config: *Config, parser: *kdl.Parser, hostname: ?[]con
                             var split_exec = try utils.tokenizeToOwnedSlices(exec_str, ' ');
                             if (split_exec.len > 0) {
                                 // Expand ~ in executable paths
-                                const expanded = expandTilde(split_exec[0]) catch |e| {
+                                const expanded = helpers.expandTilde(split_exec[0]) catch |e| {
                                     if (e == error.HomeNotSet) {
                                         // No ~, just return what we had.
                                         break :sw .{ .spawn = split_exec };
@@ -808,7 +808,7 @@ fn loadKeybindsChildBlock(config: *Config, parser: *kdl.Parser, hostname: ?[]con
             },
             .child_block_begin => {
                 // keybinds should never have a nested child block
-                try config.skipChildBlock(parser);
+                try helpers.skipChildBlock(parser);
             },
             .child_block_end => {
                 // Done parsing the keybinds block; return
@@ -824,7 +824,7 @@ fn loadPointerBindsChildBlock(config: *Config, parser: *kdl.Parser, hostname: ?[
             .node => |node| {
                 const node_name = std.meta.stringToEnum(PointerBindNodeName, node.name);
                 if (node_name) |name| {
-                    if (!hostMatches(node, parser, hostname)) {
+                    if (!helpers.hostMatches(node, parser, hostname)) {
                         logDebugHostMismatch(name);
                         continue;
                     }
@@ -843,7 +843,7 @@ fn loadPointerBindsChildBlock(config: *Config, parser: *kdl.Parser, hostname: ?[
                         logWarnMissingNodeArg(name, "button");
                         continue;
                     });
-                    const button = parseButton(button_str) orelse {
+                    const button = helpers.parseButton(button_str) orelse {
                         logWarnInvalidNodeArg(name, button_str);
                         continue;
                     };
@@ -865,7 +865,7 @@ fn loadPointerBindsChildBlock(config: *Config, parser: *kdl.Parser, hostname: ?[
                 }
             },
             .child_block_begin => {
-                try config.skipChildBlock(parser);
+                try helpers.skipChildBlock(parser);
             },
             .child_block_end => {
                 return;
@@ -883,7 +883,7 @@ fn loadInputChildBlock(config: *Config, parser: *kdl.Parser, name: ?[]const u8, 
             .node => |node| {
                 const node_name = std.meta.stringToEnum(InputConfigNodeName, node.name);
                 if (node_name) |tag| {
-                    if (!hostMatches(node, parser, hostname)) {
+                    if (!helpers.hostMatches(node, parser, hostname)) {
                         logDebugHostMismatch(tag);
                         continue;
                     }
@@ -901,7 +901,7 @@ fn loadInputChildBlock(config: *Config, parser: *kdl.Parser, name: ?[]const u8, 
                             log.debug("input.accel_speed: {s}", .{val_str});
                         },
                         .scroll_button => {
-                            const button = parseButton(val_str) orelse {
+                            const button = helpers.parseButton(val_str) orelse {
                                 logWarnInvalidNodeArg(tag, val_str);
                                 continue;
                             };
@@ -951,7 +951,7 @@ fn loadInputChildBlock(config: *Config, parser: *kdl.Parser, name: ?[]const u8, 
                 }
             },
             .child_block_begin => {
-                try config.skipChildBlock(parser);
+                try helpers.skipChildBlock(parser);
             },
             .child_block_end => {
                 try config.input_configs.append(utils.gpa, input_config);
@@ -959,65 +959,6 @@ fn loadInputChildBlock(config: *Config, parser: *kdl.Parser, name: ?[]const u8, 
             },
         }
     }
-}
-
-fn parseButton(s: []const u8) ?u32 {
-    // Support both numeric and named buttons
-    var lower_buf: [16]u8 = undefined;
-    const len = @min(s.len, 16);
-    const lower = std.ascii.lowerString(lower_buf[0..len], s[0..len]);
-
-    if (mem.eql(u8, lower, "btn_left") or mem.eql(u8, lower, "button1")) {
-        return 0x110; // BTN_LEFT = 272
-    } else if (mem.eql(u8, lower, "btn_right") or mem.eql(u8, lower, "button3")) {
-        return 0x111; // BTN_RIGHT = 273
-    } else if (mem.eql(u8, lower, "btn_middle") or mem.eql(u8, lower, "button2")) {
-        return 0x112; // BTN_MIDDLE = 274
-    }
-
-    // Try parsing as hex or decimal
-    return fmt.parseInt(u32, s, 0) catch null;
-}
-
-/// Skips an entire child block including any nested child blocks
-fn skipChildBlock(_: *Config, parser: *kdl.Parser) !void {
-    log.warn("Unexpected child block. Skipping it", .{});
-
-    var depth: usize = 0;
-    while (try parser.next()) |event| {
-        switch (event) {
-            // Nested child block
-            .child_block_begin => depth += 1,
-            .child_block_end => {
-                if (depth == 0) {
-                    return;
-                } else {
-                    depth -= 1;
-                }
-            },
-            else => {
-                // We don't care about any nodes in here
-            },
-        }
-    }
-}
-
-/// Convert a KDL argument into a bool
-///
-/// if arg_str in ["#true", "true"], return true
-/// if arg_str in ["#false", "false"], return false
-/// else, return null
-fn boolFromKdlStr(arg_str: []const u8) ?bool {
-    if (mem.eql(u8, arg_str, "#true") or
-        mem.eql(u8, arg_str, "true"))
-    {
-        return true;
-    } else if (mem.eql(u8, arg_str, "#false") or
-        mem.eql(u8, arg_str, "false"))
-    {
-        return false;
-    }
-    return null;
 }
 
 fn logWarnInvalidNodeArg(node_name: anytype, node_value: []const u8) void {
@@ -1086,23 +1027,6 @@ fn logDebugSettingNode(node_name: anytype, node_value: []const u8) void {
     }
 }
 
-fn expandTilde(path: []const u8) ![]const u8 {
-    if (path.len > 0 and path[0] == '~') {
-        const home = std.posix.getenv("HOME") orelse return error.HomeNotSet;
-        return std.fmt.allocPrint(utils.gpa, "{s}{s}", .{ home, path[1..] });
-    }
-    return utils.gpa.dupe(u8, path);
-}
-
-/// Check whether this machine's hostname matches the hostname property
-/// Always returns true if the "host" property is missing (no host = config applies to
-/// all hosts). Returns false if the hostname argument is null or does not match.
-fn hostMatches(node: kdl.Parser.Node, parser: *kdl.Parser, hostname: ?[]const u8) bool {
-    const host_property = utils.stripQuotes(node.prop(parser, "host") orelse return true);
-    const hostname_str = hostname orelse return false;
-    return mem.eql(u8, host_property, hostname_str);
-}
-
 const std = @import("std");
 const fmt = std.fmt;
 const fs = std.fs;
@@ -1138,63 +1062,12 @@ const RiverColor = utils.RiverColor;
 const TagOverlay = @import("TagOverlay.zig");
 const XkbBindings = @import("XkbBindings.zig");
 
+const helpers = @import("config/helpers.zig");
+
 const log = std.log.scoped(.Config);
 
 const testing = std.testing;
 
-test "boolFromKdlStr" {
-    // True valid
-    try testing.expectEqual(@as(?bool, true), boolFromKdlStr("#true"));
-    try testing.expectEqual(@as(?bool, true), boolFromKdlStr("true"));
-    // False valid
-    try testing.expectEqual(@as(?bool, false), boolFromKdlStr("#false"));
-    try testing.expectEqual(@as(?bool, false), boolFromKdlStr("false"));
-    // Invalid
-    try testing.expectEqual(@as(?bool, null), boolFromKdlStr("yes"));
-    try testing.expectEqual(@as(?bool, null), boolFromKdlStr("1"));
-    try testing.expectEqual(@as(?bool, null), boolFromKdlStr(""));
-    try testing.expectEqual(@as(?bool, null), boolFromKdlStr("TRUE"));
-}
-
-test "parseButton named buttons" {
-    try testing.expectEqual(@as(?u32, 0x110), parseButton("btn_left"));
-    try testing.expectEqual(@as(?u32, 0x110), parseButton("button1"));
-    try testing.expectEqual(@as(?u32, 0x111), parseButton("btn_right"));
-    try testing.expectEqual(@as(?u32, 0x111), parseButton("button3"));
-    try testing.expectEqual(@as(?u32, 0x112), parseButton("btn_middle"));
-    try testing.expectEqual(@as(?u32, 0x112), parseButton("button2"));
-}
-
-test "parseButton case insensitive" {
-    try testing.expectEqual(@as(?u32, 0x110), parseButton("BTN_LEFT"));
-    try testing.expectEqual(@as(?u32, 0x110), parseButton("Btn_Left"));
-    try testing.expectEqual(@as(?u32, 0x110), parseButton("BUTTON1"));
-}
-
-test "parseButton numeric decimal" {
-    try testing.expectEqual(@as(?u32, 272), parseButton("272"));
-    try testing.expectEqual(@as(?u32, 0), parseButton("0"));
-}
-
-test "parseButton numeric hex" {
-    try testing.expectEqual(@as(?u32, 0x110), parseButton("0x110"));
-}
-
-test "parseButton invalid" {
-    try testing.expectEqual(@as(?u32, null), parseButton("bogus"));
-    try testing.expectEqual(@as(?u32, null), parseButton(""));
-}
-
-test "expandTilde with tilde" {
-    const result = try expandTilde("~/foo/bar");
-    defer utils.gpa.free(result);
-    const home = std.posix.getenv("HOME") orelse return;
-    try testing.expect(mem.startsWith(u8, result, home));
-    try testing.expect(mem.endsWith(u8, result, "/foo/bar"));
-}
-
-test "expandTilde without tilde" {
-    const result = try expandTilde("/absolute/path");
-    defer utils.gpa.free(result);
-    try testing.expectEqualStrings("/absolute/path", result);
+test {
+    _ = helpers;
 }
