@@ -32,8 +32,11 @@ usable_height: u31 = 0,
 wallpaper_render_scale: u31 = 0,
 wallpaper_render_width: u31 = 0,
 wallpaper_render_height: u31 = 0,
-wl_surface: ?*wl.Surface = null,
-layer_surface: ?*zwlr.LayerSurfaceV1 = null,
+
+surfaces: ?struct {
+    wl_surface: *wl.Surface,
+    layer_surface: *zwlr.LayerSurfaceV1,
+} = null,
 
 // TODO: Make Bar a user option, can disable if they want
 // This Output's bar
@@ -319,8 +322,8 @@ pub fn initWallpaperLayerSurface(output: *Output) !void {
         return;
     }
 
-    if (output.layer_surface) |_| {
-        // This output already has a layer surface, we can exit early
+    if (output.surfaces) |_| {
+        // This output already has a surface, we can exit early
         return;
     }
 
@@ -328,6 +331,9 @@ pub fn initWallpaperLayerSurface(output: *Output) !void {
 
     const wl_surface = try context.wl_compositor.createSurface();
     errdefer wl_surface.destroy();
+
+    const layer_surface = try context.zwlr_layer_shell_v1.getLayerSurface(wl_surface, output.wl_output, .background, "beansprout-wallpaper");
+    errdefer layer_surface.destroy();
 
     // We don't want our surface to have any input region (default is infinite)
     const empty_region = try context.wl_compositor.createRegion();
@@ -340,12 +346,13 @@ pub fn initWallpaperLayerSurface(output: *Output) !void {
     defer opaque_region.destroy();
     wl_surface.setOpaqueRegion(opaque_region);
 
-    const layer_surface = try context.zwlr_layer_shell_v1.getLayerSurface(wl_surface, output.wl_output, .background, "beansprout-wallpaper");
     layer_surface.setExclusiveZone(-1);
     layer_surface.setAnchor(.{ .top = true, .right = true, .bottom = true, .left = true });
 
-    output.wl_surface = wl_surface;
-    output.layer_surface = layer_surface;
+    output.surfaces = .{
+        .wl_surface = wl_surface,
+        .layer_surface = layer_surface,
+    };
     context.buffer_pool.surface_count += 1;
 
     layer_surface.setListener(*Output, wallpaperLayerSurfaceListener, output);
@@ -353,16 +360,13 @@ pub fn initWallpaperLayerSurface(output: *Output) !void {
 }
 
 pub fn deinitWallpaperLayerSurface(output: *Output) void {
-    if (output.layer_surface) |layer_surface| {
-        layer_surface.destroy();
-    }
-    if (output.wl_surface) |wl_surface| {
-        wl_surface.destroy();
+    if (output.surfaces) |surfaces| {
+        surfaces.wl_surface.destroy();
+        surfaces.layer_surface.destroy();
         output.context.buffer_pool.surface_count -= 1;
     }
 
-    output.layer_surface = null;
-    output.wl_surface = null;
+    output.surfaces = null;
     output.configured = false;
 }
 
@@ -379,10 +383,10 @@ fn wallpaperLayerSurfaceListener(layer_surface: *zwlr.LayerSurfaceV1, event: zwl
                 output.wallpaper_render_height == height and
                 output.scale == output.wallpaper_render_scale)
             {
-                if (output.wl_surface) |wl_surface| {
-                    wl_surface.commit();
+                if (output.surfaces) |surfaces| {
+                    surfaces.wl_surface.commit();
                 } else {
-                    log.warn("Output is marked as configured but is missing a layer_surface for the wallpaper", .{});
+                    log.warn("Output is marked as configured but is missing its surfaces.", .{});
                 }
                 return;
             }
@@ -485,7 +489,8 @@ pub fn renderWallpaper(output: *Output) !void {
     log.info("render: {}x{} (scaled from {}x{})", .{ width * scale, height * scale, image_width, image_height });
 
     // Attach the buffer to the surface
-    const wl_surface = output.wl_surface.?;
+    const surfaces = output.surfaces orelse return error.NoSurfaces;
+    const wl_surface = surfaces.wl_surface;
     wl_surface.setBufferScale(scale);
     wl_surface.attach(buffer.wl_buffer, 0, 0);
     wl_surface.damageBuffer(0, 0, width * scale, height * scale);

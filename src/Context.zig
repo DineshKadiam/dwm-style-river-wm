@@ -143,7 +143,7 @@ pub fn manage(context: *Context) void {
             while (out_it.next()) |output| {
                 if (context.wallpaper_image == null) {
                     output.deinitWallpaperLayerSurface();
-                } else if (output.wl_surface != null) {
+                } else if (output.surfaces != null) {
                     output.renderWallpaper() catch |err| {
                         log.err("Wallpaper re-render failed: {}", .{err});
                     };
