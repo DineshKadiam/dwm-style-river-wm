@@ -98,6 +98,7 @@ pub fn layerSurfaceListener(
     event: zwlr.LayerSurfaceV1.Event,
     bar: *Bar,
 ) void {
+    assert(bar.surfaces.?.layer_surface == layer_surface);
     switch (event) {
         .configure => |ev| {
             layer_surface.ackConfigure(ev.serial);
@@ -109,18 +110,14 @@ pub fn layerSurfaceListener(
                 bar.height == height and
                 bar.output.scale == bar.font_scale)
             {
-                if (bar.surfaces) |surfaces| {
-                    surfaces.wl_surface.commit();
-                } else {
-                    log.warn("Bar is marked as configured but is missing its surfaces.", .{});
-                }
+                bar.surfaces.?.wl_surface.commit();
                 return;
             }
 
             log.debug("Configuring bar surface with width {} and height {}", .{ width, height });
             bar.width = width;
             bar.height = height;
-            // Excluse zone == the bar's height
+            // Exclusive zone == the bar's height
             layer_surface.setExclusiveZone(bar.height);
 
             // Full surface should be opaque
@@ -128,9 +125,8 @@ pub fn layerSurfaceListener(
                 log.err("Failed to create opaque region for bar: {}", .{e});
                 return;
             };
-            // TODO: Need to change the x/y if we support anchoring to the bottom
-            opaque_region.add(0, 0, bar.width, bar.height);
             defer opaque_region.destroy();
+            opaque_region.add(0, 0, bar.width, bar.height);
             bar.surfaces.?.wl_surface.setOpaqueRegion(opaque_region);
 
             bar.configured = true;
@@ -145,7 +141,6 @@ pub fn layerSurfaceListener(
     }
 }
 
-// TODO: Configure number of visible tags
 /// Renders the bar and its components
 pub fn render(bar: *Bar) !void {
     const context = bar.context;
@@ -368,6 +363,7 @@ fn getFcftFonts(fonts: []const u8, scale: u31) !*fcft.Font {
 }
 
 const std = @import("std");
+const assert = std.debug.assert;
 const io = std.io;
 const mem = std.mem;
 const process = std.process;

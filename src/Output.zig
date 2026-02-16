@@ -444,7 +444,7 @@ pub fn renderWallpaper(output: *Output) !void {
     const image_stride = image.getStride();
     const image_format = image.getFormat();
 
-    const buffer: *Buffer = try context.buffer_pool.nextBuffer(context.wl_shm, width * scale, height * scale);
+    const buffer = try context.buffer_pool.nextBuffer(context.wl_shm, width * scale, height * scale);
 
     const pix = pixman.Image.createBitsNoClear(image_format, image_width, image_height, image_data, image_stride) orelse {
         log.err("Failed to copy the wallpaper image for rendering", .{});

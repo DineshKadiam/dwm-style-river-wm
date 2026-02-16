@@ -84,13 +84,53 @@ pub fn deinit(buffer: *Buffer) void {
 
 // We have to do this later because of the way init() works
 pub fn setListener(buffer: *Buffer) void {
-    buffer.wl_buffer.setListener(*Buffer, buffer_listener, buffer);
+    buffer.wl_buffer.setListener(*Buffer, bufferListener, buffer);
 }
 
-fn buffer_listener(_: *wl.Buffer, event: wl.Buffer.Event, buffer: *Buffer) void {
+fn bufferListener(_: *wl.Buffer, event: wl.Buffer.Event, buffer: *Buffer) void {
     switch (event) {
         .release => buffer.busy = false,
     }
+}
+
+pub fn borderedRectangle(
+    buffer: Buffer,
+    x: u31,
+    y: u31,
+    width: u31,
+    height: u31,
+    border_width: u31,
+    scale: u31,
+    background_color: *const pixman.Color,
+    border_color: *const pixman.Color,
+) void {
+    const render_x: i16 = @intCast(x * scale);
+    const render_y: i16 = @intCast(y * scale);
+    const render_width: u16 = @intCast(width * scale);
+    const render_height: u16 = @intCast(height * scale);
+    const render_border_width: u16 = @intCast(border_width * scale);
+
+    // Background fill
+    _ = pixman.Image.fillRectangles(.src, buffer.image, background_color, 1, &[1]pixman.Rectangle16{.{ .x = render_x, .y = render_y, .width = render_width, .height = render_height }});
+
+    // Border: top, bottom, left, right
+    _ = pixman.Image.fillRectangles(.src, buffer.image, border_color, 4, &[4]pixman.Rectangle16{
+        .{
+            .x = render_x,
+            .y = render_y,
+            .width = render_width,
+            .height = render_border_width,
+        },
+        .{
+            .x = render_x,
+            .y = render_y + @as(i16, @intCast(render_height -
+                render_border_width)),
+            .width = render_width,
+            .height = render_border_width,
+        },
+        .{ .x = render_x, .y = render_y + @as(i16, @intCast(render_border_width)), .width = render_border_width, .height = render_height - 2 * render_border_width },
+        .{ .x = render_x + @as(i16, @intCast(render_width - render_border_width)), .y = render_y + @as(i16, @intCast(render_border_width)), .width = render_border_width, .height = render_height - 2 * render_border_width },
+    });
 }
 
 const std = @import("std");
