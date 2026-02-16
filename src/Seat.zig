@@ -201,8 +201,9 @@ pub fn manage(seat: *Seat) void {
                 // Warp pointer to center of focused window;
                 // because the x and y coords are set during render, we need to check if
                 // there are new coordinates in window.pending_render.
-                const pointer_x: i32 = (window.pending_render.x orelse window.x) + @divFloor(window.width, 2);
-                const pointer_y: i32 = (window.pending_render.y orelse window.y) + @divFloor(window.height, 2);
+                const pos = window.pending_render.position;
+                const pointer_x: i32 = (if (pos) |p| p.x else window.rect.x) + @divFloor(window.rect.width, 2);
+                const pointer_y: i32 = (if (pos) |p| p.y else window.rect.y) + @divFloor(window.rect.height, 2);
                 seat.river_seat_v1.pointerWarp(pointer_x, pointer_y);
             }
         }
@@ -216,8 +217,8 @@ pub fn manage(seat: *Seat) void {
             seat.pointer_op = .{
                 .move = .{
                     .window = window,
-                    .start_x = window.float_x,
-                    .start_y = window.float_y,
+                    .start_x = window.floating_rect.x,
+                    .start_y = window.floating_rect.y,
                 },
             };
             seat.river_seat_v1.opStartPointer();
@@ -230,10 +231,10 @@ pub fn manage(seat: *Seat) void {
             seat.pointer_op = .{
                 .resize = .{
                     .window = req.window,
-                    .start_width = req.window.float_width,
-                    .start_height = req.window.float_height,
-                    .start_x = req.window.float_x,
-                    .start_y = req.window.float_y,
+                    .start_width = req.window.floating_rect.width,
+                    .start_height = req.window.floating_rect.height,
+                    .start_x = req.window.floating_rect.x,
+                    .start_y = req.window.floating_rect.y,
                     .edges = req.edges,
                 },
             };
@@ -247,10 +248,12 @@ pub fn manage(seat: *Seat) void {
         switch (seat.pointer_op) {
             .none => {},
             .move => |op| {
-                op.window.float_x = op.start_x + delta.dx;
-                op.window.float_y = op.start_y + delta.dy;
-                op.window.pending_render.x = op.window.float_x;
-                op.window.pending_render.y = op.window.float_y;
+                op.window.floating_rect.x = op.start_x + delta.dx;
+                op.window.floating_rect.y = op.start_y + delta.dy;
+                op.window.pending_render.position = .{
+                    .x = op.window.floating_rect.x,
+                    .y = op.window.floating_rect.y,
+                };
             },
             .resize => |op| {
                 var new_width: i32 = op.start_width;
@@ -277,17 +280,19 @@ pub fn manage(seat: *Seat) void {
                 new_width = @max(new_width, min_size);
                 new_height = @max(new_height, min_size);
 
-                op.window.float_width = @intCast(new_width);
-                op.window.float_height = @intCast(new_height);
-                op.window.float_x = new_x;
-                op.window.float_y = new_y;
+                op.window.floating_rect.width = @intCast(new_width);
+                op.window.floating_rect.height = @intCast(new_height);
+                op.window.floating_rect.x = new_x;
+                op.window.floating_rect.y = new_y;
 
                 op.window.river_window_v1.proposeDimensions(
-                    op.window.float_width,
-                    op.window.float_height,
+                    op.window.floating_rect.width,
+                    op.window.floating_rect.height,
                 );
-                op.window.pending_render.x = op.window.float_x;
-                op.window.pending_render.y = op.window.float_y;
+                op.window.pending_render.position = .{
+                    .x = op.window.floating_rect.x,
+                    .y = op.window.floating_rect.y,
+                };
             },
         }
     }

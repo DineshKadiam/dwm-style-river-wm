@@ -15,7 +15,7 @@ timezone: zeit.timezone.TimeZone,
 options: Options,
 
 fcft_fonts: *fcft.Font,
-font_scale: u31,
+font_scale: u31 = 1,
 
 output: *Output,
 
@@ -366,6 +366,7 @@ fn getFcftFonts(fonts: []const u8, scale: u31) !*fcft.Font {
     while (it.next()) |font| {
         if (scale > 1) {
             // If scale >1, we append :dpi so we can scale the font
+            log.debug("bwbuhse {d} {d}", .{ base_dpi, scale });
             const scaled = try arena_alloc.dupeZ(
                 u8,
                 try std.fmt.allocPrint(arena_alloc, "{s}:dpi={}", .{ font, @as(u32, base_dpi) * scale }),

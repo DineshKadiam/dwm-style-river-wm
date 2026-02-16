@@ -92,33 +92,33 @@ pub fn create(context: *Context, river_output_v1: *river.OutputV1) !*Output {
     var output = try utils.gpa.create(Output);
     errdefer utils.gpa.destroy(output);
 
-    var bar = if (context.config.bar_config) |bar_config| blk: {
-        break :blk Bar.init(context, output, bar_config.toBarOptions()) catch |e| {
-            log.err("Failed to create a bar: {}", .{e});
-            break :blk null;
-        };
-    } else null;
-    errdefer if (bar) |*b| b.deinit();
-
-    var tag_overlay = if (context.config.tag_overlay_config) |tag_overlay_config| blk: {
-        break :blk TagOverlay.init(context, output, tag_overlay_config.toTagOverlayOptions()) catch |e| {
-            log.err("Failed to create a tag overlay: {}", .{e});
-            break :blk null;
-        };
-    } else null;
-    errdefer if (tag_overlay) |*to| to.deinit();
-
     output.* = .{
         .context = context,
         .river_output_v1 = river_output_v1,
         .river_layer_shell_output_v1 = try context.river_layer_shell_v1.getOutput(river_output_v1),
-        .bar = bar,
-        .tag_overlay = tag_overlay,
+        .bar = null,
+        .tag_overlay = null,
         .primary_count = context.config.primary_count,
         .primary_ratio = context.config.primary_ratio,
         .windows = undefined, // we will initialize this shortly
         .link = undefined, // Handled by the wl.list
     };
+
+    output.bar = if (context.config.bar_config) |bar_config| blk: {
+        break :blk Bar.init(context, output, bar_config.toBarOptions()) catch |e| {
+            log.err("Failed to create a bar: {}", .{e});
+            break :blk null;
+        };
+    } else null;
+    errdefer if (output.bar) |*b| b.deinit();
+
+    output.tag_overlay = if (context.config.tag_overlay_config) |tag_overlay_config| blk: {
+        break :blk TagOverlay.init(context, output, tag_overlay_config.toTagOverlayOptions()) catch |e| {
+            log.err("Failed to create a tag overlay: {}", .{e});
+            break :blk null;
+        };
+    } else null;
+    errdefer if (output.tag_overlay) |*to| to.deinit();
 
     output.windows.init();
 
@@ -666,10 +666,11 @@ fn calculatePrimaryStackLayout(output: *Output) void {
     // Single window: maximize and return early
     if (active_count == 1) {
         const window: *Window = @fieldParentPtr("active_list_node", active_list.popFirst().?);
-        window.pending_render.x = output_x + border_width;
-        window.pending_render.y = output_y + border_width;
-        window.pending_manage.width = output_width - 2 * border_width;
-        window.pending_manage.height = output_height - 2 * border_width;
+        window.pending_render.position = .{ .x = output_x + border_width, .y = output_y + border_width };
+        window.pending_manage.dimensions = .{
+            .width = output_width - 2 * border_width,
+            .height = output_height - 2 * border_width,
+        };
         window.pending_manage.maximized = true;
         return;
     }
@@ -700,34 +701,44 @@ fn calculatePrimaryStackLayout(output: *Output) void {
 
         if (i < primary_count) {
             // Primary window(s) - right side
-            window.pending_render.x = output_x + @as(i32, stack_width);
-            window.pending_render.y = output_y + @as(i32, i) * @as(i32, primary_height);
-            window.pending_manage.width = primary_width;
+            window.pending_render.position = .{
+                .x = output_x + @as(i32, stack_width),
+                .y = output_y + @as(i32, i) * @as(i32, primary_height),
+            };
+            const pending_width = primary_width;
             // Last primary window gets remaining height to avoid gaps from integer division
-            if (i == primary_count - 1) {
-                window.pending_manage.height = output_height - i * primary_height;
-            } else {
-                window.pending_manage.height = primary_height;
-            }
+            const pending_height = if (i == primary_count - 1)
+                output_height - i * primary_height
+            else
+                primary_height;
+            window.pending_manage.dimensions = .{
+                .width = pending_width,
+                .height = pending_height,
+            };
         } else {
             // Stack window(s) - left side
             const stack_index = i - primary_count;
-            window.pending_render.x = output_x;
-            window.pending_render.y = output_y + @as(i32, stack_index) * @as(i32, stack_height);
-            window.pending_manage.width = stack_width;
+            window.pending_render.position = .{
+                .x = output_x,
+                .y = output_y + @as(i32, stack_index) * @as(i32, stack_height),
+            };
+            const pending_width = stack_width;
             // Last stack window gets remaining height to avoid gaps from integer division
-            if (stack_index == stack_count - 1) {
-                window.pending_manage.height = output_height - stack_index * stack_height;
-            } else {
-                window.pending_manage.height = stack_height;
-            }
+            const pending_height = if (stack_index == stack_count - 1)
+                output_height - stack_index * stack_height
+            else
+                stack_height;
+            window.pending_manage.dimensions = .{
+                .width = pending_width,
+                .height = pending_height,
+            };
         }
 
         // Make space for borders
-        window.pending_manage.height.? -= 2 * border_width;
-        window.pending_manage.width.? -= 2 * border_width;
-        window.pending_render.x.? += border_width;
-        window.pending_render.y.? += border_width;
+        window.pending_manage.dimensions.?.height -= 2 * border_width;
+        window.pending_manage.dimensions.?.width -= 2 * border_width;
+        window.pending_render.position.?.x += border_width;
+        window.pending_render.position.?.y += border_width;
     }
 
     // Make sure we went through the whole list

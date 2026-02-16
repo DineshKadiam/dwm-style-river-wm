@@ -341,10 +341,9 @@ const XkbBinding = struct {
         const window = seat.focused_window orelse return;
         if (!window.floating) return;
 
-        window.float_x += dx;
-        window.float_y += dy;
-        window.pending_render.x = window.float_x;
-        window.pending_render.y = window.float_y;
+        window.floating_rect.x += dx;
+        window.floating_rect.y += dy;
+        window.pending_render.position = .{ .x = window.floating_rect.x, .y = window.floating_rect.y };
         context.wm.river_window_manager_v1.manageDirty();
     }
 
@@ -353,13 +352,12 @@ const XkbBinding = struct {
         const window = seat.focused_window orelse return;
         if (!window.floating) return;
 
-        const new_width: i32 = @as(i32, window.float_width) + dw;
-        const new_height: i32 = @as(i32, window.float_height) + dh;
-        window.float_width = @intCast(@max(50, new_width));
-        window.float_height = @intCast(@max(50, new_height));
+        const new_width: i32 = @as(i32, window.floating_rect.width) + dw;
+        const new_height: i32 = @as(i32, window.floating_rect.height) + dh;
+        window.floating_rect.width = @intCast(@max(50, new_width));
+        window.floating_rect.height = @intCast(@max(50, new_height));
 
-        window.pending_manage.width = window.float_width;
-        window.pending_manage.height = window.float_height;
+        window.pending_manage.dimensions = .{ .width = window.floating_rect.width, .height = window.floating_rect.height };
         context.wm.river_window_manager_v1.manageDirty();
     }
 
@@ -369,10 +367,9 @@ const XkbBinding = struct {
         if (!window.floating) return;
         const output = window.output orelse return;
 
-        window.float_x = output.usable_x + @divFloor(output.usable_width, 2) - @divFloor(window.float_width, 2);
-        window.float_y = output.usable_y + @divFloor(output.usable_height, 2) - @divFloor(window.float_height, 2);
-        window.pending_render.x = window.float_x;
-        window.pending_render.y = window.float_y;
+        window.floating_rect.x = output.usable_x + @divFloor(output.usable_width, 2) - @divFloor(window.floating_rect.width, 2);
+        window.floating_rect.y = output.usable_y + @divFloor(output.usable_height, 2) - @divFloor(window.floating_rect.height, 2);
+        window.pending_render.position = .{ .x = window.floating_rect.x, .y = window.floating_rect.y };
         context.wm.river_window_manager_v1.manageDirty();
     }
 

@@ -9,11 +9,12 @@ context: *Context,
 river_window_v1: *river.WindowV1,
 river_node_v1: *river.NodeV1,
 
-// TODO: Could switch this to a Rect { x, y, width, height }
-width: u31 = 0,
-height: u31 = 0,
-x: i32 = 0,
-y: i32 = 0,
+rect: utils.Rect = .{
+    .width = 0,
+    .height = 0,
+    .x = 0,
+    .y = 0,
+},
 
 fullscreen: bool = false,
 maximized: bool = false,
@@ -22,10 +23,12 @@ tags: u32 = 0x0001,
 output: ?*Output,
 
 floating: bool = false,
-float_width: u31 = 0,
-float_height: u31 = 0,
-float_x: i32 = 0,
-float_y: i32 = 0,
+floating_rect: utils.Rect = .{
+    .width = 0,
+    .height = 0,
+    .x = 0,
+    .y = 0,
+},
 
 initialized: bool = false,
 
@@ -41,8 +44,7 @@ active_list_node: DoublyLinkedList.Node = .{},
 link: wl.list.Link,
 
 pub const PendingManage = struct {
-    width: ?u31 = null,
-    height: ?u31 = null,
+    dimensions: ?struct { width: u31, height: u31 } = null,
 
     fullscreen: ?bool = null,
     maximized: ?bool = null,
@@ -59,8 +61,10 @@ pub const PendingManage = struct {
 };
 
 pub const PendingRender = struct {
-    x: ?i32 = null,
-    y: ?i32 = null,
+    position: ?struct {
+        x: i32,
+        y: i32,
+    } = null,
 
     focused: ?bool = null,
 
@@ -142,8 +146,7 @@ fn windowListener(river_window_v1: *river.WindowV1, event: river.WindowV1.Event,
         .dimensions => |ev| {
             // Protocol guarantees that width and height are strictly greater than zero
             assert(ev.width > 0 and ev.height > 0);
-            window.pending_manage.width = @intCast(ev.width);
-            window.pending_manage.height = @intCast(ev.height);
+            window.pending_manage.dimensions = .{ .width = @intCast(ev.width), .height = @intCast(ev.height) };
         },
         .dimensions_hint => {
             // TODO: Maybe could use this for floating windows
@@ -183,40 +186,37 @@ pub fn manage(window: *Window) void {
             // Let the window know it isn't tiled
             river_window_v1.setTiled(.{});
 
-            if (window.float_width == 0) {
+            if (window.floating_rect.width == 0) {
                 // Never floated before; use 75% of usable area, centered on output
                 if (window.output) |output| {
-                    window.float_width = @divFloor(output.usable_width * 3, 4);
-                    window.float_height = @divFloor(output.usable_height * 3, 4);
-                    window.float_x = output.usable_x + @divFloor(output.usable_width, 2) - @divFloor(window.float_width, 2);
-                    window.float_y = output.usable_y + @divFloor(output.usable_height, 2) - @divFloor(window.float_height, 2);
+                    window.floating_rect.width = @divFloor(output.usable_width * 3, 4);
+                    window.floating_rect.height = @divFloor(output.usable_height * 3, 4);
+                    window.floating_rect.x = output.usable_x + @divFloor(output.usable_width, 2) - @divFloor(window.floating_rect.width, 2);
+                    window.floating_rect.y = output.usable_y + @divFloor(output.usable_height, 2) - @divFloor(window.floating_rect.height, 2);
                 } else {
-                    window.float_width = window.width;
-                    window.float_height = window.height;
+                    window.floating_rect.width = window.rect.width;
+                    window.floating_rect.height = window.rect.height;
                 }
-                river_window_v1.proposeDimensions(window.float_width, window.float_height);
-            } else {
-                // Window has floated before; re-use its old dimensions
-                river_window_v1.proposeDimensions(window.float_width, window.float_height);
             }
-            window.pending_render.x = window.float_x;
-            window.pending_render.y = window.float_y;
+            river_window_v1.proposeDimensions(window.floating_rect.width, window.floating_rect.height);
+            window.pending_render.position = .{
+                .x = window.floating_rect.x,
+                .y = window.floating_rect.y,
+            };
         } else {
             river_window_v1.setTiled(.{ .top = true, .bottom = true, .left = true, .right = true });
             // Save floating dimensions in case the window gets floated again
-            window.float_width = window.width;
-            window.float_height = window.height;
-            window.float_x = window.x;
-            window.float_y = window.y;
+            window.floating_rect.width = window.rect.width;
+            window.floating_rect.height = window.rect.height;
+            window.floating_rect.x = window.rect.x;
+            window.floating_rect.y = window.rect.y;
         }
     }
     // Layout (pre-computed by WindowManager.calculatePrimaryStackLayout())
-    if (pending_manage.width) |new_width| {
-        if (pending_manage.height) |new_height| {
-            window.width = new_width;
-            window.height = new_height;
-            window.river_window_v1.proposeDimensions(new_width, new_height);
-        }
+    if (pending_manage.dimensions) |dimensions| {
+        window.rect.width = dimensions.width;
+        window.rect.height = dimensions.height;
+        window.river_window_v1.proposeDimensions(dimensions.width, dimensions.height);
     }
     // Fullscreen and maximize operations
     if (pending_manage.fullscreen) |fullscreen| blk: {
@@ -257,19 +257,10 @@ pub fn manage(window: *Window) void {
 pub fn render(window: *Window) void {
     defer window.pending_render = .{};
 
-    // TODO: We probably could just move these back to pending_manage and have PendingRiver.new_coords: bool
-    //       This would also simplify the pointer warp behaviour in Seat.manage()
-    if (window.pending_render.x) |new_x| {
-        if (window.pending_render.y) |new_y| {
-            window.x = new_x;
-            window.y = new_y;
-
-            window.river_node_v1.setPosition(window.x, window.y);
-        } else {
-            log.err("Window.pending_render with only x set", .{});
-        }
-    } else if (window.pending_render.y) |_| {
-        log.err("Window.pending_render with only y set", .{});
+    if (window.pending_render.position) |position| {
+        window.rect.x = position.x;
+        window.rect.y = position.y;
+        window.river_node_v1.setPosition(window.rect.x, window.rect.y);
     }
 
     // Set borders

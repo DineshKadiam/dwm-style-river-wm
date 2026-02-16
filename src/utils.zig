@@ -12,6 +12,13 @@ pub const RiverColor = struct {
     alpha: u32,
 };
 
+pub const Rect = struct {
+    width: u31,
+    height: u31,
+    x: i32,
+    y: i32,
+};
+
 /// Parse a color in the format 0xRRGGBB or 0xRRGGBBAA and convert it to
 /// 32-bit color values (used by Window.set_borders in rwm).
 pub fn parseRgba(s: []const u8) !RiverColor {
