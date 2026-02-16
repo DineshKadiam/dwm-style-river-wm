@@ -44,31 +44,8 @@ input_configs: std.ArrayList(InputConfig) = .{},
 pub const Keybind = keybind_helper.Keybind;
 pub const PointerBind = pointer_bind_helper.PointerBind;
 
-pub const InputConfig = struct {
-    /// Device name to match
-    /// If this is null, applies to all devices
-    name: ?[]const u8 = null,
-
-    send_events: ?SendEventsModes.Enum = null,
-    tap: ?TapState = null,
-    tap_button_map: ?TapButtonMap = null,
-    drag: ?DragState = null,
-    drag_lock: ?DragLockState = null,
-    three_finger_drag: ?ThreeFingerDragState = null,
-    accel_profile: ?AccelProfile = null,
-    accel_speed: ?f64 = null,
-    natural_scroll: ?NaturalScrollState = null,
-    left_handed: ?LeftHandedState = null,
-    click_method: ?ClickMethod = null,
-    clickfinger_button_map: ?ClickfingerButtonMap = null,
-    middle_emulation: ?MiddleEmulationState = null,
-    scroll_method: ?ScrollMethod = null,
-    scroll_button: ?u32 = null,
-    scroll_button_lock: ?ScrollButtonLockState = null,
-    dwt: ?DwtState = null,
-    dwtp: ?DwtpState = null,
-    rotation: ?u32 = null,
-};
+pub const TagOverlayConfig = tag_overlay_helper.TagOverlayConfig;
+pub const InputConfig = input_helper.InputConfig;
 
 pub const AttachMode = enum {
     top,
@@ -88,28 +65,6 @@ const NodeName = enum {
     pointer_binds,
     input,
     tag_overlay,
-};
-
-const InputConfigNodeName = enum {
-    send_events,
-    tap,
-    tap_button_map,
-    drag,
-    drag_lock,
-    three_finger_drag,
-    accel_profile,
-    accel_speed,
-    natural_scroll,
-    left_handed,
-    click_method,
-    clickfinger_button_map,
-    middle_emulation,
-    scroll_method,
-    scroll_button,
-    scroll_button_lock,
-    dwt,
-    dwtp,
-    rotation,
 };
 
 pub fn create() !*Config {
@@ -210,7 +165,7 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                 const node_name = std.meta.stringToEnum(NodeName, node.name);
                 if (node_name) |name| {
                     if (!helpers.hostMatches(node, &parser, hostname)) {
-                        logDebugHostMismatch(name);
+                        log.debug("Skipping \"{s}\" (host mismatch)", .{@tagName(name)});
                         continue;
                     }
                     // Next, we have to check the specifics for the NodeName
@@ -307,7 +262,7 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                         .keybinds => try keybind_helper.load(config, &parser, hostname),
                         .pointer_binds => try pointer_bind_helper.load(config, &parser, hostname),
                         .input => {
-                            try config.loadInputChildBlock(&parser, pending_input_name, hostname);
+                            try input_helper.load(config, &parser, pending_input_name, hostname);
                             pending_input_name = null; // ownership transferred
                         },
                         .tag_overlay => try tag_overlay_helper.load(config, &parser, hostname),
@@ -326,134 +281,20 @@ fn load(config: *Config, reader: *Io.Reader) !void {
     }
 }
 
-fn loadInputChildBlock(config: *Config, parser: *kdl.Parser, name: ?[]const u8, hostname: ?[]const u8) !void {
-    var input_config: InputConfig = .{ .name = name };
-    errdefer if (input_config.name) |n| utils.gpa.free(n);
-
-    while (try parser.next()) |event| {
-        switch (event) {
-            .node => |node| {
-                const node_name = std.meta.stringToEnum(InputConfigNodeName, node.name);
-                if (node_name) |tag| {
-                    if (!helpers.hostMatches(node, parser, hostname)) {
-                        logDebugHostMismatch(tag);
-                        continue;
-                    }
-                    const val_str = utils.stripQuotes(node.arg(parser, 0) orelse {
-                        logWarnMissingNodeArg(tag, "value");
-                        continue;
-                    });
-                    switch (tag) {
-                        .accel_speed => {
-                            const speed = fmt.parseFloat(f64, val_str) catch {
-                                logWarnInvalidNodeArg(tag, val_str);
-                                continue;
-                            };
-                            input_config.accel_speed = speed;
-                            log.debug("input.accel_speed: {s}", .{val_str});
-                        },
-                        .scroll_button => {
-                            const button = helpers.parseButton(val_str) orelse {
-                                logWarnInvalidNodeArg(tag, val_str);
-                                continue;
-                            };
-                            input_config.scroll_button = button;
-                            log.debug("input.scroll_button: {s}", .{val_str});
-                        },
-                        .rotation => {
-                            const angle = fmt.parseInt(u32, val_str, 0) catch {
-                                logWarnInvalidNodeArg(tag, val_str);
-                                continue;
-                            };
-                            input_config.rotation = angle;
-                            log.debug("input.rotation: {s}", .{val_str});
-                        },
-                        inline .send_events,
-                        .tap,
-                        .tap_button_map,
-                        .drag,
-                        .drag_lock,
-                        .three_finger_drag,
-                        .accel_profile,
-                        .natural_scroll,
-                        .left_handed,
-                        .click_method,
-                        .clickfinger_button_map,
-                        .middle_emulation,
-                        .scroll_method,
-                        .scroll_button_lock,
-                        .dwt,
-                        .dwtp,
-                        => |cmd| {
-                            // These all have arguments, but we can use compile time constructs to reduce
-                            // code re-use here.
-                            // Because all the fields are optional, we have to use @typeInfo and get the optional's child type.
-                            const field_name = @tagName(cmd);
-                            const FieldType = @typeInfo(@TypeOf(@field(input_config, field_name))).optional.child;
-                            if (std.meta.stringToEnum(FieldType, val_str)) |val| {
-                                @field(input_config, field_name) = val;
-                                log.debug("input.{s}: {s}", .{ field_name, val_str });
-                            } else {
-                                logWarnInvalidNodeArg(cmd, val_str);
-                            }
-                        },
-                    }
-                } else {
-                    helpers.logWarnInvalidNode(node.name);
-                }
-            },
-            .child_block_begin => {
-                try helpers.skipChildBlock(parser);
-            },
-            .child_block_end => {
-                try config.input_configs.append(utils.gpa, input_config);
-                return;
-            },
-        }
-    }
+inline fn logWarnInvalidNodeArg(node_name: NodeName, node_value: []const u8) void {
+    log.warn("Invalid \"{s}\" ({s}). Using default value", .{ @tagName(node_name), node_value });
 }
 
-fn logWarnInvalidNodeArg(node_name: anytype, node_value: []const u8) void {
-    const node_name_type = @TypeOf(node_name);
-    switch (node_name_type) {
-        NodeName => log.warn("Invalid \"{s}\" ({s}). Using default value", .{ @tagName(node_name), node_value }),
-        InputConfigNodeName => log.warn("Invalid \"input.{s}\" ({s}). Ignoring", .{ @tagName(node_name), node_value }),
-        else => @compileError("This function does not (yet) support type \"" ++ @typeName(node_name_type) ++ "\""),
-    }
+inline fn logWarnMissingNodeArg(node_name: NodeName, comptime arg: []const u8) void {
+    log.warn("\"{s}\" missing " ++ arg ++ " argument. Ignoring", .{@tagName(node_name)});
 }
 
-fn logWarnMissingNodeArg(node_name: anytype, comptime arg: []const u8) void {
-    const node_name_type = @TypeOf(node_name);
-    switch (node_name_type) {
-        NodeName => log.warn("\"{s}\" missing " ++ arg ++ " argument. Ignoring", .{@tagName(node_name)}),
-        InputConfigNodeName => log.warn("\"input.{s}\" missing " ++ arg ++ " argument. Ignoring", .{@tagName(node_name)}),
-        else => @compileError("This function does not (yet) support type \"" ++ @typeName(node_name_type) ++ "\""),
-    }
+inline fn logWarnMissingChildBlock(child_block: NodeName) void {
+    log.warn("Expected child block for {s}, but got another node instead. Continuing but ignoring {s}", .{ @tagName(child_block), @tagName(child_block) });
 }
 
-fn logWarnMissingChildBlock(child_block: anytype) void {
-    const child_block_type = @TypeOf(child_block);
-    switch (child_block_type) {
-        NodeName => log.warn("Expected child block for {s}, but got another node instead. Continuing but ignoring {s}", .{ @tagName(child_block), @tagName(child_block) }),
-        else => @compileError("This function does not (yet) support type \"" ++ @typeName(child_block_type) ++ "\""),
-    }
-}
-
-fn logDebugHostMismatch(node_name: anytype) void {
-    const node_name_type = @TypeOf(node_name);
-    switch (node_name_type) {
-        NodeName => log.debug("Skipping \"{s}\" (host mismatch)", .{@tagName(node_name)}),
-        InputConfigNodeName => log.debug("Skipping \"input.{s}\" (host mismatch)", .{@tagName(node_name)}),
-        else => @compileError("This function does not (yet) support type \"" ++ @typeName(node_name_type) ++ "\""),
-    }
-}
-
-fn logDebugSettingNode(node_name: anytype, node_value: []const u8) void {
-    const node_name_type = @TypeOf(node_name);
-    switch (node_name_type) {
-        NodeName => log.debug("Setting {s} to {s}", .{ @tagName(node_name), node_value }),
-        else => @compileError("This function does not (yet) support type \"" ++ @typeName(@TypeOf(node_name)) ++ "\""),
-    }
+inline fn logDebugSettingNode(node_name: NodeName, node_value: []const u8) void {
+    log.debug("Setting {s} to {s}", .{ @tagName(node_name), node_value });
 }
 
 const std = @import("std");
@@ -461,25 +302,6 @@ const fmt = std.fmt;
 const fs = std.fs;
 const mem = std.mem;
 const Io = std.Io;
-
-const wayland = @import("wayland");
-const river = wayland.client.river;
-const AccelProfile = river.LibinputDeviceV1.AccelProfile;
-const ClickfingerButtonMap = river.LibinputDeviceV1.ClickfingerButtonMap;
-const ClickMethod = river.LibinputDeviceV1.ClickMethod;
-const DragLockState = river.LibinputDeviceV1.DragLockState;
-const DragState = river.LibinputDeviceV1.DragState;
-const DwtState = river.LibinputDeviceV1.DwtState;
-const DwtpState = river.LibinputDeviceV1.DwtpState;
-const LeftHandedState = river.LibinputDeviceV1.LeftHandedState;
-const MiddleEmulationState = river.LibinputDeviceV1.MiddleEmulationState;
-const NaturalScrollState = river.LibinputDeviceV1.NaturalScrollState;
-const ScrollButtonLockState = river.LibinputDeviceV1.ScrollButtonLockState;
-const ScrollMethod = river.LibinputDeviceV1.ScrollMethod;
-const SendEventsModes = river.LibinputDeviceV1.SendEventsModes;
-const TapButtonMap = river.LibinputDeviceV1.TapButtonMap;
-const TapState = river.LibinputDeviceV1.TapState;
-const ThreeFingerDragState = river.LibinputDeviceV1.ThreeFingerDragState;
 
 const kdl = @import("kdl");
 const known_folders = @import("known_folders");
@@ -490,11 +312,11 @@ const RiverColor = utils.RiverColor;
 const XkbBindings = @import("XkbBindings.zig");
 
 const borders_helper = @import("config/borders.zig");
+const input_helper = @import("config/input.zig");
 const keybind_helper = @import("config/keybinds.zig");
 const pointer_bind_helper = @import("config/pointer_binds.zig");
 const tag_overlay_helper = @import("config/tag_overlay.zig");
 const helpers = @import("config/helpers.zig");
-const TagOverlayConfig = tag_overlay_helper.TagOverlayConfig;
 
 const log = std.log.scoped(.Config);
 
