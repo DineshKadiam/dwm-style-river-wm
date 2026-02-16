@@ -7,6 +7,8 @@ const Context = @This();
 
 initialized: bool,
 
+env: process.EnvMap,
+
 // Wayland globals
 wl_compositor: *wl.Compositor,
 wl_display: *wl.Display,
@@ -31,6 +33,10 @@ wallpaper_image: ?*WallpaperImage,
 
 // WM Configuration
 config: *Config,
+
+/// Shared timerfd for hiding tag overlays after their timeout expires.
+/// This stays null if no tag overlays exist.
+tag_overlay_timer_fd: ?posix.fd_t,
 
 /// State consumed in manage() phase, reset at end of manage().
 pending_manage: PendingManage = .{},
@@ -60,10 +66,29 @@ pub const Options = struct {
 
 pub fn create(options: Options) !*Context {
     const context = try utils.gpa.create(Context);
-    errdefer context.destroy();
+    errdefer utils.gpa.destroy(context);
+
+    const im = try InputManager.create(context, options.river_input_manager_v1, options.river_libinput_config_v1);
+    errdefer im.destroy();
+    const wm = try WindowManager.create(context, options.river_window_manager_v1);
+    errdefer wm.destroy();
+    const xkb_bindings = try XkbBindings.create(context, options.river_xkb_bindings_v1);
+    errdefer xkb_bindings.destroy();
+
+    const env = try process.getEnvMap(utils.gpa);
+    errdefer env.deinit();
+
+    const tag_overlay_timer_fd: ?posix.fd_t = if (options.config.tag_overlay) |_|
+        posix.timerfd_create(.MONOTONIC, .{ .CLOEXEC = true }) catch |e| blk: {
+            log.err("Failed to create tag overlay timer: {}", .{e});
+            break :blk null;
+        }
+    else
+        null;
 
     context.* = .{
         .initialized = false,
+        .env = env,
         .wl_compositor = options.wl_compositor,
         .wl_display = options.wl_display,
         .wl_registry = options.wl_registry,
@@ -72,22 +97,26 @@ pub fn create(options: Options) !*Context {
         .river_layer_shell_v1 = options.river_layer_shell_v1,
         .zwlr_layer_shell_v1 = options.zwlr_layer_shell_v1,
         .wallpaper_image = loadWallpaperImage(options.config),
-        .im = try InputManager.create(context, options.river_input_manager_v1, options.river_libinput_config_v1),
-        .wm = try WindowManager.create(context, options.river_window_manager_v1),
-        .xkb_bindings = try XkbBindings.create(context, options.river_xkb_bindings_v1),
+        .im = im,
+        .wm = wm,
+        .xkb_bindings = xkb_bindings,
         .config = options.config,
+        .tag_overlay_timer_fd = tag_overlay_timer_fd,
     };
 
     return context;
 }
 
 pub fn destroy(context: *Context) void {
-    context.xkb_bindings.destroy();
+    context.env.deinit();
+    context.im.destroy();
     context.wm.destroy();
+    context.xkb_bindings.destroy();
 
     if (context.wallpaper_image) |wallpaper_image| {
         wallpaper_image.destroy();
     }
+    if (context.tag_overlay_timer_fd) |fd| posix.close(fd);
     context.buffer_pool.deinit();
 
     utils.gpa.destroy(context);
@@ -120,6 +149,42 @@ pub fn manage(context: *Context) void {
             libinput_device.should_manage = true;
         }
 
+        // Handle tag overlay config changes
+        const had_overlay = context.config.tag_overlay != null;
+        const has_overlay = new_config.tag_overlay != null;
+
+        if (!had_overlay and has_overlay) {
+            // Create timerfd for newly enabled tag overlay
+            context.tag_overlay_timer_fd = posix.timerfd_create(.MONOTONIC, .{ .CLOEXEC = true }) catch |e| blk: {
+                log.err("Failed to create tag overlay timer: {}", .{e});
+                break :blk null;
+            };
+        } else if (had_overlay and !has_overlay) {
+            // Close timerfd for disabled tag overlay
+            if (context.tag_overlay_timer_fd) |fd| posix.close(fd);
+            context.tag_overlay_timer_fd = null;
+        }
+
+        // Recreate or destroy tag overlays on all outputs
+        if (had_overlay or has_overlay) {
+            var out_it = context.wm.outputs.iterator(.forward);
+            while (out_it.next()) |output| {
+                // Destroy existing overlay
+                if (output.tag_overlay) |*tag_overlay| {
+                    tag_overlay.deinit();
+                    output.tag_overlay = null;
+                }
+                // Create new overlay if configured
+                // Create new overlay struct if configured (surfaces created on-demand)
+                if (new_config.tag_overlay) |tag_overlay_config| {
+                    output.tag_overlay = TagOverlay.init(context, output, tag_overlay_config.toTagOverlayOptions()) catch |e| {
+                        log.err("Failed to create tag overlay: {}", .{e});
+                        continue;
+                    };
+                }
+            }
+        }
+
         if (wallpaper_changed) {
             if (context.wallpaper_image) |img| img.destroy();
             context.wallpaper_image = loadWallpaperImage(new_config);
@@ -128,7 +193,7 @@ pub fn manage(context: *Context) void {
             while (out_it.next()) |output| {
                 if (context.wallpaper_image == null) {
                     output.deinitWallpaperLayerSurface();
-                } else if (output.wl_surface != null) {
+                } else if (output.surfaces != null) {
                     output.renderWallpaper() catch |err| {
                         log.err("Wallpaper re-render failed: {}", .{err});
                     };
@@ -165,6 +230,8 @@ fn pathsEqual(a: ?[]const u8, b: ?[]const u8) bool {
 
 const std = @import("std");
 const mem = std.mem;
+const posix = std.posix;
+const process = std.process;
 
 const wayland = @import("wayland");
 const river = wayland.client.river;
@@ -175,6 +242,8 @@ const utils = @import("utils.zig");
 const BufferPool = @import("BufferPool.zig");
 const Config = @import("Config.zig");
 const InputManager = @import("InputManager.zig");
+const Output = @import("Output.zig");
+const TagOverlay = @import("TagOverlay.zig");
 const WallpaperImage = @import("WallpaperImage.zig");
 const WindowManager = @import("WindowManager.zig");
 const XkbBindings = @import("XkbBindings.zig");

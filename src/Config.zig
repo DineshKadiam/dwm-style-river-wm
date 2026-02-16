@@ -31,6 +31,9 @@ pointer_warp_on_focus_change: bool = true,
 /// Path to the wallpaper image
 wallpaper_image_path: ?[]const u8 = null,
 
+/// Tag overlay configuration. If null, no overlay is created.
+tag_overlay: ?TagOverlayConfig = null,
+
 /// Tag bind entries parsed from config (tag_bind nodes in keybinds block)
 tag_binds: std.ArrayList(Keybind) = .{},
 keybinds: std.ArrayList(Keybind) = .{},
@@ -85,6 +88,66 @@ pub const AttachMode = enum {
     bottom,
 };
 
+pub const TagOverlayConfig = struct {
+    border_width: u8 = 2,
+    tag_amount: u8 = 9,
+    tags_per_row: u8 = 32,
+    square_size: u8 = 40,
+    square_inner_padding: u8 = 10,
+    square_padding: u8 = 15,
+    square_border_width: u8 = 1,
+    background_color: pixman.Color = utils.parseRgbaPixmanComptime("0x1e1e2e"),
+    border_color: pixman.Color = utils.parseRgbaPixmanComptime("0x6c7086"),
+    square_active_background_color: pixman.Color = utils.parseRgbaPixmanComptime("0x89b4fa"),
+    square_active_border_color: pixman.Color = utils.parseRgbaPixmanComptime("0x6c7086"),
+    square_active_occupied_color: pixman.Color = utils.parseRgbaPixmanComptime("0xcdd6f4"),
+    square_inactive_background_color: pixman.Color = utils.parseRgbaPixmanComptime("0x585b70"),
+    square_inactive_border_color: pixman.Color = utils.parseRgbaPixmanComptime("0x6c7086"),
+    square_inactive_occupied_color: pixman.Color = utils.parseRgbaPixmanComptime("0xcdd6f4"),
+    timeout: u32 = 500,
+    anchor_top: bool = false,
+    anchor_right: bool = false,
+    anchor_bottom: bool = false,
+    anchor_left: bool = false,
+    margin_top: i32 = 0,
+    margin_right: i32 = 0,
+    margin_bottom: i32 = 0,
+    margin_left: i32 = 0,
+
+    pub fn toTagOverlayOptions(self: TagOverlayConfig) TagOverlay.Options {
+        return .{
+            .border_width = self.border_width,
+            .tag_amount = @intCast(std.math.clamp(@as(u32, self.tag_amount), 1, 32)),
+            .tags_per_row = @intCast(std.math.clamp(@as(u32, self.tags_per_row), 1, 32)),
+            .square_size = self.square_size,
+            .square_inner_padding = self.square_inner_padding,
+            .square_padding = self.square_padding,
+            .square_border_width = self.square_border_width,
+            .background_color = self.background_color,
+            .border_color = self.border_color,
+            .square_active_background_color = self.square_active_background_color,
+            .square_active_border_color = self.square_active_border_color,
+            .square_active_occupied_color = self.square_active_occupied_color,
+            .square_inactive_background_color = self.square_inactive_background_color,
+            .square_inactive_border_color = self.square_inactive_border_color,
+            .square_inactive_occupied_color = self.square_inactive_occupied_color,
+            .anchors = .{
+                .top = self.anchor_top,
+                .right = self.anchor_right,
+                .bottom = self.anchor_bottom,
+                .left = self.anchor_left,
+            },
+            .margins = .{
+                .top = self.margin_top,
+                .right = self.margin_right,
+                .bottom = self.margin_bottom,
+                .left = self.margin_left,
+            },
+            .timeout = self.timeout,
+        };
+    }
+};
+
 const NodeName = enum {
     attach_mode,
     primary_count,
@@ -97,6 +160,7 @@ const NodeName = enum {
     keybinds,
     pointer_binds,
     input,
+    tag_overlay,
 };
 
 const BorderNodeName = enum {
@@ -104,6 +168,30 @@ const BorderNodeName = enum {
     color_focused,
     color_unfocused,
 };
+
+const TagOverlayNodeName = enum {
+    border_width,
+    tag_amount,
+    tags_per_row,
+    square_size,
+    square_inner_padding,
+    square_padding,
+    square_border_width,
+    background_color,
+    border_color,
+    square_active_background_color,
+    square_active_border_color,
+    square_active_occupied_color,
+    square_inactive_background_color,
+    square_inactive_border_color,
+    square_inactive_occupied_color,
+    timeout,
+    anchors,
+    margins,
+};
+
+const TagOverlayAnchorsNodeName = enum { top, right, bottom, left };
+const TagOverlayMarginsNodeName = enum { top, right, bottom, left };
 
 const PointerBindNodeName = enum {
     move_window,
@@ -315,6 +403,9 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                                 null;
                             next_child_block = .input;
                         },
+                        .tag_overlay => {
+                            next_child_block = .tag_overlay;
+                        },
                     }
                 } else {
                     logWarnInvalidNode(node.name);
@@ -330,6 +421,7 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                             try config.loadInputChildBlock(&parser, pending_input_name, hostname);
                             pending_input_name = null; // ownership transferred
                         },
+                        .tag_overlay => try config.loadTagOverlayChildBlock(&parser, hostname),
                         else => {
                             // Nothing else should ever be marked as a next_child_block
                             unreachable;
@@ -398,16 +490,162 @@ fn loadBordersChildBlock(config: *Config, parser: *kdl.Parser, hostname: ?[]cons
     }
 }
 
+fn loadTagOverlayChildBlock(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
+    config.tag_overlay = .{}; // Presence of block = enabled; initialize with defaults
+
+    const TagOverlayChild = enum { anchors, margins };
+    var next_child_block: ?TagOverlayChild = null;
+
+    while (try parser.next()) |event| {
+        switch (event) {
+            .node => |node| {
+                if (next_child_block) |child| {
+                    log.warn("Expected child block for tag_overlay.{s}, got node instead. Ignoring", .{@tagName(child)});
+                    next_child_block = null;
+                }
+                const node_name = std.meta.stringToEnum(TagOverlayNodeName, node.name);
+                if (node_name) |name| {
+                    if (!hostMatches(node, parser, hostname)) {
+                        logDebugHostMismatch(name);
+                        continue;
+                    }
+                    const val_str = utils.stripQuotes(node.arg(parser, 0) orelse "");
+                    switch (name) {
+                        .anchors => next_child_block = .anchors,
+                        .margins => next_child_block = .margins,
+                        // These are all u8s, so we can inline the branch
+                        inline .border_width,
+                        .tag_amount,
+                        .tags_per_row,
+                        .square_size,
+                        .square_inner_padding,
+                        .square_padding,
+                        .square_border_width,
+                        => |tag| {
+                            const val = fmt.parseInt(u8, val_str, 10) catch {
+                                logWarnInvalidNodeArg(name, val_str);
+                                continue;
+                            };
+                            @field(config.tag_overlay.?, @tagName(tag)) = val;
+                            logDebugSettingNode(name, val_str);
+                        },
+                        .timeout => {
+                            config.tag_overlay.?.timeout = fmt.parseInt(u32, val_str, 10) catch {
+                                logWarnInvalidNodeArg(name, val_str);
+                                continue;
+                            };
+                            logDebugSettingNode(name, val_str);
+                        },
+                        inline .background_color,
+                        .border_color,
+                        .square_active_background_color,
+                        .square_active_border_color,
+                        .square_active_occupied_color,
+                        .square_inactive_background_color,
+                        .square_inactive_border_color,
+                        .square_inactive_occupied_color,
+                        => |tag| {
+                            @field(config.tag_overlay.?, @tagName(tag)) = utils.parseRgbaPixman(val_str) catch {
+                                logWarnInvalidNodeArg(name, val_str);
+                                continue;
+                            };
+                            logDebugSettingNode(name, val_str);
+                        },
+                    }
+                } else {
+                    logWarnInvalidNode(node.name);
+                }
+            },
+            .child_block_begin => {
+                if (next_child_block) |child| {
+                    switch (child) {
+                        .anchors => try config.loadTagOverlayAnchorsBlock(parser, hostname),
+                        .margins => try config.loadTagOverlayMarginsBlock(parser, hostname),
+                    }
+                    next_child_block = null;
+                } else {
+                    try config.skipChildBlock(parser);
+                }
+            },
+            .child_block_end => return,
+        }
+    }
+}
+
+fn loadTagOverlayAnchorsBlock(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
+    while (try parser.next()) |event| {
+        switch (event) {
+            .node => |node| {
+                const node_name = std.meta.stringToEnum(TagOverlayAnchorsNodeName, node.name);
+                if (node_name) |name| {
+                    if (!hostMatches(node, parser, hostname)) {
+                        logDebugHostMismatch(name);
+                        continue;
+                    }
+                    const val_str = utils.stripQuotes(node.arg(parser, 0) orelse "");
+                    if (boolFromKdlStr(val_str)) |val| {
+                        switch (name) {
+                            .top => config.tag_overlay.?.anchor_top = val,
+                            .right => config.tag_overlay.?.anchor_right = val,
+                            .bottom => config.tag_overlay.?.anchor_bottom = val,
+                            .left => config.tag_overlay.?.anchor_left = val,
+                        }
+                        logDebugSettingNode(name, val_str);
+                    } else {
+                        logWarnInvalidNodeArg(name, val_str);
+                    }
+                } else {
+                    logWarnInvalidNode(node.name);
+                }
+            },
+            .child_block_begin => try config.skipChildBlock(parser),
+            .child_block_end => return,
+        }
+    }
+}
+
+fn loadTagOverlayMarginsBlock(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
+    while (try parser.next()) |event| {
+        switch (event) {
+            .node => |node| {
+                const node_name = std.meta.stringToEnum(TagOverlayMarginsNodeName, node.name);
+                if (node_name) |name| {
+                    if (!hostMatches(node, parser, hostname)) {
+                        logDebugHostMismatch(name);
+                        continue;
+                    }
+                    const val_str = utils.stripQuotes(node.arg(parser, 0) orelse "");
+                    const val = fmt.parseInt(i32, val_str, 10) catch {
+                        logWarnInvalidNodeArg(name, val_str);
+                        continue;
+                    };
+                    switch (name) {
+                        .top => config.tag_overlay.?.margin_top = val,
+                        .right => config.tag_overlay.?.margin_right = val,
+                        .bottom => config.tag_overlay.?.margin_bottom = val,
+                        .left => config.tag_overlay.?.margin_left = val,
+                    }
+                    logDebugSettingNode(name, val_str);
+                } else {
+                    logWarnInvalidNode(node.name);
+                }
+            },
+            .child_block_begin => try config.skipChildBlock(parser),
+            .child_block_end => return,
+        }
+    }
+}
+
 fn loadKeybindsChildBlock(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
     while (try parser.next()) |event| {
         switch (event) {
             .node => |node| {
-                if (!hostMatches(node, parser, hostname)) {
-                    logDebugHostMismatch(node.name);
-                    continue;
-                }
-                // tag_bind is a special case node name
+                // tag_bind is a special case node name not in KeybindNodeName
                 if (mem.eql(u8, node.name, "tag_bind")) {
+                    if (!hostMatches(node, parser, hostname)) {
+                        log.debug("Skipping \"keybind.tag_bind\" (host mismatch)", .{});
+                        continue;
+                    }
                     const mod_str = utils.stripQuotes(node.arg(parser, 0) orelse {
                         log.warn("tag_bind: missing modifier argument. Ignoring", .{});
                         continue;
@@ -443,13 +681,16 @@ fn loadKeybindsChildBlock(config: *Config, parser: *kdl.Parser, hostname: ?[]con
                         .keysym = null, // Tag binds don't need a keysym (automatically 1-9)
                     });
 
-                    // TODO: Make a logger for keybind settings
                     log.debug("tag_bind: {s} {s}", .{ mod_str, cmd_str });
                     continue;
                 }
-                // Handle the rest of the possiblities like all the other types of block
+                // Handle the rest of the possibilities like all the other types of block
                 const node_name = std.meta.stringToEnum(KeybindNodeName, node.name);
                 if (node_name) |name| {
+                    if (!hostMatches(node, parser, hostname)) {
+                        logDebugHostMismatch(name);
+                        continue;
+                    }
                     // All nodes should have at least a command, modifiers, and a keysym
                     // Some may have more arguments handled in the switch
                     const mod_str = utils.stripQuotes(node.arg(parser, 0) orelse {
@@ -787,6 +1028,9 @@ fn logWarnInvalidNodeArg(node_name: anytype, node_value: []const u8) void {
         KeybindNodeName => log.warn("Invalid \"keybind.{s}\" ({s}). Ignoring", .{ @tagName(node_name), node_value }),
         PointerBindNodeName => log.warn("Invalid \"pointer_binds.{s}\" ({s}). Ignoring", .{ @tagName(node_name), node_value }),
         InputConfigNodeName => log.warn("Invalid \"input.{s}\" ({s}). Ignoring", .{ @tagName(node_name), node_value }),
+        TagOverlayNodeName => log.warn("Invalid \"tag_overlay.{s}\" ({s}). Using default value", .{ @tagName(node_name), node_value }),
+        TagOverlayAnchorsNodeName => log.warn("Invalid \"tag_overlay.anchors.{s}\" ({s}). Using default value", .{ @tagName(node_name), node_value }),
+        TagOverlayMarginsNodeName => log.warn("Invalid \"tag_overlay.margins.{s}\" ({s}). Using default value", .{ @tagName(node_name), node_value }),
         else => @compileError("This function does not (yet) support type \"" ++ @typeName(node_name_type) ++ "\""),
     }
 }
@@ -798,6 +1042,7 @@ fn logWarnMissingNodeArg(node_name: anytype, comptime arg: []const u8) void {
         KeybindNodeName => log.warn("\"keybind.{s}\" missing " ++ arg ++ " argument. Ignoring", .{@tagName(node_name)}),
         PointerBindNodeName => log.warn("\"pointer_binds.{s}\" missing " ++ arg ++ " argument. Ignoring", .{@tagName(node_name)}),
         InputConfigNodeName => log.warn("\"input.{s}\" missing " ++ arg ++ " argument. Ignoring", .{@tagName(node_name)}),
+        TagOverlayNodeName => log.warn("\"tag_overlay.{s}\" missing " ++ arg ++ " argument. Ignoring", .{@tagName(node_name)}),
         else => @compileError("This function does not (yet) support type \"" ++ @typeName(node_name_type) ++ "\""),
     }
 }
@@ -821,7 +1066,10 @@ fn logDebugHostMismatch(node_name: anytype) void {
         BorderNodeName => log.debug("Skipping \"border.{s}\" (host mismatch)", .{@tagName(node_name)}),
         PointerBindNodeName => log.debug("Skipping \"pointer_binds.{s}\" (host mismatch)", .{@tagName(node_name)}),
         InputConfigNodeName => log.debug("Skipping \"input.{s}\" (host mismatch)", .{@tagName(node_name)}),
-        []const u8 => log.debug("Skipping \"keybind.{s}\" (host mismatch)", .{node_name}),
+        TagOverlayNodeName => log.debug("Skipping \"tag_overlay.{s}\" (host mismatch)", .{@tagName(node_name)}),
+        TagOverlayAnchorsNodeName => log.debug("Skipping \"tag_overlay.anchors.{s}\" (host mismatch)", .{@tagName(node_name)}),
+        TagOverlayMarginsNodeName => log.debug("Skipping \"tag_overlay.margins.{s}\" (host mismatch)", .{@tagName(node_name)}),
+        KeybindNodeName => log.debug("Skipping \"keybind.{s}\" (host mismatch)", .{@tagName(node_name)}),
         else => @compileError("This function does not (yet) support type \"" ++ @typeName(node_name_type) ++ "\""),
     }
 }
@@ -831,6 +1079,9 @@ fn logDebugSettingNode(node_name: anytype, node_value: []const u8) void {
     switch (node_name_type) {
         NodeName => log.debug("Setting {s} to {s}", .{ @tagName(node_name), node_value }),
         BorderNodeName => log.debug("Setting border.{s} to {s}", .{ @tagName(node_name), node_value }),
+        TagOverlayNodeName => log.debug("Setting tag_overlay.{s} to {s}", .{ @tagName(node_name), node_value }),
+        TagOverlayAnchorsNodeName => log.debug("Setting tag_overlay.anchors.{s} to {s}", .{ @tagName(node_name), node_value }),
+        TagOverlayMarginsNodeName => log.debug("Setting tag_overlay.margins.{s} to {s}", .{ @tagName(node_name), node_value }),
         else => @compileError("This function does not (yet) support type \"" ++ @typeName(@TypeOf(node_name)) ++ "\""),
     }
 }
@@ -879,10 +1130,12 @@ const ThreeFingerDragState = river.LibinputDeviceV1.ThreeFingerDragState;
 
 const kdl = @import("kdl");
 const known_folders = @import("known_folders");
+const pixman = @import("pixman");
 const xkbcommon = @import("xkbcommon");
 
 const utils = @import("utils.zig");
 const RiverColor = utils.RiverColor;
+const TagOverlay = @import("TagOverlay.zig");
 const XkbBindings = @import("XkbBindings.zig");
 
 const log = std.log.scoped(.Config);

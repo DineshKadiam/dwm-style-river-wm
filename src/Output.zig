@@ -32,12 +32,15 @@ usable_height: u31 = 0,
 wallpaper_render_scale: u31 = 0,
 wallpaper_render_width: u31 = 0,
 wallpaper_render_height: u31 = 0,
-wl_surface: ?*wl.Surface = null,
-layer_surface: ?*zwlr.LayerSurfaceV1 = null,
+
+surfaces: ?struct {
+    wl_surface: *wl.Surface,
+    layer_surface: *zwlr.LayerSurfaceV1,
+} = null,
 
 // TODO: Make Bar a user option, can disable if they want
-// This Output's bar
 bar: ?Bar,
+tag_overlay: ?TagOverlay,
 
 /// Proportion of output width taken by the primary stack
 primary_ratio: f32,
@@ -89,16 +92,26 @@ pub fn create(context: *Context, river_output_v1: *river.OutputV1) !*Output {
     var output = try utils.gpa.create(Output);
     errdefer utils.gpa.destroy(output);
 
-    const bar = Bar.init(context, output) catch |e| blk: {
+    var bar = Bar.init(context, output) catch |e| blk: {
         log.err("Failed to create a bar: {}", .{e});
         break :blk null;
     };
+    errdefer if (bar) |*b| b.deinit();
+
+    var tag_overlay = if (context.config.tag_overlay) |tag_overlay_config| blk: {
+        break :blk TagOverlay.init(context, output, tag_overlay_config.toTagOverlayOptions()) catch |e| {
+            log.err("Failed to create a tag overlay: {}", .{e});
+            break :blk null;
+        };
+    } else null;
+    errdefer if (tag_overlay) |*to| to.deinit();
 
     output.* = .{
         .context = context,
         .river_output_v1 = river_output_v1,
         .river_layer_shell_output_v1 = try context.river_layer_shell_v1.getOutput(river_output_v1),
         .bar = bar,
+        .tag_overlay = tag_overlay,
         .primary_count = context.config.primary_count,
         .primary_ratio = context.config.primary_ratio,
         .windows = undefined, // we will initialize this shortly
@@ -119,6 +132,10 @@ pub fn destroy(output: *Output) void {
         window.link.remove();
         window.destroy();
     }
+
+    if (output.bar) |*bar| bar.deinit();
+    if (output.tag_overlay) |*tag_overlay| tag_overlay.deinit();
+
     output.tag_layout_overrides.deinit(utils.gpa);
     output.deinitWallpaperLayerSurface();
     output.river_output_v1.destroy();
@@ -227,6 +244,8 @@ fn riverOutputListener(river_output_v1: *river.OutputV1, event: river.OutputV1.E
                     return;
                 };
             }
+            // Tag overlay surfaces are created on-demand when tags change,
+            // so we don't init them here.
         },
         .dimensions => |ev| {
             // Protocol guarantees that width and height are strictly greater than zero
@@ -319,8 +338,8 @@ pub fn initWallpaperLayerSurface(output: *Output) !void {
         return;
     }
 
-    if (output.layer_surface) |_| {
-        // This output already has a layer surface, we can exit early
+    if (output.surfaces) |_| {
+        // This output already has a surface, we can exit early
         return;
     }
 
@@ -328,6 +347,9 @@ pub fn initWallpaperLayerSurface(output: *Output) !void {
 
     const wl_surface = try context.wl_compositor.createSurface();
     errdefer wl_surface.destroy();
+
+    const layer_surface = try context.zwlr_layer_shell_v1.getLayerSurface(wl_surface, output.wl_output, .background, "beansprout-wallpaper");
+    errdefer layer_surface.destroy();
 
     // We don't want our surface to have any input region (default is infinite)
     const empty_region = try context.wl_compositor.createRegion();
@@ -340,12 +362,13 @@ pub fn initWallpaperLayerSurface(output: *Output) !void {
     defer opaque_region.destroy();
     wl_surface.setOpaqueRegion(opaque_region);
 
-    const layer_surface = try context.zwlr_layer_shell_v1.getLayerSurface(wl_surface, output.wl_output, .background, "beansprout-wallpaper");
     layer_surface.setExclusiveZone(-1);
     layer_surface.setAnchor(.{ .top = true, .right = true, .bottom = true, .left = true });
 
-    output.wl_surface = wl_surface;
-    output.layer_surface = layer_surface;
+    output.surfaces = .{
+        .wl_surface = wl_surface,
+        .layer_surface = layer_surface,
+    };
     context.buffer_pool.surface_count += 1;
 
     layer_surface.setListener(*Output, wallpaperLayerSurfaceListener, output);
@@ -353,16 +376,13 @@ pub fn initWallpaperLayerSurface(output: *Output) !void {
 }
 
 pub fn deinitWallpaperLayerSurface(output: *Output) void {
-    if (output.layer_surface) |layer_surface| {
-        layer_surface.destroy();
-    }
-    if (output.wl_surface) |wl_surface| {
-        wl_surface.destroy();
+    if (output.surfaces) |surfaces| {
+        surfaces.wl_surface.destroy();
+        surfaces.layer_surface.destroy();
         output.context.buffer_pool.surface_count -= 1;
     }
 
-    output.layer_surface = null;
-    output.wl_surface = null;
+    output.surfaces = null;
     output.configured = false;
 }
 
@@ -379,10 +399,10 @@ fn wallpaperLayerSurfaceListener(layer_surface: *zwlr.LayerSurfaceV1, event: zwl
                 output.wallpaper_render_height == height and
                 output.scale == output.wallpaper_render_scale)
             {
-                if (output.wl_surface) |wl_surface| {
-                    wl_surface.commit();
+                if (output.surfaces) |surfaces| {
+                    surfaces.wl_surface.commit();
                 } else {
-                    log.warn("Output is marked as configured but is missing a layer_surface for the wallpaper", .{});
+                    log.warn("Output is marked as configured but is missing its surfaces.", .{});
                 }
                 return;
             }
@@ -440,7 +460,7 @@ pub fn renderWallpaper(output: *Output) !void {
     const image_stride = image.getStride();
     const image_format = image.getFormat();
 
-    const buffer: *Buffer = try context.buffer_pool.nextBuffer(context.wl_shm, width * scale, height * scale);
+    const buffer = try context.buffer_pool.nextBuffer(context.wl_shm, width * scale, height * scale);
 
     const pix = pixman.Image.createBitsNoClear(image_format, image_width, image_height, image_data, image_stride) orelse {
         log.err("Failed to copy the wallpaper image for rendering", .{});
@@ -485,7 +505,8 @@ pub fn renderWallpaper(output: *Output) !void {
     log.info("render: {}x{} (scaled from {}x{})", .{ width * scale, height * scale, image_width, image_height });
 
     // Attach the buffer to the surface
-    const wl_surface = output.wl_surface.?;
+    const surfaces = output.surfaces orelse return error.NoSurfaces;
+    const wl_surface = surfaces.wl_surface;
     wl_surface.setBufferScale(scale);
     wl_surface.attach(buffer.wl_buffer, 0, 0);
     wl_surface.damageBuffer(0, 0, width * scale, height * scale);
@@ -548,6 +569,33 @@ pub fn manage(output: *Output) void {
         }
 
         output.tags = new_tags;
+
+        // Show tag overlay and arm the hide timer
+        if (output.tag_overlay) |*tag_overlay| {
+            if (tag_overlay.surfaces) |_| {
+                // The overlay is arleady visible, but we still need to re-render
+                tag_overlay.render() catch |err| {
+                    log.err("tag_overlay render failed: {}", .{err});
+                };
+            } else {
+                // Create surface; the configure handler renders for us
+                tag_overlay.initSurface() catch |err| {
+                    log.err("tag_overlay initSurface failed: {}", .{err});
+                };
+            }
+            if (output.context.tag_overlay_timer_fd) |fd| {
+                const timeout_ms: isize = tag_overlay.options.timeout;
+                posix.timerfd_settime(fd, .{}, &.{
+                    .it_interval = .{ .sec = 0, .nsec = 0 },
+                    .it_value = .{
+                        .sec = @divFloor(timeout_ms, 1000),
+                        .nsec = @mod(timeout_ms, 1000) * std.time.ns_per_ms,
+                    },
+                }, null) catch |err| {
+                    log.err("Failed to arm tag overlay timer: {}", .{err});
+                };
+            }
+        }
     }
 
     // Calculate layout before managing windows
@@ -696,6 +744,7 @@ pub fn occupiedTags(output: *Output) u32 {
 const std = @import("std");
 const assert = std.debug.assert;
 const mem = std.mem;
+const posix = std.posix;
 const DoublyLinkedList = std.DoublyLinkedList;
 
 const wayland = @import("wayland");
@@ -708,6 +757,7 @@ const utils = @import("utils.zig");
 const Bar = @import("Bar.zig");
 const Buffer = @import("Buffer.zig");
 const Context = @import("Context.zig");
+const TagOverlay = @import("TagOverlay.zig");
 const Window = @import("Window.zig");
 
 const log = std.log.scoped(.Output);

@@ -26,7 +26,7 @@ pub fn parseRgba(s: []const u8) !RiverColor {
     }
 
     const bytes: [4]u8 = @as([4]u8, @bitCast(color));
-    return parseRgbaHelper(bytes);
+    return bytesToRiverColor(bytes);
 }
 
 /// Parse a color in the format 0xRRGGBB or 0xRRGGBBAA and convert it to
@@ -43,10 +43,50 @@ pub fn parseRgbaComptime(comptime s: []const u8) RiverColor {
     }
 
     const bytes = @as([4]u8, @bitCast(color));
-    return parseRgbaHelper(bytes);
+    return bytesToRiverColor(bytes);
 }
 
-fn parseRgbaHelper(bytes: [4]u8) RiverColor {
+/// Parse a color in the format 0xRRGGBB or 0xRRGGBBAA and convert it to
+/// 16-bit color values.
+pub fn parseRgbaPixman(s: []const u8) !pixman.Color {
+    if (s.len != 8 and s.len != 10) return error.InvalidRgba;
+    if (s[0] != '0' or s[1] != 'x') return error.InvalidRgba;
+
+    var color = try fmt.parseUnsigned(u32, s[2..], 16);
+    if (s.len == 8) {
+        color <<= 8;
+        color |= 0xff;
+    }
+
+    return bytesToPixmanColor(@bitCast(color));
+}
+
+/// Parse a color in the format 0xRRGGBB or 0xRRGGBBAA and convert it to
+/// 16-bit color values at comptime.
+pub fn parseRgbaPixmanComptime(comptime s: []const u8) pixman.Color {
+    @setEvalBranchQuota(2000);
+    if (s.len != 8 and s.len != 10) @compileError("Invalid RGBA");
+    if (s[0] != '0' or s[1] != 'x') @compileError("Invalid RGBA");
+
+    comptime var color = try fmt.parseUnsigned(u32, s[2..], 16);
+    if (s.len == 8) {
+        color <<= 8;
+        color |= 0xff;
+    }
+
+    return bytesToPixmanColor(@bitCast(color));
+}
+
+fn bytesToPixmanColor(bytes: [4]u8) pixman.Color {
+    return .{
+        .red = @as(u16, bytes[3]) * 0x101,
+        .green = @as(u16, bytes[2]) * 0x101,
+        .blue = @as(u16, bytes[1]) * 0x101,
+        .alpha = @as(u16, bytes[0]) * 0x101,
+    };
+}
+
+fn bytesToRiverColor(bytes: [4]u8) RiverColor {
     const r: u32 = bytes[3];
     const g: u32 = bytes[2];
     const b: u32 = bytes[1];
@@ -137,6 +177,7 @@ const mem = std.mem;
 
 const wayland = @import("wayland");
 const river = wayland.client.river;
+const pixman = @import("pixman");
 
 const utils = @import("utils.zig");
 
@@ -189,6 +230,44 @@ test "parseRgbaComptime with alpha" {
     try testing.expectEqual(@as(u32, 0x1e << 24), color.green);
     try testing.expectEqual(@as(u32, 0x2e << 24), color.blue);
     try testing.expectEqual(@as(u32, 0xff << 24), color.alpha);
+}
+
+test "parseRgbaPixman 0xRRGGBB" {
+    const color = try parseRgbaPixman("0x89b4fa");
+    try testing.expectEqual(@as(u16, 0x8989), color.red);
+    try testing.expectEqual(@as(u16, 0xb4b4), color.green);
+    try testing.expectEqual(@as(u16, 0xfafa), color.blue);
+    try testing.expectEqual(@as(u16, 0xffff), color.alpha);
+}
+
+test "parseRgbaPixman 0xRRGGBBAA" {
+    const color = try parseRgbaPixman("0x1e1e2e80");
+    try testing.expectEqual(@as(u16, 0x1e1e), color.red);
+    try testing.expectEqual(@as(u16, 0x1e1e), color.green);
+    try testing.expectEqual(@as(u16, 0x2e2e), color.blue);
+    try testing.expectEqual(@as(u16, 0x8080), color.alpha);
+}
+
+test "parseRgbaPixman invalid" {
+    try testing.expectError(error.InvalidRgba, parseRgbaPixman("0x123"));
+    try testing.expectError(error.InvalidRgba, parseRgbaPixman("xx123456"));
+    try testing.expectError(error.InvalidCharacter, parseRgbaPixman("0xGGGGGG"));
+}
+
+test "parseRgbaPixmanComptime" {
+    const color = parseRgbaPixmanComptime("0x89b4fa");
+    try testing.expectEqual(@as(u16, 0x8989), color.red);
+    try testing.expectEqual(@as(u16, 0xb4b4), color.green);
+    try testing.expectEqual(@as(u16, 0xfafa), color.blue);
+    try testing.expectEqual(@as(u16, 0xffff), color.alpha);
+}
+
+test "parseRgbaPixmanComptime with alpha" {
+    const color = parseRgbaPixmanComptime("0x1e1e2e80");
+    try testing.expectEqual(@as(u16, 0x1e1e), color.red);
+    try testing.expectEqual(@as(u16, 0x1e1e), color.green);
+    try testing.expectEqual(@as(u16, 0x2e2e), color.blue);
+    try testing.expectEqual(@as(u16, 0x8080), color.alpha);
 }
 
 test "stripQuotes removes surrounding quotes" {

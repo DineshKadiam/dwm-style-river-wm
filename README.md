@@ -27,6 +27,7 @@ Needed at both build-time and runtime:
 | wayland-client     | `dev-libs/wayland`          | `libwayland-dev`    |
 | pixman             | `x11-libs/pixman`           | `libpixman-1-dev`   |
 | xkbcommon          | `x11-libs/libxkbcommon`     | `libxkbcommon-dev`  |
+| fcft               | `media-libs/fcft`           | `libfcft-dev`       |
 
 Only needed at build-time:
 

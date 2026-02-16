@@ -21,23 +21,23 @@ output: *Output,
 width: u31 = 0,
 height: u31 = 0,
 
-wl_surface: ?*wl.Surface = null,
-layer_surface: ?*zwlr.LayerSurfaceV1 = null,
+surfaces: ?struct {
+    wl_surface: *wl.Surface,
+    layer_surface: *zwlr.LayerSurfaceV1,
+} = null,
 
 configured: bool = false,
 
 pub fn init(context: *Context, output: *Output) !Bar {
-    // Get the local environment
-    // Needed for the timezone
-    // XXX: It might be better to store this in Context?
-    var env = try process.getEnvMap(utils.gpa);
-    defer env.deinit();
+    const timezone = try zeit.local(utils.gpa, &context.env);
+    errdefer timezone.deinit();
 
-    const timezone = try zeit.local(utils.gpa, &env);
+    const fonts = try getFcftFonts("monospace:size=14", 1);
+    errdefer fonts.destroy();
 
     return .{
         .context = context,
-        .fonts = try getFcftFonts("monospace:size=14", 1),
+        .fonts = fonts,
         .timezone = timezone,
         .output = output,
     };
@@ -45,19 +45,20 @@ pub fn init(context: *Context, output: *Output) !Bar {
 
 // TODO: Add config options for whether it's top or bottom
 pub fn initSurface(bar: *Bar) !void {
-    if (bar.layer_surface) |_| {
-        // This bar already has a layer surface, we can exit early
+    if (bar.surfaces) |_| {
+        // This bar already has a surface, we can exit early
         return;
     }
 
     const context = bar.context;
 
-    // TODO: Add padding to config
-    const vertical_padding = 5;
-    const bar_height: u31 = @intCast(bar.fonts.height + 2 * vertical_padding);
-
     const wl_surface = try context.wl_compositor.createSurface();
     errdefer wl_surface.destroy();
+
+    const layer_surface = try context
+        .zwlr_layer_shell_v1
+        .getLayerSurface(wl_surface, bar.output.wl_output, .top, "beansprout-bar");
+    errdefer layer_surface.destroy();
 
     // TODO: Allow clicking on tags to switch between them?
     // We don't want our surface to have any input region (default is infinite)
@@ -65,14 +66,16 @@ pub fn initSurface(bar: *Bar) !void {
     defer empty_region.destroy();
     wl_surface.setInputRegion(empty_region);
 
-    const layer_surface = try context
-        .zwlr_layer_shell_v1
-        .getLayerSurface(wl_surface, bar.output.wl_output, .top, "beansprout-bar");
+    // TODO: Add padding to config
+    const vertical_padding = 5;
+    const bar_height: u31 = @intCast(bar.fonts.height + 2 * vertical_padding);
     layer_surface.setSize(0, bar_height);
     layer_surface.setAnchor(.{ .top = true, .right = true, .left = true });
 
-    bar.wl_surface = wl_surface;
-    bar.layer_surface = layer_surface;
+    bar.surfaces = .{
+        .wl_surface = wl_surface,
+        .layer_surface = layer_surface,
+    };
     context.buffer_pool.surface_count += 1;
 
     layer_surface.setListener(*Bar, layerSurfaceListener, bar);
@@ -82,11 +85,10 @@ pub fn initSurface(bar: *Bar) !void {
 pub fn deinit(bar: *Bar) void {
     bar.configured = false;
     bar.timezone.deinit();
-    if (bar.wl_surface) |wl_surface| {
-        wl_surface.destroy();
-    }
-    if (bar.layer_surface) |layer_surface| {
-        layer_surface.destroy();
+    bar.fonts.destroy();
+    if (bar.surfaces) |surfaces| {
+        surfaces.wl_surface.destroy();
+        surfaces.layer_surface.destroy();
         bar.context.buffer_pool.surface_count -= 1;
     }
 }
@@ -96,6 +98,7 @@ pub fn layerSurfaceListener(
     event: zwlr.LayerSurfaceV1.Event,
     bar: *Bar,
 ) void {
+    assert(bar.surfaces.?.layer_surface == layer_surface);
     switch (event) {
         .configure => |ev| {
             layer_surface.ackConfigure(ev.serial);
@@ -107,18 +110,14 @@ pub fn layerSurfaceListener(
                 bar.height == height and
                 bar.output.scale == bar.font_scale)
             {
-                if (bar.wl_surface) |wl_surface| {
-                    wl_surface.commit();
-                } else {
-                    log.warn("Bar is marked as configured but is missing a layer_surface for the wallpaper", .{});
-                }
+                bar.surfaces.?.wl_surface.commit();
                 return;
             }
 
-            log.debug("configuring bar surface with width {} and height {}", .{ width, height });
+            log.debug("Configuring bar surface with width {} and height {}", .{ width, height });
             bar.width = width;
             bar.height = height;
-            // Excluse zone == the bar's height
+            // Exclusive zone == the bar's height
             layer_surface.setExclusiveZone(bar.height);
 
             // Full surface should be opaque
@@ -126,10 +125,9 @@ pub fn layerSurfaceListener(
                 log.err("Failed to create opaque region for bar: {}", .{e});
                 return;
             };
-            // TODO: Need to change the x/y if we support anchoring to the bottom
-            opaque_region.add(0, 0, bar.width, bar.height);
             defer opaque_region.destroy();
-            bar.wl_surface.?.setOpaqueRegion(opaque_region);
+            opaque_region.add(0, 0, bar.width, bar.height);
+            bar.surfaces.?.wl_surface.setOpaqueRegion(opaque_region);
 
             bar.configured = true;
 
@@ -143,7 +141,6 @@ pub fn layerSurfaceListener(
     }
 }
 
-// TODO: Configure number of visible tags
 /// Renders the bar and its components
 pub fn render(bar: *Bar) !void {
     const context = bar.context;
@@ -223,7 +220,8 @@ pub fn render(bar: *Bar) !void {
     try bar.renderChars(codepoints, buffer, &x, y, color);
 
     // Finally, attach the buffer to the surface
-    const wl_surface = bar.wl_surface orelse return;
+    const surfaces = bar.surfaces orelse return error.NoSurfaces;
+    const wl_surface = surfaces.wl_surface;
     wl_surface.setBufferScale(scale);
     wl_surface.attach(buffer.wl_buffer, 0, 0);
     wl_surface.damageBuffer(0, 0, render_width, render_height);
@@ -365,6 +363,7 @@ fn getFcftFonts(fonts: []const u8, scale: u31) !*fcft.Font {
 }
 
 const std = @import("std");
+const assert = std.debug.assert;
 const io = std.io;
 const mem = std.mem;
 const process = std.process;
