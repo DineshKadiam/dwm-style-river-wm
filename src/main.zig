@@ -115,12 +115,13 @@ fn run(wl_display: *wl.Display, context: *Context) !void {
 
     posix.sigprocmask(posix.SIG.BLOCK, &mask, null);
 
-    const sig_fd = try posix.signalfd(-1, &mask, 0);
+    const sig_fd = try posix.signalfd(-1, &mask, @as(u32, @bitCast(posix.O{ .CLOEXEC = true })));
 
     const poll_wayland = 0;
     const poll_sig = 1;
+    const poll_tag_overlay_timer = 2;
 
-    var pollfds: [2]posix.pollfd = undefined;
+    var pollfds: [3]posix.pollfd = undefined;
 
     pollfds[poll_wayland] = .{
         .fd = wl_display.getFd(),
@@ -129,6 +130,12 @@ fn run(wl_display: *wl.Display, context: *Context) !void {
     };
     pollfds[poll_sig] = .{
         .fd = sig_fd,
+        .events = posix.POLL.IN,
+        .revents = 0,
+    };
+    pollfds[poll_tag_overlay_timer] = .{
+        // poll ignores negative fds
+        .fd = context.tag_overlay_timer_fd orelse -1,
         .events = posix.POLL.IN,
         .revents = 0,
     };
@@ -165,21 +172,45 @@ fn run(wl_display: *wl.Display, context: *Context) !void {
 
         // Handle fds that became ready
         if (pollfds[poll_wayland].revents & posix.POLL.HUP != 0) {
+            @branchHint(.cold);
             log.info("Disconnected by compositor", .{});
             break;
         }
         if (pollfds[poll_wayland].revents & posix.POLL.IN != 0) {
             if (wl_display.dispatch() != .SUCCESS) {
+                @branchHint(.cold);
                 fatal("Wayland display dispatch failed", .{});
             }
+            // Re-sync in case a config reload created or destroyed the timerfd
+            pollfds[poll_tag_overlay_timer].fd = context.tag_overlay_timer_fd orelse -1;
         }
 
         if (pollfds[poll_sig].revents & posix.POLL.HUP != 0) {
+            @branchHint(.cold);
             fatal("Signal fd hung up", .{});
         }
         if (pollfds[poll_sig].revents & posix.POLL.IN != 0) {
+            @branchHint(.cold);
             log.info("Exiting beansprout", .{});
             break;
+        }
+
+        if (pollfds[poll_tag_overlay_timer].revents & posix.POLL.HUP != 0) {
+            @branchHint(.cold);
+            fatal("Tag overlay timer fd hung up", .{});
+        }
+        if (pollfds[poll_tag_overlay_timer].revents & posix.POLL.IN != 0) {
+            // Read to consume the timer event
+            var buf: [8]u8 = undefined;
+            _ = posix.read(context.tag_overlay_timer_fd.?, &buf) catch {};
+
+            // Hide all tag overlays by destroying their surfaces
+            var it = context.wm.outputs.iterator(.forward);
+            while (it.next()) |output| {
+                if (output.tag_overlay) |*tag_overlay| {
+                    tag_overlay.deinitSurfaces();
+                }
+            }
         }
     }
 }

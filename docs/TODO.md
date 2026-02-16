@@ -15,6 +15,7 @@ These are in rough order of my priority, though no promises I do them in this or
 - [ ] Save window positions between restarts
 - [ ] Support multiple seats
 - [ ] Support clipping floating windows on edge of/between outputs
+- [ ] Use per-output timerfds for tag overlay instead of a single shared one
 - [x] Support changeable primary ratio
 - [x] Support changeable primary count
 - [x] Support multiple outputs

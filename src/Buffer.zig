@@ -111,10 +111,10 @@ pub fn borderedRectangle(
     const render_border_width: u16 = @intCast(border_width * scale);
 
     // Background fill
-    _ = pixman.Image.fillRectangles(.src, buffer.image, background_color, 1, &[1]pixman.Rectangle16{.{ .x = render_x, .y = render_y, .width = render_width, .height = render_height }});
+    _ = pixman.Image.fillRectangles(.src, buffer.pixman_image, background_color, 1, &[1]pixman.Rectangle16{.{ .x = render_x, .y = render_y, .width = render_width, .height = render_height }});
 
     // Border: top, bottom, left, right
-    _ = pixman.Image.fillRectangles(.src, buffer.image, border_color, 4, &[4]pixman.Rectangle16{
+    _ = pixman.Image.fillRectangles(.src, buffer.pixman_image, border_color, 4, &[4]pixman.Rectangle16{
         .{
             .x = render_x,
             .y = render_y,

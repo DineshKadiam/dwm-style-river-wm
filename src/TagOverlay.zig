@@ -30,12 +30,10 @@ configured: bool = false,
 pub const Options = struct {
     /// Width of the widget border in pixels
     border_width: u8,
-    /// Number of displayed tags
-    /// Put in config as 1-32 but we subtract 1 to store it in a u5
-    tag_amount: u5,
-    /// Amount of tags per row
-    /// Put in config as 1-32 but we subtract 1 to store it in a u5
-    tags_per_row: u5,
+    /// Number of displayed tags (1-32)
+    tag_amount: u6,
+    /// Amount of tags per row (1-32)
+    tags_per_row: u6,
     /// Size of tag squares in pixels
     square_size: u8,
     /// Padding around the tag occupied indicator in pixels
@@ -109,27 +107,34 @@ pub fn initSurface(tag_overlay: *TagOverlay) !void {
     defer empty_region.destroy();
     wl_surface.setInputRegion(empty_region);
 
-    const surface_width = (@min(options.tag_amount, options.tags_per_row) * (options.square_size + options.square_padding)) + options.square_padding + (2 * options.border_width);
-    const surface_height = (options.rows * (options.square_size + options.square_padding)) + options.square_padding + (2 * options.border_width);
+    const surface_width: u31 = @as(u31, @min(options.tag_amount, options.tags_per_row)) * (@as(u31, options.square_size) + options.square_padding) + options.square_padding + 2 * @as(u31, options.border_width);
+    const surface_height: u31 = @as(u31, tag_overlay.rows) * (@as(u31, options.square_size) + options.square_padding) + options.square_padding + 2 * @as(u31, options.border_width);
     layer_surface.setSize(surface_width, surface_height);
 
     layer_surface.setAnchor(options.anchors);
-    layer_surface.setMargin(options.margins);
+    layer_surface.setMargin(options.margins.top, options.margins.right, options.margins.bottom, options.margins.left);
 
     tag_overlay.surfaces = .{ .wl_surface = wl_surface, .layer_surface = layer_surface };
     context.buffer_pool.surface_count += 1;
 
-    // layer_surface.setListener(*Bar, layerSurfaceListener, bar);
+    layer_surface.setListener(*TagOverlay, layerSurfaceListener, tag_overlay);
     wl_surface.commit();
 }
 
-pub fn deinit(tag_overlay: *TagOverlay) void {
+/// Destroy surfaces only (used to hide the overlay). The TagOverlay struct stays valid
+/// and can be re-shown by calling initSurface() again.
+pub fn deinitSurfaces(tag_overlay: *TagOverlay) void {
     tag_overlay.configured = false;
     if (tag_overlay.surfaces) |surfaces| {
-        surfaces.wl_surface.destroy();
         surfaces.layer_surface.destroy();
+        surfaces.wl_surface.destroy();
         tag_overlay.context.buffer_pool.surface_count -= 1;
+        tag_overlay.surfaces = null;
     }
+}
+
+pub fn deinit(tag_overlay: *TagOverlay) void {
+    tag_overlay.deinitSurfaces();
 }
 
 pub fn layerSurfaceListener(
@@ -193,7 +198,7 @@ pub fn render(tag_overlay: *TagOverlay) !void {
     }
     const buffer = try context.buffer_pool.nextBuffer(context.wl_shm, render_width, render_height);
 
-    buffer.borderedRectangle(0, 0, tag_overlay.width, tag_overlay.height, options.border_width, scale, options.background_color, options.border_color);
+    buffer.borderedRectangle(0, 0, tag_overlay.width, tag_overlay.height, options.border_width, scale, &options.background_color, &options.border_color);
 
     const focused_tags = tag_overlay.output.tags;
     const occupied_tags = tag_overlay.output.occupiedTags();
@@ -210,8 +215,8 @@ pub fn render(tag_overlay: *TagOverlay) !void {
                 else
                     .{ &options.square_inactive_background_color, &options.square_inactive_border_color, &options.square_inactive_occupied_color };
 
-            const x = options.border_width + ((tag + 1) * options.square_padding) + (tag * options.square_size);
-            const y = options.border_width + ((row + 1) * options.square_padding) + (row * options.square_size);
+            const x = options.border_width + @as(u31, @intCast((tag + 1) * options.square_padding)) + @as(u31, @intCast(tag * options.square_size));
+            const y = options.border_width + @as(u31, @intCast((row + 1) * options.square_padding)) + @as(u31, @intCast(row * options.square_size));
 
             buffer.borderedRectangle(x, y, options.square_size, options.square_size, options.square_border_width, scale, bg_color, border_color);
 

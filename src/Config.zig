@@ -117,8 +117,8 @@ pub const TagOverlayConfig = struct {
     pub fn toTagOverlayOptions(self: TagOverlayConfig) TagOverlay.Options {
         return .{
             .border_width = self.border_width,
-            .tag_amount = @intCast(std.math.clamp(@as(u32, self.tag_amount), 1, 32) - 1),
-            .tags_per_row = @intCast(std.math.clamp(@as(u32, self.tags_per_row), 1, 32) - 1),
+            .tag_amount = @intCast(std.math.clamp(@as(u32, self.tag_amount), 1, 32)),
+            .tags_per_row = @intCast(std.math.clamp(@as(u32, self.tags_per_row), 1, 32)),
             .square_size = self.square_size,
             .square_inner_padding = self.square_inner_padding,
             .square_padding = self.square_padding,

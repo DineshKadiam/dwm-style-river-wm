@@ -39,8 +39,8 @@ surfaces: ?struct {
 } = null,
 
 // TODO: Make Bar a user option, can disable if they want
-// This Output's bar
 bar: ?Bar,
+tag_overlay: ?TagOverlay,
 
 /// Proportion of output width taken by the primary stack
 primary_ratio: f32,
@@ -92,16 +92,26 @@ pub fn create(context: *Context, river_output_v1: *river.OutputV1) !*Output {
     var output = try utils.gpa.create(Output);
     errdefer utils.gpa.destroy(output);
 
-    const bar = Bar.init(context, output) catch |e| blk: {
+    var bar = Bar.init(context, output) catch |e| blk: {
         log.err("Failed to create a bar: {}", .{e});
         break :blk null;
     };
+    errdefer if (bar) |*b| b.deinit();
+
+    var tag_overlay = if (context.config.tag_overlay) |tag_overlay_config| blk: {
+        break :blk TagOverlay.init(context, output, tag_overlay_config.toTagOverlayOptions()) catch |e| {
+            log.err("Failed to create a tag overlay: {}", .{e});
+            break :blk null;
+        };
+    } else null;
+    errdefer if (tag_overlay) |*to| to.deinit();
 
     output.* = .{
         .context = context,
         .river_output_v1 = river_output_v1,
         .river_layer_shell_output_v1 = try context.river_layer_shell_v1.getOutput(river_output_v1),
         .bar = bar,
+        .tag_overlay = tag_overlay,
         .primary_count = context.config.primary_count,
         .primary_ratio = context.config.primary_ratio,
         .windows = undefined, // we will initialize this shortly
@@ -122,6 +132,10 @@ pub fn destroy(output: *Output) void {
         window.link.remove();
         window.destroy();
     }
+
+    if (output.bar) |*bar| bar.deinit();
+    if (output.tag_overlay) |*tag_overlay| tag_overlay.deinit();
+
     output.tag_layout_overrides.deinit(utils.gpa);
     output.deinitWallpaperLayerSurface();
     output.river_output_v1.destroy();
@@ -230,6 +244,8 @@ fn riverOutputListener(river_output_v1: *river.OutputV1, event: river.OutputV1.E
                     return;
                 };
             }
+            // Tag overlay surfaces are created on-demand when tags change,
+            // so we don't init them here.
         },
         .dimensions => |ev| {
             // Protocol guarantees that width and height are strictly greater than zero
@@ -553,6 +569,33 @@ pub fn manage(output: *Output) void {
         }
 
         output.tags = new_tags;
+
+        // Show tag overlay and arm the hide timer
+        if (output.tag_overlay) |*tag_overlay| {
+            if (tag_overlay.surfaces) |_| {
+                // The overlay is arleady visible, but we still need to re-render
+                tag_overlay.render() catch |err| {
+                    log.err("tag_overlay render failed: {}", .{err});
+                };
+            } else {
+                // Create surface; the configure handler renders for us
+                tag_overlay.initSurface() catch |err| {
+                    log.err("tag_overlay initSurface failed: {}", .{err});
+                };
+            }
+            if (output.context.tag_overlay_timer_fd) |fd| {
+                const timeout_ms: isize = tag_overlay.options.timeout;
+                posix.timerfd_settime(fd, .{}, &.{
+                    .it_interval = .{ .sec = 0, .nsec = 0 },
+                    .it_value = .{
+                        .sec = @divFloor(timeout_ms, 1000),
+                        .nsec = @mod(timeout_ms, 1000) * std.time.ns_per_ms,
+                    },
+                }, null) catch |err| {
+                    log.err("Failed to arm tag overlay timer: {}", .{err});
+                };
+            }
+        }
     }
 
     // Calculate layout before managing windows
@@ -701,6 +744,7 @@ pub fn occupiedTags(output: *Output) u32 {
 const std = @import("std");
 const assert = std.debug.assert;
 const mem = std.mem;
+const posix = std.posix;
 const DoublyLinkedList = std.DoublyLinkedList;
 
 const wayland = @import("wayland");
@@ -713,6 +757,7 @@ const utils = @import("utils.zig");
 const Bar = @import("Bar.zig");
 const Buffer = @import("Buffer.zig");
 const Context = @import("Context.zig");
+const TagOverlay = @import("TagOverlay.zig");
 const Window = @import("Window.zig");
 
 const log = std.log.scoped(.Output);
