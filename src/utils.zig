@@ -64,6 +64,7 @@ pub fn parseRgbaPixman(s: []const u8) !pixman.Color {
 /// Parse a color in the format 0xRRGGBB or 0xRRGGBBAA and convert it to
 /// 16-bit color values at comptime.
 pub fn parseRgbaPixmanComptime(comptime s: []const u8) pixman.Color {
+    @setEvalBranchQuota(2000);
     if (s.len != 8 and s.len != 10) @compileError("Invalid RGBA");
     if (s[0] != '0' or s[1] != 'x') @compileError("Invalid RGBA");
 

@@ -44,7 +44,7 @@ wallpaper_image_path "~/Pictures/wallpaper.png"
 |------------------------------|--------|---------|-----------------------------------------------------|
 | `attach_mode`                | enum   | `top`   | Where new windows go in the stack (`top` or `bottom`) |
 | `primary_count`              | u8     | `1`     | Number of windows in the primary stack (0+)         |
-| `primary_ratio`              | float  | `0.55`  | Proportion of output width for the primary stack (0.10–0.90) |
+| `primary_ratio`              | float  | `0.55`  | Proportion of output width for the primary stack (0.10-0.90) |
 | `focus_follows_pointer`      | bool   | `#true` | Focus follows the pointer between windows           |
 | `pointer_warp_on_focus_change` | bool | `#true` | Warp pointer to center of newly-focused windows     |
 | `wallpaper_image_path`       | string | none    | Path to wallpaper image                             |
@@ -70,6 +70,62 @@ borders {
 | `color_unfocused` | color  | `0x1e1e2e`   | Border color of unfocused windows  |
 
 Colors are specified in `0xRRGGBB` or `0xRRGGBBAA` hex format.
+
+## Tag Overlay
+
+The tag overlay is an optional widget that briefly shows your tag state when switching tags.
+It is only created when a `tag_overlay` block is present in the config. All settings have
+defaults, with the color based on the Catppuccin Mocha theme. An empty block can be used
+to enable the widget with all defaults:
+
+```kdl
+tag_overlay {
+}
+```
+
+### Tag Overlay Settings
+
+| Setting                             | Type  | Default      | Description                               |
+|-------------------------------------|-------|--------------|-------------------------------------------|
+| `border_width`                      | u8    | `2`          | Widget border width in pixels             |
+| `tag_amount`                        | u8    | `9`          | Number of displayed tags (1-32)           |
+| `tags_per_row`                      | u8    | `32`         | Tags per row (1-32)                       |
+| `square_size`                       | u8    | `40`         | Size of tag squares in pixels             |
+| `square_inner_padding`              | u8    | `10`         | Padding around occupied indicator         |
+| `square_padding`                    | u8    | `15`         | Padding around tag squares                |
+| `square_border_width`               | u8    | `1`          | Border width of tag squares               |
+| `timeout`                           | u32   | `500`        | Display duration in milliseconds          |
+| `background_color`                  | color | `0x1e1e2e`   | Widget background color                   |
+| `border_color`                      | color | `0x6c7086`   | Widget border color                       |
+| `square_active_background_color`    | color | `0x89b4fa`   | Active tag square background              |
+| `square_active_border_color`        | color | `0x6c7086`   | Active tag square border                  |
+| `square_active_occupied_color`      | color | `0xcdd6f4`   | Active tag occupied indicator             |
+| `square_inactive_background_color`  | color | `0x585b70`   | Inactive tag square background            |
+| `square_inactive_border_color`      | color | `0x6c7086`   | Inactive tag square border                |
+| `square_inactive_occupied_color`    | color | `0xcdd6f4`   | Inactive tag occupied indicator           |
+
+### Anchors
+
+The `anchors` child block controls which edge(s) of the screen the overlay
+attaches to. Each direction is a boolean (`#true` / `#false`). Default: none, i.e. centered on output.
+
+| Setting  | Type | Default  |
+|----------|------|----------|
+| `top`    | bool | `#false` |
+| `right`  | bool | `#false` |
+| `bottom` | bool | `#false` |
+| `left`   | bool | `#false` |
+
+### Margins
+
+The `margins` child block sets pixel offsets from the anchored edge(s).
+
+| Setting  | Type | Default |
+|----------|------|---------|
+| `top`    | i32  | `0`     |
+| `right`  | i32  | `0`     |
+| `bottom` | i32  | `0`     |
+| `left`   | i32  | `0`     |
 
 ## Keybinds
 
