@@ -9,12 +9,7 @@ context: *Context,
 river_window_v1: *river.WindowV1,
 river_node_v1: *river.NodeV1,
 
-rect: utils.Rect = .{
-    .width = 0,
-    .height = 0,
-    .x = 0,
-    .y = 0,
-},
+rect: utils.Rect = .{},
 
 fullscreen: bool = false,
 maximized: bool = false,
@@ -23,12 +18,7 @@ tags: u32 = 0x0001,
 output: ?*Output,
 
 floating: bool = false,
-floating_rect: utils.Rect = .{
-    .width = 0,
-    .height = 0,
-    .x = 0,
-    .y = 0,
-},
+floating_rect: utils.Rect = .{},
 
 initialized: bool = false,
 

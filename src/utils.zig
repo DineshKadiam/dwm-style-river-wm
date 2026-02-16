@@ -13,10 +13,10 @@ pub const RiverColor = struct {
 };
 
 pub const Rect = struct {
-    width: u31,
-    height: u31,
-    x: i32,
-    y: i32,
+    width: u31 = 0,
+    height: u31 = 0,
+    x: i32 = 0,
+    y: i32 = 0,
 };
 
 /// Parse a color in the format 0xRRGGBB or 0xRRGGBBAA and convert it to

@@ -95,19 +95,16 @@ fn bufferListener(_: *wl.Buffer, event: wl.Buffer.Event, buffer: *Buffer) void {
 
 pub fn borderedRectangle(
     buffer: Buffer,
-    x: u31,
-    y: u31,
-    width: u31,
-    height: u31,
+    rect: utils.Rect,
     border_width: u31,
     scale: u31,
     background_color: *const pixman.Color,
     border_color: *const pixman.Color,
 ) void {
-    const render_x: i16 = @intCast(x * scale);
-    const render_y: i16 = @intCast(y * scale);
-    const render_width: u16 = @intCast(width * scale);
-    const render_height: u16 = @intCast(height * scale);
+    const render_x: i16 = @intCast(rect.x * @as(i32, scale));
+    const render_y: i16 = @intCast(rect.y * @as(i32, scale));
+    const render_width: u16 = @intCast(rect.width * scale);
+    const render_height: u16 = @intCast(rect.height * scale);
     const render_border_width: u16 = @intCast(border_width * scale);
 
     // Background fill

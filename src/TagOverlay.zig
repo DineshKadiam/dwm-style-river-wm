@@ -198,7 +198,7 @@ pub fn render(tag_overlay: *TagOverlay) !void {
     }
     const buffer = try context.buffer_pool.nextBuffer(context.wl_shm, render_width, render_height);
 
-    buffer.borderedRectangle(0, 0, tag_overlay.width, tag_overlay.height, options.border_width, scale, &options.background_color, &options.border_color);
+    buffer.borderedRectangle(.{ .width = tag_overlay.width, .height = tag_overlay.height }, options.border_width, scale, &options.background_color, &options.border_color);
 
     const focused_tags = tag_overlay.output.tags;
     const occupied_tags = tag_overlay.output.occupiedTags();
@@ -218,14 +218,16 @@ pub fn render(tag_overlay: *TagOverlay) !void {
             const x = options.border_width + @as(u31, @intCast((tag + 1) * options.square_padding)) + @as(u31, @intCast(tag * options.square_size));
             const y = options.border_width + @as(u31, @intCast((row + 1) * options.square_padding)) + @as(u31, @intCast(row * options.square_size));
 
-            buffer.borderedRectangle(x, y, options.square_size, options.square_size, options.square_border_width, scale, bg_color, border_color);
+            buffer.borderedRectangle(.{ .x = x, .y = y, .width = options.square_size, .height = options.square_size }, options.square_border_width, scale, bg_color, border_color);
 
             if (occupied_tags & (@as(u32, 1) << @intCast(current_tag)) != 0) {
                 buffer.borderedRectangle(
-                    x + options.square_inner_padding,
-                    y + options.square_inner_padding,
-                    options.square_size - 2 * options.square_inner_padding,
-                    options.square_size - 2 * options.square_inner_padding,
+                    .{
+                        .x = x + options.square_inner_padding,
+                        .y = y + options.square_inner_padding,
+                        .width = options.square_size - 2 * options.square_inner_padding,
+                        .height = options.square_size - 2 * options.square_inner_padding,
+                    },
                     options.square_border_width,
                     scale,
                     occupied_color,

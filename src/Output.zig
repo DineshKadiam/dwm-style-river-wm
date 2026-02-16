@@ -17,20 +17,10 @@ name: ?[]const u8 = null,
 
 // Output geometry
 scale: u31 = 1,
-geometry: Rect = .{
-    .x = 0,
-    .y = 0,
-    .width = 0,
-    .height = 0,
-},
+geometry: Rect = .{},
 
 // Area left after layer shell surfaces take exclusive area
-usable_geometry: Rect = .{
-    .x = 0,
-    .y = 0,
-    .width = 0,
-    .height = 0,
-},
+usable_geometry: Rect = .{},
 
 // Information for this Output's wallpaper
 wallpaper_render_scale: u31 = 0,
