@@ -577,7 +577,7 @@ pub fn manage(output: *Output) void {
     }
 
     // Calculate layout before managing windows
-    output.calculatePrimaryStackLayout();
+    output.calculateLayout();
     var it = output.windows.iterator(.forward);
     while (it.next()) |window| {
         window.manage();
@@ -611,7 +611,7 @@ pub fn render(output: *Output) void {
 /// Calculate primary/stack layout positions for all windows.
 /// - Single window: maximized
 /// - Multiple windows: stack (45% left, vertically tiled), primary (55% right)
-fn calculatePrimaryStackLayout(output: *Output) void {
+fn calculateLayout(output: *Output) void {
     // Get a list of active windows
     var active_list: DoublyLinkedList = .{};
     var active_count: u31 = 0;
