@@ -232,4 +232,4 @@ const XkbBindings = @import("../XkbBindings.zig");
 
 const helpers = @import("helpers.zig");
 
-const log = std.log.scoped(.config_keybinds);
+const log = std.log.scoped(.config_keybind);

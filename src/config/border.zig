@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: GPL-3.0-only
 
-pub const NodeName = enum {
+const NodeName = enum {
     width,
     color_focused,
     color_unfocused,
@@ -79,4 +79,4 @@ const Config = @import("../Config.zig");
 
 const helpers = @import("helpers.zig");
 
-const log = std.log.scoped(.config_borders);
+const log = std.log.scoped(.config_border);

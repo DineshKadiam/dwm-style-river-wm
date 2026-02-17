@@ -183,4 +183,4 @@ const Config = @import("../Config.zig");
 
 const helpers = @import("helpers.zig");
 
-const log = std.log.scoped(.config_bar);
+const log = std.log.scoped(.BarConfig);

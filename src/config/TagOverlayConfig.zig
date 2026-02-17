@@ -187,7 +187,7 @@ fn loadAnchorsBlock(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8)
                             .left => config.tag_overlay_config.?.anchor_left = val,
                         }
                         logDebugSettingNode(name, val_str);
-                    } else {
+                    } else |_| {
                         logWarnInvalidNodeArg(name, val_str);
                     }
                 } else {
@@ -274,4 +274,4 @@ const TagOverlay = @import("../TagOverlay.zig");
 
 const helpers = @import("helpers.zig");
 
-const log = std.log.scoped(.config_tag_overlay);
+const log = std.log.scoped(.TagOverlayConfig);

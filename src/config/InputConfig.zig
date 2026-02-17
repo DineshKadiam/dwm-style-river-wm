@@ -169,4 +169,4 @@ const Config = @import("../Config.zig");
 
 const helpers = @import("helpers.zig");
 
-const log = std.log.scoped(.config_input);
+const log = std.log.scoped(.InputConfig);
