@@ -176,9 +176,8 @@ pub fn applyInputConfigs(libinput_device: *LibinputDevice) void {
             if (!mem.eql(u8, config_name, device_name)) continue;
         }
 
-        log.debug("Applying input config to {s}", .{device_name});
-
         if (@as(u32, @bitCast(libinput_device.capabilities.send_events)) != 0) {
+            log.debug("Applying send events config to {s}", .{device_name});
             if (input_config.send_events) |val| {
                 const mode: SendEventsModes = @bitCast(@as(u32, @intCast(@intFromEnum(val))));
                 const mode_bits: u32 = @bitCast(mode);
@@ -190,6 +189,7 @@ pub fn applyInputConfigs(libinput_device: *LibinputDevice) void {
         }
 
         if (libinput_device.capabilities.tap > 0) {
+            log.debug("Applying tap config to {s}", .{device_name});
             if (input_config.tap) |val| applyResult(dev.setTap(val));
             if (input_config.tap_button_map) |val| applyResult(dev.setTapButtonMap(val));
             if (input_config.drag) |val| applyResult(dev.setDrag(val));
@@ -197,10 +197,12 @@ pub fn applyInputConfigs(libinput_device: *LibinputDevice) void {
         }
 
         if (libinput_device.capabilities.three_finger_drag >= 3) {
+            log.debug("Applying tfd config to {s}", .{device_name});
             if (input_config.three_finger_drag) |val| applyResult(dev.setThreeFingerDrag(val));
         }
 
         if (libinput_device.capabilities.accel_profiles) |support| {
+            log.debug("Applying accel profile config to {s}", .{device_name});
             if (input_config.accel_profile) |val| {
                 if (isSupported(AccelProfile, AccelProfiles, val, support)) {
                     applyResult(dev.setAccelProfile(val));
@@ -218,14 +220,17 @@ pub fn applyInputConfigs(libinput_device: *LibinputDevice) void {
         }
 
         if (libinput_device.capabilities.natural_scroll) {
+            log.debug("Applying natural scroll config to {s}", .{device_name});
             if (input_config.natural_scroll) |val| applyResult(dev.setNaturalScroll(val));
         }
 
         if (libinput_device.capabilities.left_handed) {
+            log.debug("Applying left handed config to {s}", .{device_name});
             if (input_config.left_handed) |val| applyResult(dev.setLeftHanded(val));
         }
 
         if (libinput_device.capabilities.click_methods) |support| {
+            log.debug("Applying click methods config to {s}", .{device_name});
             if (input_config.click_method) |val| {
                 if (isSupported(ClickMethod, ClickMethods, val, support)) {
                     applyResult(dev.setClickMethod(val));
@@ -235,10 +240,12 @@ pub fn applyInputConfigs(libinput_device: *LibinputDevice) void {
         }
 
         if (libinput_device.capabilities.middle_emulation) {
+            log.debug("Applying middle emulation config to {s}", .{device_name});
             if (input_config.middle_emulation) |val| applyResult(dev.setMiddleEmulation(val));
         }
 
         if (libinput_device.capabilities.scroll_methods) |support| {
+            log.debug("Applying scroll methods config to {s}", .{device_name});
             if (input_config.scroll_method) |val| {
                 if (isSupported(ScrollMethod, ScrollMethods, val, support)) {
                     applyResult(dev.setScrollMethod(val));
@@ -251,14 +258,17 @@ pub fn applyInputConfigs(libinput_device: *LibinputDevice) void {
         }
 
         if (libinput_device.capabilities.dwt) {
+            log.debug("Applying dwt config to {s}", .{device_name});
             if (input_config.dwt) |val| applyResult(dev.setDwt(val));
         }
 
         if (libinput_device.capabilities.dwtp) {
+            log.debug("Applying dwtp config to {s}", .{device_name});
             if (input_config.dwtp) |val| applyResult(dev.setDwtp(val));
         }
 
         if (libinput_device.capabilities.rotation) {
+            log.debug("Applying rotation config to {s}", .{device_name});
             if (input_config.rotation) |val| applyResult(dev.setRotation(val));
         }
     }
