@@ -121,24 +121,31 @@ const XkbBinding = struct {
                 if (current_focus.floating) return;
 
                 // Get the first tiled window to try zoom with
+                // If the first window is focused, we instead try to get the second tiled window
                 const output = current_focus.output orelse {
-                    log.err("focused window has no output during zoom", .{});
+                    log.warn("Focused window has no output during zoom", .{});
                     return;
                 };
+                var focus_is_first_tiled = false;
                 const first_tiled: *Window = blk: {
                     var it = output.windows.iterator(.forward);
                     while (it.next()) |window| {
-                        if (window != current_focus and !window.floating) {
-                            break :blk window;
+                        if (window.floating or output.tags & window.tags == 0) continue;
+                        if (window == current_focus) {
+                            focus_is_first_tiled = true;
+                            continue;
                         }
+                        break :blk window;
                     }
-                    // No (or only one) tiled windows, nothing to do
+                    // No (or only one) visible tiled windows, nothing to do
                     return;
                 };
 
                 current_focus.link.swapWith(&first_tiled.link);
-                // Don't warp pointer if the first was the one focused before
-                if (output.windows.first() == current_focus) {
+                // Update focus
+                seat.pending_manage.window = .{ .window = current_focus };
+                // Warp pointer when the focused window is promoted to primary
+                if (!focus_is_first_tiled) {
                     seat.pending_manage.should_warp_pointer = true;
                 }
             },
