@@ -1,0 +1,104 @@
+// SPDX-FileCopyrightText: 2026 Ben Buhse <me@benbuhse.email>
+//
+// SPDX-License-Identifier: GPL-3.0-only
+
+const NodeName = enum {
+    float,
+    no_float,
+    tags,
+    // TODO: Add more of riverctl's rule options such as ssd/csd
+};
+
+pub const Rule = struct {
+    // if app_id/title are null, they match all values
+    app_id_glob: ?[]const u8 = null,
+    title_glob: ?[]const u8 = null,
+    action: Action,
+};
+
+pub const Action = union(enum) {
+    float: bool,
+    tags: u32,
+};
+
+pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
+    while (try parser.next()) |event| {
+        switch (event) {
+            .node => |node| {
+                const node_name = std.meta.stringToEnum(NodeName, node.name);
+                if (node_name) |name| {
+                    if (!helpers.hostMatches(node, parser, hostname)) {
+                        log.debug("Skipping \"window_rule.{s}\" (host mismatch)", .{@tagName(name)});
+                        continue;
+                    }
+
+                    const app_id_glob = if (node.prop(parser, "app_id")) |raw_app_id| blk: {
+                        const app_id = utils.stripQuotes(raw_app_id);
+                        globber.validate(app_id) catch {
+                            log.warn("Invalid glob for app_id \"{s}\"", .{app_id});
+                            continue;
+                        };
+                        break :blk try utils.gpa.dupe(u8, app_id);
+                    } else null;
+                    errdefer if (app_id_glob) |app_id| utils.gpa.free(app_id);
+                    const title_glob = if (node.prop(parser, "title")) |raw_title| blk: {
+                        const title = utils.stripQuotes(raw_title);
+                        globber.validate(title) catch {
+                            log.warn("Invalid glob for title \"{s}\"", .{title});
+                            continue;
+                        };
+                        break :blk try utils.gpa.dupe(u8, title);
+                    } else null;
+                    errdefer if (title_glob) |title| utils.gpa.free(title);
+
+                    const action: Action = sw: switch (name) {
+                        .float => .{ .float = true },
+                        .no_float => .{ .float = false },
+                        .tags => {
+                            const tags_str = utils.stripQuotes(node.arg(parser, 0) orelse "");
+                            const tags = fmt.parseInt(u32, tags_str, 0) catch {
+                                logWarnInvalidNodeArg(name, tags_str);
+                                continue;
+                            };
+                            break :sw .{ .tags = tags };
+                        },
+                    };
+                    try config.window_rules.append(utils.gpa, .{
+                        .app_id_glob = app_id_glob,
+                        .title_glob = title_glob,
+                        .action = action,
+                    });
+                } else {
+                    helpers.logWarnInvalidNode(node.name);
+                }
+            },
+            .child_block_begin => {
+                // window_rules should never have a nested child block
+                try helpers.skipChildBlock(parser);
+            },
+            .child_block_end => {
+                // Done parsing the window_rules block; return
+                return;
+            },
+        }
+    }
+}
+
+inline fn logWarnInvalidNodeArg(node_name: NodeName, node_value: []const u8) void {
+    log.warn("Invalid \"window_rule.{s}\" ({s}). Ignoring", .{ @tagName(node_name), node_value });
+}
+
+const std = @import("std");
+const fmt = std.fmt;
+const mem = std.mem;
+
+const kdl = @import("kdl");
+
+const globber = @import("../globber.zig");
+const utils = @import("../utils.zig");
+const Config = @import("../Config.zig");
+const XkbBindings = @import("../XkbBindings.zig");
+
+const helpers = @import("helpers.zig");
+
+const log = std.log.scoped(.config_window_rule);

@@ -42,10 +42,13 @@ tag_binds: std.ArrayList(Keybind) = .{},
 keybinds: keybind.Map = .{},
 pointer_binds: std.ArrayList(PointerBind) = .{},
 input_configs: std.ArrayList(InputConfig) = .{},
+window_rules: std.ArrayList(WindowRule) = .{},
 
 // Re-exports
 pub const Keybind = keybind.Keybind;
 pub const PointerBind = pointer_bind.PointerBind;
+pub const WindowRule = window_rule.Rule;
+pub const WindowRuleAction = window_rule.Action;
 
 pub const AttachMode = enum {
     top,
@@ -66,6 +69,7 @@ const NodeName = enum {
     keybinds,
     pointer_binds,
     tag_overlay,
+    window_rules,
 };
 
 pub fn create() !*Config {
@@ -103,6 +107,11 @@ pub fn create() !*Config {
                 if (ic.name) |name| utils.gpa.free(name);
             }
             config.input_configs.clearAndFree(utils.gpa);
+            for (config.window_rules.items) |rule| {
+                if (rule.app_id_glob) |app_id_glob| utils.gpa.free(app_id_glob);
+                if (rule.title_glob) |title_glob| utils.gpa.free(title_glob);
+            }
+            config.window_rules.clearAndFree(utils.gpa);
             if (config.bar_config) |bc| {
                 if (bc.fonts) |fonts| utils.gpa.free(fonts);
             }
@@ -133,6 +142,11 @@ pub fn destroy(config: *Config) void {
         if (ic.name) |name| utils.gpa.free(name);
     }
     config.input_configs.deinit(utils.gpa);
+    for (config.window_rules.items) |rule| {
+        if (rule.app_id_glob) |app_id_glob| utils.gpa.free(app_id_glob);
+        if (rule.title_glob) |title_glob| utils.gpa.free(title_glob);
+    }
+    config.window_rules.deinit(utils.gpa);
     if (config.bar_config) |bc| {
         if (bc.fonts) |fonts| utils.gpa.free(fonts);
     }
@@ -210,7 +224,7 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                             if (helpers.boolFromKdlStr(focus_follows_pointer_str)) |focus_follows_pointer| {
                                 config.focus_follows_pointer = focus_follows_pointer;
                                 logDebugSettingNode(name, focus_follows_pointer_str);
-                            } else {
+                            } else |_| {
                                 logWarnInvalidNodeArg(name, focus_follows_pointer_str);
                                 continue;
                             }
@@ -220,7 +234,7 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                             if (helpers.boolFromKdlStr(pointer_warp_on_focus_change_str)) |pointer_warp_on_focus_change| {
                                 config.pointer_warp_on_focus_change = pointer_warp_on_focus_change;
                                 logDebugSettingNode(name, pointer_warp_on_focus_change_str);
-                            } else {
+                            } else |_| {
                                 logWarnInvalidNodeArg(name, pointer_warp_on_focus_change_str);
                                 continue;
                             }
@@ -238,8 +252,6 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                             };
                             logDebugSettingNode(name, path_str);
                         },
-                        .bar => next_child_block = .bar,
-                        .borders => next_child_block = .borders,
                         .input => {
                             pending_input_name = if (node.prop(&parser, "name")) |n|
                                 try utils.gpa.dupe(u8, utils.stripQuotes(n))
@@ -247,15 +259,13 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                                 null;
                             next_child_block = .input;
                         },
-                        .keybinds => {
-                            next_child_block = .keybinds;
-                        },
-                        .pointer_binds => {
-                            next_child_block = .pointer_binds;
-                        },
-                        .tag_overlay => {
-                            next_child_block = .tag_overlay;
-                        },
+                        inline .bar,
+                        .borders,
+                        .keybinds,
+                        .pointer_binds,
+                        .tag_overlay,
+                        .window_rules,
+                        => |n| next_child_block = n,
                     }
                 } else {
                     helpers.logWarnInvalidNode(node.name);
@@ -273,6 +283,7 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                             pending_input_name = null; // ownership transferred
                         },
                         .tag_overlay => try TagOverlayConfig.load(config, &parser, hostname),
+                        .window_rules => try window_rule.load(config, &parser, hostname),
                         else => {
                             // Nothing else should ever be marked as a next_child_block
                             unreachable;
@@ -322,6 +333,7 @@ const border = @import("config/border.zig");
 const helpers = @import("config/helpers.zig");
 const keybind = @import("config/keybind.zig");
 const pointer_bind = @import("config/pointer_bind.zig");
+const window_rule = @import("config/window_rule.zig");
 const BarConfig = @import("config/BarConfig.zig");
 const InputConfig = @import("config/InputConfig.zig");
 const TagOverlayConfig = @import("config/TagOverlayConfig.zig");

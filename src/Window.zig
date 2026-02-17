@@ -9,6 +9,9 @@ context: *Context,
 river_window_v1: *river.WindowV1,
 river_node_v1: *river.NodeV1,
 
+app_id: ?[]const u8 = null,
+title: ?[]const u8 = null,
+
 rect: utils.Rect = .{},
 
 fullscreen: bool = false,
@@ -80,8 +83,11 @@ pub fn create(context: *Context, river_window_v1: *river.WindowV1, output: ?*Out
 }
 
 pub fn destroy(window: *Window) void {
-    window.river_window_v1.destroy();
+    if (window.app_id) |app_id| utils.gpa.free(app_id);
+    if (window.title) |title| utils.gpa.free(title);
+
     window.river_node_v1.destroy();
+    window.river_window_v1.destroy();
 
     utils.gpa.destroy(window);
 }
@@ -139,7 +145,18 @@ fn windowListener(river_window_v1: *river.WindowV1, event: river.WindowV1.Event,
             window.pending_manage.dimensions = .{ .width = @intCast(ev.width), .height = @intCast(ev.height) };
         },
         .dimensions_hint => {
-            // TODO: Maybe could use this for floating windows
+            // TODO: Use this for clamping windows on resize
+        },
+        .app_id => |ev| {
+            if (window.app_id) |app_id| utils.gpa.free(app_id);
+            window.app_id = utils.gpa.dupe(u8, std.mem.span(ev.app_id.?)) catch @panic("Out of memory");
+        },
+        .title => |ev| {
+            if (window.title) |title| utils.gpa.free(title);
+            window.title = utils.gpa.dupe(u8, std.mem.span(ev.title.?)) catch @panic("Out of memory");
+        },
+        .parent => {
+            // TODO: float this window directly over its parent
         },
         else => |ev| {
             log.debug("unhandled event: {s}", .{@tagName(ev)});
@@ -160,6 +177,13 @@ pub fn manage(window: *Window) void {
 
         river_window_v1.setCapabilities(.{ .fullscreen = true, .maximize = true });
         river_window_v1.setTiled(.{ .top = true, .bottom = true, .left = true, .right = true });
+
+        const res = window.applyRules();
+        if (res.tags) |tags| window.tags = tags;
+        if (res.float) |should_float|
+            window.pending_manage.floating = should_float
+        else
+            window.pending_manage.floating = false;
     }
 
     // Updating state since the last manage event
@@ -280,6 +304,37 @@ fn applyBorders(window: *Window, color: utils.RiverColor) void {
     window.river_window_v1.setBorders(all_sides, border_width, color.red, color.green, color.blue, color.alpha);
 }
 
+// Iterate over all window rules and apply any that match.
+// Later rules in the list overwrite earlier ones.
+fn applyRules(window: *Window) struct {
+    float: ?bool = null,
+    tags: ?u32 = null,
+} {
+    var float: ?bool = null;
+    var tags: ?u32 = null;
+    for (window.context.config.window_rules.items) |rule| {
+        const app_id_matches = if (rule.app_id_glob) |glob|
+            if (window.app_id) |app_id| globber.match(app_id, glob) else false
+        else
+            true;
+        const title_matches = if (rule.title_glob) |glob|
+            if (window.title) |title| globber.match(title, glob) else false
+        else
+            true;
+        if (app_id_matches and title_matches) {
+            switch (rule.action) {
+                .float => |should_float| float = should_float,
+                .tags => |tagmask| tags = tagmask,
+            }
+        }
+    }
+
+    return .{
+        .float = float,
+        .tags = tags,
+    };
+}
+
 const std = @import("std");
 const assert = std.debug.assert;
 const DoublyLinkedList = std.DoublyLinkedList;
@@ -288,9 +343,11 @@ const wayland = @import("wayland");
 const wl = wayland.client.wl;
 const river = wayland.client.river;
 
+const globber = @import("globber.zig");
 const utils = @import("utils.zig");
 const Context = @import("Context.zig");
 const Output = @import("Output.zig");
 const Seat = @import("Seat.zig");
+const WindowRule = @import("Config.zig").WindowRule;
 
 const log = std.log.scoped(.Window);
