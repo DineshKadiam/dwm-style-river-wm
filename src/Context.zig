@@ -14,7 +14,6 @@ wl_compositor: *wl.Compositor,
 wl_display: *wl.Display,
 wl_registry: *wl.Registry,
 wl_shm: *wl.Shm,
-wl_outputs: *std.AutoHashMapUnmanaged(u32, *wl.Output),
 
 river_layer_shell_v1: *river.LayerShellV1,
 zwlr_layer_shell_v1: *zwlr.LayerShellV1,
@@ -52,7 +51,6 @@ pub const Options = struct {
     wl_display: *wl.Display,
     wl_registry: *wl.Registry,
     wl_shm: *wl.Shm,
-    wl_outputs: *std.AutoHashMapUnmanaged(u32, *wl.Output),
 
     river_input_manager_v1: *river.InputManagerV1,
     river_libinput_config_v1: *river.LibinputConfigV1,
@@ -93,7 +91,6 @@ pub fn create(options: Options) !*Context {
         .wl_display = options.wl_display,
         .wl_registry = options.wl_registry,
         .wl_shm = options.wl_shm,
-        .wl_outputs = options.wl_outputs,
         .river_layer_shell_v1 = options.river_layer_shell_v1,
         .zwlr_layer_shell_v1 = options.zwlr_layer_shell_v1,
         .wallpaper_image = loadWallpaperImage(options.config),

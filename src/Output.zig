@@ -129,6 +129,7 @@ pub fn destroy(output: *Output) void {
 
     output.tag_layout_overrides.deinit(utils.gpa);
     output.deinitWallpaperLayerSurface();
+    if (output.wl_output) |wl_output| wl_output.release();
     output.river_output_v1.destroy();
     output.river_layer_shell_output_v1.destroy();
     utils.gpa.destroy(output);
@@ -217,26 +218,19 @@ fn riverOutputListener(river_output_v1: *river.OutputV1, event: river.OutputV1.E
             output.destroy();
         },
         .wl_output => |ev| {
-            // It's guaranteed for the wl_output global to advertised before this event happens
-            output.wl_output = output.context.wl_outputs.get(ev.name).?;
-            output.wl_output.?.setListener(*Output, wlOutputListener, output);
-
-            // The wl_output's initial events come during the initial roundtrip
-            // before we set our listener, so the .done event that triggers
-            // wallpaper init was lost. Explicitly init the surfaces here.
-            output.initWallpaperLayerSurface() catch |err| {
-                const output_name = output.name orelse "some output";
-                log.err("failed to add a surface to {s}: {}", .{ output_name, err });
+            // Bind the wl_output here so that our listener is set before the server sends the
+            // initial events (.scale, .mode, .name, .done, etc.). The .done handler will init
+            // bar/wallpaper surfaces.
+            const wl_output = output.context.wl_registry.bind(
+                ev.name,
+                wl.Output,
+                4,
+            ) catch |err| {
+                log.err("Failed to bind wl_output: {}", .{err});
+                return;
             };
-            if (output.bar) |*bar| {
-                bar.initSurface() catch |err| {
-                    const output_name = output.name orelse "some output";
-                    log.err("failed to init bar for {s}: {}", .{ output_name, err });
-                    return;
-                };
-            }
-            // Tag overlay surfaces are created on-demand when tags change,
-            // so we don't init them here.
+            wl_output.setListener(*Output, wlOutputListener, output);
+            output.wl_output = wl_output;
         },
         .dimensions => |ev| {
             // Protocol guarantees that width and height are strictly greater than zero

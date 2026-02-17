@@ -12,17 +12,8 @@ const Globals = struct {
 
     wl_compositor: ?*wl.Compositor = null,
     wl_shm: ?*wl.Shm = null,
-    wl_outputs: std.AutoHashMapUnmanaged(u32, *wl.Output) = .empty,
 
     zwlr_layer_shell_v1: ?*zwlr.LayerShellV1 = null,
-
-    fn deinit(globals: *Globals) void {
-        var it = globals.wl_outputs.valueIterator();
-        while (it.next()) |output| {
-            output.*.release();
-        }
-        globals.wl_outputs.deinit(utils.gpa);
-    }
 };
 
 const usage: []const u8 =
@@ -62,7 +53,6 @@ pub fn main() !void {
     const wl_registry = try wl_display.getRegistry();
 
     var globals: Globals = .{};
-    defer globals.deinit();
     wl_registry.setListener(*Globals, registryListener, &globals);
 
     const errno = wl_display.roundtrip();
@@ -72,8 +62,6 @@ pub fn main() !void {
 
     const wl_compositor = globals.wl_compositor orelse utils.interfaceNotAdvertised(wl.Compositor);
     const wl_shm = globals.wl_shm orelse utils.interfaceNotAdvertised(wl.Shm);
-    // We can theoretically start with zero wl_outputs; don't panic if it's empty.
-    const wl_outputs = &globals.wl_outputs;
 
     const river_input_manager_v1 = globals.river_input_manager_v1 orelse utils.interfaceNotAdvertised(river.InputManagerV1);
     const river_libinput_config_v1 = globals.river_libinput_config_v1 orelse utils.interfaceNotAdvertised(river.LibinputConfigV1);
@@ -88,7 +76,6 @@ pub fn main() !void {
     const context = try Context.create(.{
         .wl_compositor = wl_compositor,
         .wl_display = wl_display,
-        .wl_outputs = wl_outputs,
         .wl_registry = wl_registry,
         .wl_shm = wl_shm,
         .river_input_manager_v1 = river_input_manager_v1,
@@ -268,16 +255,8 @@ fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, globals: *
                 };
             } else if (mem.orderZ(u8, ev.interface, wl.Output.interface.name) == .eq) {
                 if (ev.version < 4) utils.versionNotSupported(wl.Output, ev.version, 4);
-
-                const wl_output = registry.bind(ev.name, wl.Output, 4) catch |e| {
-                    fatal("Failed to bind to wl_output: {any}", .{@errorName(e)});
-                };
-
-                // We can get multiple wl_outputs, so we have to try add them to our HashMap
-                // instead of just keeping the one
-                globals.wl_outputs.put(utils.gpa, ev.name, wl_output) catch |e| {
-                    fatal("Failed to add wl_output to hashmap: {any}", .{@errorName(e)});
-                };
+                // We don't bind wl_output until the river_output send its .wl_output event
+                // This way, we don't miss the initial configuration events
             } else if (mem.orderZ(u8, ev.interface, wl.Shm.interface.name) == .eq) {
                 globals.wl_shm = registry.bind(ev.name, wl.Shm, 1) catch |e| {
                     fatal("Failed to bind to wl_shm: {any}", .{@errorName(e)});
@@ -309,11 +288,9 @@ fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, globals: *
                 };
             }
         },
-        .global_remove => |ev| {
-            // The only remove we care about is for wl_outputs
-            if (!globals.wl_outputs.remove(ev.name)) {
-                log.debug("Received a global_remove event for something other than a wl_output", .{});
-            }
+        .global_remove => |_| {
+            // wl_output removal is handled by the river protocol's .removed
+            // event, and we don't care about any other globals being removed.
         },
     }
 }

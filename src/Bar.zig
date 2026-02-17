@@ -88,7 +88,9 @@ pub fn initSurface(bar: *Bar) !void {
 
     // TODO: Add padding to config
     const vertical_padding = 5;
-    const bar_height: u31 = @intCast(bar.fcft_fonts.height + 2 * vertical_padding);
+    // Set size wants logical pixels, so we have to scale the height
+    const logical_font_height = @divFloor(bar.fcft_fonts.height, @as(i32, bar.font_scale));
+    const bar_height: u31 = @intCast(logical_font_height + 2 * vertical_padding);
     layer_surface.setSize(0, bar_height);
 
     layer_surface.setAnchor(.{ .top = options.position == .top, .bottom = options.position == .bottom, .left = true, .right = true });
@@ -366,7 +368,7 @@ fn getFcftFonts(fonts: []const u8, scale: u31) !*fcft.Font {
     while (it.next()) |font| {
         if (scale > 1) {
             // If scale >1, we append :dpi so we can scale the font
-            log.debug("bwbuhse {d} {d}", .{ base_dpi, scale });
+            log.debug("Scaling font DPI: base={d} scale={d}", .{ base_dpi, scale });
             const scaled = try arena_alloc.dupeZ(
                 u8,
                 try std.fmt.allocPrint(arena_alloc, "{s}:dpi={}", .{ font, @as(u32, base_dpi) * scale }),
