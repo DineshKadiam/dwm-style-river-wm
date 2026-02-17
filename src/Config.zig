@@ -38,7 +38,8 @@ bar_config: ?BarConfig = null,
 
 /// Tag bind entries parsed from config (tag_bind nodes in keybinds block)
 tag_binds: std.ArrayList(Keybind) = .{},
-keybinds: std.ArrayList(Keybind) = .{},
+// We use a hash map so that duplicate keybinds can be easily de-duplicated
+keybinds: keybind_helper.Map = .{},
 pointer_binds: std.ArrayList(PointerBind) = .{},
 input_configs: std.ArrayList(InputConfig) = .{},
 
@@ -90,8 +91,8 @@ pub fn create() !*Config {
         config.load(&file_reader.interface) catch |err| {
             log.err("Error while loading config: {s}. Continuing with default config", .{@errorName(err)});
             // Free any partially-loaded state and reset to defaults
-            for (config.keybinds.items) |keybind| {
-                switch (keybind.command) {
+            for (config.keybinds.values()) |cmd| {
+                switch (cmd) {
                     .spawn => |argv| {
                         for (argv) |arg| utils.gpa.free(arg);
                         utils.gpa.free(argv);
@@ -120,8 +121,8 @@ pub fn create() !*Config {
 }
 
 pub fn destroy(config: *Config) void {
-    for (config.keybinds.items) |keybind| {
-        switch (keybind.command) {
+    for (config.keybinds.values()) |cmd| {
+        switch (cmd) {
             .spawn => |argv| {
                 for (argv) |arg| utils.gpa.free(arg);
                 utils.gpa.free(argv);

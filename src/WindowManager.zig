@@ -105,10 +105,8 @@ fn manage_start(wm: *WindowManager) void {
             }
         }
         // Rest of the keybinds
-        for (context.config.keybinds.items) |keybind| {
-            // Keysyms should only be null in tag_binds (above)
-            std.debug.assert(keybind.keysym != null);
-            context.xkb_bindings.addBinding(river_seat_v1, keybind.keysym.?, keybind.modifiers, keybind.command);
+        for (context.config.keybinds.keys(), context.config.keybinds.values()) |key, command| {
+            context.xkb_bindings.addBinding(river_seat_v1, key.keysym, key.modifiers, command);
         }
 
         // Pointer bindings

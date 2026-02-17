@@ -11,6 +11,13 @@ pub const Keybind = struct {
     keysym: ?xkbcommon.Keysym,
 };
 
+pub const Key = struct {
+    modifiers: river.SeatV1.Modifiers,
+    keysym: xkbcommon.Keysym,
+};
+
+pub const Map = std.AutoArrayHashMapUnmanaged(Key, XkbBindings.Command);
+
 pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
     while (try parser.next()) |event| {
         switch (event) {
@@ -172,11 +179,20 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
                         },
                     };
 
-                    try config.keybinds.append(utils.gpa, .{
+                    const gop = try config.keybinds.getOrPut(utils.gpa, .{
                         .modifiers = modifiers,
-                        .command = command,
                         .keysym = keysym,
                     });
+                    if (gop.found_existing) {
+                        switch (gop.value_ptr.*) {
+                            .spawn => |argv| {
+                                for (argv) |arg| utils.gpa.free(arg);
+                                utils.gpa.free(argv);
+                            },
+                            else => unreachable,
+                        }
+                    }
+                    gop.value_ptr.* = command;
                 } else {
                     helpers.logWarnInvalidNode(node.name);
                 }
