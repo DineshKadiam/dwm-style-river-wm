@@ -393,6 +393,7 @@ const XkbBinding = struct {
         } orelse return;
         if (target != window) {
             window.link.swapWith(&target.link);
+            seat.pending_manage.should_warp_pointer = true;
             context.wm.river_window_manager_v1.manageDirty();
         }
     }
