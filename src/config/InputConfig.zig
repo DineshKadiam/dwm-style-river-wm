@@ -2,31 +2,7 @@
 //
 // SPDX-License-Identifier: GPL-3.0-only
 
-pub const InputConfig = struct {
-    /// Device name to match
-    /// If this is null, applies to all devices
-    name: ?[]const u8 = null,
-
-    send_events: ?SendEventsModes.Enum = null,
-    tap: ?TapState = null,
-    tap_button_map: ?TapButtonMap = null,
-    drag: ?DragState = null,
-    drag_lock: ?DragLockState = null,
-    three_finger_drag: ?ThreeFingerDragState = null,
-    accel_profile: ?AccelProfile = null,
-    accel_speed: ?f64 = null,
-    natural_scroll: ?NaturalScrollState = null,
-    left_handed: ?LeftHandedState = null,
-    click_method: ?ClickMethod = null,
-    clickfinger_button_map: ?ClickfingerButtonMap = null,
-    middle_emulation: ?MiddleEmulationState = null,
-    scroll_method: ?ScrollMethod = null,
-    scroll_button: ?u32 = null,
-    scroll_button_lock: ?ScrollButtonLockState = null,
-    dwt: ?DwtState = null,
-    dwtp: ?DwtpState = null,
-    rotation: ?u32 = null,
-};
+const InputConfig = @This();
 
 const NodeName = enum {
     send_events,
@@ -49,6 +25,30 @@ const NodeName = enum {
     dwtp,
     rotation,
 };
+
+/// Device name to match
+/// If this is null, applies to all devices
+name: ?[]const u8 = null,
+
+send_events: ?SendEventsModes.Enum = null,
+tap: ?TapState = null,
+tap_button_map: ?TapButtonMap = null,
+drag: ?DragState = null,
+drag_lock: ?DragLockState = null,
+three_finger_drag: ?ThreeFingerDragState = null,
+accel_profile: ?AccelProfile = null,
+accel_speed: ?f64 = null,
+natural_scroll: ?NaturalScrollState = null,
+left_handed: ?LeftHandedState = null,
+click_method: ?ClickMethod = null,
+clickfinger_button_map: ?ClickfingerButtonMap = null,
+middle_emulation: ?MiddleEmulationState = null,
+scroll_method: ?ScrollMethod = null,
+scroll_button: ?u32 = null,
+scroll_button_lock: ?ScrollButtonLockState = null,
+dwt: ?DwtState = null,
+dwtp: ?DwtpState = null,
+rotation: ?u32 = null,
 
 pub fn load(config: *Config, parser: *kdl.Parser, name: ?[]const u8, hostname: ?[]const u8) !void {
     var input_config: InputConfig = .{ .name = name };

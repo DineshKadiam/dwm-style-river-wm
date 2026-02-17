@@ -2,7 +2,9 @@
 //
 // SPDX-License-Identifier: GPL-3.0-only
 
-pub const NodeName = enum {
+const TagOverlayConfig = @This();
+
+const NodeName = enum {
     border_width,
     tag_amount,
     tags_per_row,
@@ -23,68 +25,66 @@ pub const NodeName = enum {
     margins,
 };
 
-pub const AnchorsNodeName = enum { top, right, bottom, left };
-pub const MarginsNodeName = enum { top, right, bottom, left };
+const AnchorsNodeName = enum { top, right, bottom, left };
+const MarginsNodeName = enum { top, right, bottom, left };
 
-pub const TagOverlayConfig = struct {
-    border_width: u8 = 2,
-    tag_amount: u8 = 9,
-    tags_per_row: u8 = 32,
-    square_size: u8 = 40,
-    square_inner_padding: u8 = 10,
-    square_padding: u8 = 15,
-    square_border_width: u8 = 1,
-    background_color: pixman.Color = utils.parseRgbaPixmanComptime("0x1e1e2e"),
-    border_color: pixman.Color = utils.parseRgbaPixmanComptime("0x6c7086"),
-    square_active_background_color: pixman.Color = utils.parseRgbaPixmanComptime("0x89b4fa"),
-    square_active_border_color: pixman.Color = utils.parseRgbaPixmanComptime("0x6c7086"),
-    square_active_occupied_color: pixman.Color = utils.parseRgbaPixmanComptime("0xcdd6f4"),
-    square_inactive_background_color: pixman.Color = utils.parseRgbaPixmanComptime("0x585b70"),
-    square_inactive_border_color: pixman.Color = utils.parseRgbaPixmanComptime("0x6c7086"),
-    square_inactive_occupied_color: pixman.Color = utils.parseRgbaPixmanComptime("0xcdd6f4"),
-    timeout: u32 = 500,
-    anchor_top: bool = false,
-    anchor_right: bool = false,
-    anchor_bottom: bool = false,
-    anchor_left: bool = false,
-    margin_top: i32 = 0,
-    margin_right: i32 = 0,
-    margin_bottom: i32 = 0,
-    margin_left: i32 = 0,
+border_width: u8 = 2,
+tag_amount: u8 = 9,
+tags_per_row: u8 = 32,
+square_size: u8 = 40,
+square_inner_padding: u8 = 10,
+square_padding: u8 = 15,
+square_border_width: u8 = 1,
+background_color: pixman.Color = utils.parseRgbaPixmanComptime("0x1e1e2e"),
+border_color: pixman.Color = utils.parseRgbaPixmanComptime("0x6c7086"),
+square_active_background_color: pixman.Color = utils.parseRgbaPixmanComptime("0x89b4fa"),
+square_active_border_color: pixman.Color = utils.parseRgbaPixmanComptime("0x6c7086"),
+square_active_occupied_color: pixman.Color = utils.parseRgbaPixmanComptime("0xcdd6f4"),
+square_inactive_background_color: pixman.Color = utils.parseRgbaPixmanComptime("0x585b70"),
+square_inactive_border_color: pixman.Color = utils.parseRgbaPixmanComptime("0x6c7086"),
+square_inactive_occupied_color: pixman.Color = utils.parseRgbaPixmanComptime("0xcdd6f4"),
+timeout: u32 = 500,
+anchor_top: bool = false,
+anchor_right: bool = false,
+anchor_bottom: bool = false,
+anchor_left: bool = false,
+margin_top: i32 = 0,
+margin_right: i32 = 0,
+margin_bottom: i32 = 0,
+margin_left: i32 = 0,
 
-    pub fn toTagOverlayOptions(config: TagOverlayConfig) TagOverlay.Options {
-        return .{
-            .border_width = config.border_width,
-            .tag_amount = @intCast(std.math.clamp(@as(u32, config.tag_amount), 1, 32)),
-            .tags_per_row = @intCast(std.math.clamp(@as(u32, config.tags_per_row), 1, 32)),
-            .square_size = config.square_size,
-            .square_inner_padding = config.square_inner_padding,
-            .square_padding = config.square_padding,
-            .square_border_width = config.square_border_width,
-            .background_color = config.background_color,
-            .border_color = config.border_color,
-            .square_active_background_color = config.square_active_background_color,
-            .square_active_border_color = config.square_active_border_color,
-            .square_active_occupied_color = config.square_active_occupied_color,
-            .square_inactive_background_color = config.square_inactive_background_color,
-            .square_inactive_border_color = config.square_inactive_border_color,
-            .square_inactive_occupied_color = config.square_inactive_occupied_color,
-            .anchors = .{
-                .top = config.anchor_top,
-                .right = config.anchor_right,
-                .bottom = config.anchor_bottom,
-                .left = config.anchor_left,
-            },
-            .margins = .{
-                .top = config.margin_top,
-                .right = config.margin_right,
-                .bottom = config.margin_bottom,
-                .left = config.margin_left,
-            },
-            .timeout = config.timeout,
-        };
-    }
-};
+pub fn toTagOverlayOptions(config: TagOverlayConfig) TagOverlay.Options {
+    return .{
+        .border_width = config.border_width,
+        .tag_amount = @intCast(std.math.clamp(@as(u32, config.tag_amount), 1, 32)),
+        .tags_per_row = @intCast(std.math.clamp(@as(u32, config.tags_per_row), 1, 32)),
+        .square_size = config.square_size,
+        .square_inner_padding = config.square_inner_padding,
+        .square_padding = config.square_padding,
+        .square_border_width = config.square_border_width,
+        .background_color = config.background_color,
+        .border_color = config.border_color,
+        .square_active_background_color = config.square_active_background_color,
+        .square_active_border_color = config.square_active_border_color,
+        .square_active_occupied_color = config.square_active_occupied_color,
+        .square_inactive_background_color = config.square_inactive_background_color,
+        .square_inactive_border_color = config.square_inactive_border_color,
+        .square_inactive_occupied_color = config.square_inactive_occupied_color,
+        .anchors = .{
+            .top = config.anchor_top,
+            .right = config.anchor_right,
+            .bottom = config.anchor_bottom,
+            .left = config.anchor_left,
+        },
+        .margins = .{
+            .top = config.margin_top,
+            .right = config.margin_right,
+            .bottom = config.margin_bottom,
+            .left = config.margin_left,
+        },
+        .timeout = config.timeout,
+    };
+}
 
 pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
     config.tag_overlay_config = .{}; // Presence of block = enabled; initialize with defaults

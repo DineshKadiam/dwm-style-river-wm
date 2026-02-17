@@ -39,17 +39,13 @@ bar_config: ?BarConfig = null,
 /// Tag bind entries parsed from config (tag_bind nodes in keybinds block)
 tag_binds: std.ArrayList(Keybind) = .{},
 // We use a hash map so that duplicate keybinds can be easily de-duplicated
-keybinds: keybind_helper.Map = .{},
+keybinds: keybind.Map = .{},
 pointer_binds: std.ArrayList(PointerBind) = .{},
 input_configs: std.ArrayList(InputConfig) = .{},
 
 // Re-exports
-pub const Keybind = keybind_helper.Keybind;
-pub const PointerBind = pointer_bind_helper.PointerBind;
-
-pub const BarConfig = bar_helper.BarConfig;
-pub const TagOverlayConfig = tag_overlay_helper.TagOverlayConfig;
-pub const InputConfig = input_helper.InputConfig;
+pub const Keybind = keybind.Keybind;
+pub const PointerBind = pointer_bind.PointerBind;
 
 pub const AttachMode = enum {
     top,
@@ -268,15 +264,15 @@ fn load(config: *Config, reader: *Io.Reader) !void {
             .child_block_begin => {
                 if (next_child_block) |child_block| {
                     switch (child_block) {
-                        .bar => try bar_helper.load(config, &parser, hostname),
-                        .borders => try borders_helper.load(config, &parser, hostname),
-                        .keybinds => try keybind_helper.load(config, &parser, hostname),
-                        .pointer_binds => try pointer_bind_helper.load(config, &parser, hostname),
+                        .bar => try BarConfig.load(config, &parser, hostname),
+                        .borders => try border.load(config, &parser, hostname),
+                        .keybinds => try keybind.load(config, &parser, hostname),
+                        .pointer_binds => try pointer_bind.load(config, &parser, hostname),
                         .input => {
-                            try input_helper.load(config, &parser, pending_input_name, hostname);
+                            try InputConfig.load(config, &parser, pending_input_name, hostname);
                             pending_input_name = null; // ownership transferred
                         },
-                        .tag_overlay => try tag_overlay_helper.load(config, &parser, hostname),
+                        .tag_overlay => try TagOverlayConfig.load(config, &parser, hostname),
                         else => {
                             // Nothing else should ever be marked as a next_child_block
                             unreachable;
@@ -322,13 +318,13 @@ const utils = @import("utils.zig");
 const RiverColor = utils.RiverColor;
 const XkbBindings = @import("XkbBindings.zig");
 
-const bar_helper = @import("config/bar.zig");
-const borders_helper = @import("config/borders.zig");
-const input_helper = @import("config/input.zig");
-const keybind_helper = @import("config/keybinds.zig");
-const pointer_bind_helper = @import("config/pointer_binds.zig");
-const tag_overlay_helper = @import("config/tag_overlay.zig");
+const border = @import("config/border.zig");
 const helpers = @import("config/helpers.zig");
+const keybind = @import("config/keybind.zig");
+const pointer_bind = @import("config/pointer_bind.zig");
+const BarConfig = @import("config/BarConfig.zig");
+const InputConfig = @import("config/InputConfig.zig");
+const TagOverlayConfig = @import("config/TagOverlayConfig.zig");
 
 const log = std.log.scoped(.Config);
 

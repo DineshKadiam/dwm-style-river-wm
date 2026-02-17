@@ -2,44 +2,44 @@
 //
 // SPDX-License-Identifier: GPL-3.0-only
 
-pub const NodeName = enum {
+const BarConfig = @This();
+
+const NodeName = enum {
     fonts,
     text_color,
     background_color,
     position,
     margins,
 };
-pub const MarginsNodeName = enum { top, right, bottom, left };
+const MarginsNodeName = enum { top, right, bottom, left };
 
-pub const BarConfig = struct {
-    // Comma separated list of FontConfig formatted font specifications.
-    // null means use the default ("monospace:size=14").
-    fonts: ?[]const u8 = null,
-    text_color: pixman.Color = utils.parseRgbaPixmanComptime("0xcdd6f4"),
-    background_color: pixman.Color = utils.parseRgbaPixmanComptime("0x1e1e2e"),
-    position: Bar.Position = .top,
-    margin_top: i32 = 0,
-    margin_right: i32 = 0,
-    margin_bottom: i32 = 0,
-    margin_left: i32 = 0,
-    // TODO: Support only having the bar on specific outputs
-    // output: []const u8,
+// Comma separated list of FontConfig formatted font specifications.
+// null means use the default ("monospace:size=14").
+fonts: ?[]const u8 = null,
+text_color: pixman.Color = utils.parseRgbaPixmanComptime("0xcdd6f4"),
+background_color: pixman.Color = utils.parseRgbaPixmanComptime("0x1e1e2e"),
+position: Bar.Position = .top,
+margin_top: i32 = 0,
+margin_right: i32 = 0,
+margin_bottom: i32 = 0,
+margin_left: i32 = 0,
+// TODO: Support only having the bar on specific outputs
+// output: []const u8,
 
-    pub fn toBarOptions(config: BarConfig) Bar.Options {
-        return .{
-            .fonts = config.fonts orelse "monospace:size=14",
-            .text_color = config.text_color,
-            .background_color = config.background_color,
-            .position = config.position,
-            .margins = .{
-                .top = config.margin_top,
-                .right = config.margin_right,
-                .bottom = config.margin_bottom,
-                .left = config.margin_left,
-            },
-        };
-    }
-};
+pub fn toBarOptions(config: BarConfig) Bar.Options {
+    return .{
+        .fonts = config.fonts orelse "monospace:size=14",
+        .text_color = config.text_color,
+        .background_color = config.background_color,
+        .position = config.position,
+        .margins = .{
+            .top = config.margin_top,
+            .right = config.margin_right,
+            .bottom = config.margin_bottom,
+            .left = config.margin_left,
+        },
+    };
+}
 
 pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
     config.bar_config = .{}; // Presence of block = enabled; initialize with defaults
