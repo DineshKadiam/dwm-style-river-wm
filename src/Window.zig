@@ -164,31 +164,38 @@ fn windowListener(river_window_v1: *river.WindowV1, event: river.WindowV1.Event,
     }
 }
 
-pub fn manage(window: *Window) void {
-    const river_window_v1 = window.river_window_v1;
-    if (!window.initialized) {
-        // Only happens once per Window
+/// Apply one-time initialization for newly created windows.
+/// Called before calculatePrimaryStackLayout() so that tag and float
+/// rules are reflected in the first frame's layout.
+pub fn initialize(window: *Window) void {
+    if (window.initialized) {
         @branchHint(.unlikely);
-        window.initialized = true;
-
-        // TODO: We might want to think about paying attention to the decoration_hint event
-        //       If we do, this would need to move, I think?
-        river_window_v1.useSsd();
-
-        river_window_v1.setCapabilities(.{ .fullscreen = true, .maximize = true });
-        river_window_v1.setTiled(.{ .top = true, .bottom = true, .left = true, .right = true });
-
-        const res = window.applyRules();
-        if (res.tags) |tags| window.tags = tags;
-        if (res.float) |should_float|
-            window.pending_manage.floating = should_float
-        else
-            window.pending_manage.floating = false;
+        return;
     }
+    window.initialized = true;
 
+    const river_window_v1 = window.river_window_v1;
+
+    // TODO: We might want to think about paying attention to the decoration_hint event
+    //       If we do, this would need to move, I think?
+    river_window_v1.useSsd();
+
+    river_window_v1.setCapabilities(.{ .fullscreen = true, .maximize = true });
+    river_window_v1.setTiled(.{ .top = true, .bottom = true, .left = true, .right = true });
+
+    const res = window.applyRules();
+    if (res.tags) |tags| window.tags = tags;
+    if (res.float) |should_float|
+        window.pending_manage.floating = should_float
+    else
+        window.pending_manage.floating = false;
+}
+
+pub fn manage(window: *Window) void {
     // Updating state since the last manage event
     defer window.pending_manage = .{};
     const pending_manage = window.pending_manage;
+    const river_window_v1 = window.river_window_v1;
     // Floating status
     if (pending_manage.floating) |floating| blk: {
         // This needs to be before proposing the new dimensions since we want to save the current ones!

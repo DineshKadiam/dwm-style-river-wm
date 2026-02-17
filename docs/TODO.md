@@ -2,7 +2,6 @@
 
 These are in rough order of my priority, though no promises I do them in this order.
 
-- [ ] Support window rules (float/tags/SSD by app-id/title)
 - [ ] Support overriding config location
 - [ ] Support configuring primary vs secondary stack side
 - [ ] Support switch handling (e.g. lid close)
@@ -31,3 +30,4 @@ These are in rough order of my priority, though no promises I do them in this or
 - [x] Add options to the tag overlay
 - [x] Add options to the bar
 - [x] Make a Rect struct to combine x, y, width, and height
+- [x] Support window rules (float/tags by app-id/title)

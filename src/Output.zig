@@ -617,6 +617,9 @@ fn calculatePrimaryStackLayout(output: *Output) void {
     var active_count: u31 = 0;
     var it = output.windows.iterator(.forward);
     while (it.next()) |window| {
+        // Initialize new windows before checking tags/float so that
+        // window rules are reflected in the first frame's layout.
+        window.initialize();
         if (output.tags & window.tags != 0x0000) {
             // Floating windows should be shown but not included in this layout generation
             const will_float = window.pending_manage.floating orelse window.floating;
