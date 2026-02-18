@@ -141,6 +141,40 @@ fn manage(wm: *WindowManager) void {
         wm.initialize();
     }
 
+    // Adopt orphan windows before outputs manage so they're included
+    // in calculateLayout() and window.manage() this cycle.
+    if (wm.orphan_windows.first() != null) {
+        const seat = wm.seats.first();
+        // We want the seat's focused output if one exists, but otherwise just
+        // whatever output is hanging around is fine.
+        const output = if (seat) |s|
+            s.focused_output orelse if (s.pending_manage.output) |pending_output|
+                switch (pending_output) {
+                    .output => |output| output,
+                    .clear_focus => null,
+                }
+            else
+                null
+        else
+            wm.outputs.first();
+
+        if (output) |o| {
+            var it = wm.orphan_windows.iterator(.forward);
+            while (it.next()) |window| {
+                window.pending_manage.pending_output = .{ .output = o };
+            }
+            if (seat) |s| {
+                if (s.focused_window == null) {
+                    if (wm.orphan_windows.first()) |first| {
+                        s.pending_manage.window = .{ .window = first };
+                        s.pending_manage.should_warp_pointer = true;
+                    } else unreachable;
+                }
+            }
+            o.windows.appendList(&wm.orphan_windows);
+        }
+    }
+
     {
         var it = wm.outputs.iterator(.forward);
         while (it.next()) |output| {
@@ -186,25 +220,11 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
             const output = Output.create(context, ev.id) catch @panic("Out of memory");
             wm.outputs.append(output);
             // If there was already a seat, but no outputs, set this new output as focused
-            const first_seat = wm.seats.first();
-            if (first_seat) |seat| {
+            if (wm.seats.first()) |seat| {
                 if (seat.focused_output == null and seat.pending_manage.output == null) {
                     seat.pending_manage.output = .{ .output = output };
                 }
             }
-
-            // If there are orphan windows, send them to the new output
-            var it = wm.orphan_windows.iterator(.forward);
-            while (it.next()) |window| {
-                // We need to make sure to set up their new output
-                window.pending_manage.pending_output = .{ .output = output };
-            }
-            if (wm.orphan_windows.first()) |first| {
-                // and focus the first one
-                first.pending_render.focused = true;
-            }
-            // We clear any orphaned_windows if an output is added
-            output.windows.appendList(&wm.orphan_windows);
         },
         .seat => |ev| {
             // TODO: Support multi-seat (maybe ?)
@@ -221,21 +241,9 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
             // If there was already an output, but no seats, set the first output as focused
             if (wm.outputs.first()) |output| {
                 seat.pending_manage.output = .{ .output = output };
-
-                // Adopt any orphan windows that arrived before we had a seat
-                var it = wm.orphan_windows.iterator(.forward);
-                while (it.next()) |window| {
-                    window.pending_manage.pending_output = .{ .output = output };
-                }
-                if (wm.orphan_windows.first()) |first| {
-                    seat.pending_manage.window = .{ .window = first };
-                    seat.pending_manage.should_warp_pointer = true;
-                }
-                output.windows.appendList(&wm.orphan_windows);
             }
         },
         .window => |ev| {
-            // TODO: Support multiple seats
             const seat = wm.seats.first();
             const focused_output = if (seat) |s|
                 s.focused_output orelse if (s.pending_manage.output) |pending_output|

@@ -2,7 +2,6 @@
 
 These are in rough order of my priority, though no promises I do them in this order.
 
-- [ ] Move orphan handling out of .output and .seat events; into manage()
 - [ ] Add focused window title to bar
 - [ ] Support overriding config location
 - [ ] Support configuring primary vs secondary stack side
@@ -34,3 +33,4 @@ These are in rough order of my priority, though no promises I do them in this or
 - [x] Make a Rect struct to combine x, y, width, and height
 - [x] Support window rules (float/tags by app-id/title)
 - [x] Fix resizing size when you pop a window out, basically, it start with its current size but then when you try resize it goes to 75%
+- [x] Move orphan handling out of .output and .seat events; into manage()
