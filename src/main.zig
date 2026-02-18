@@ -357,4 +357,5 @@ const log = std.log.scoped(.main);
 test {
     _ = @import("utils.zig");
     _ = @import("Config.zig");
+    _ = @import("globber.zig");
 }

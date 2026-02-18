@@ -18,11 +18,11 @@ borders {
     color_focused "0x89b4fa"
     color_unfocused "0x1e1e2e"
 }
-// Bar widget - shows the time
+// Bar widget; shows the time
 bar {
     position top
 }
-// Tag overlay widget - shown briefly when switching tags
+// Tag overlay widget; shown briefly when switching tags
 // Remove this block to disable the overlay entirely
 tag_overlay {
     tag_amount 10
@@ -34,6 +34,18 @@ tag_overlay {
     square_inactive_background_color "0x585b70"
     square_inactive_border_color "0x6c7086"
     square_inactive_occupied_color "0xcdd6f4"
+}
+// Window rules; applied once when a window first appears
+// Rules are evaluated top-to-bottom; later rules override earlier ones
+window_rules {
+    // Float Firefox picture-in-picture windows
+    float app_id="firefox" title="Picture-in-Picture"
+    // Float any window with "Preferences" in the title
+    float title="*Preferences*"
+    // Keep mpv windows tiled
+    no_float app_id="mpv"
+    // Send Slack to tag 3 (1<<2 = 0x0004)
+    tags 0x0004 app_id="Slack"
 }
 keybinds {
     // Swap a window

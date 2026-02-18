@@ -7,7 +7,7 @@
 /// if arg_str in ["#true", "true"], return true
 /// if arg_str in ["#false", "false"], return false
 /// else, return null
-pub fn boolFromKdlStr(arg_str: []const u8) ?bool {
+pub fn boolFromKdlStr(arg_str: []const u8) !bool {
     if (mem.eql(u8, arg_str, "#true") or
         mem.eql(u8, arg_str, "true"))
     {
@@ -17,7 +17,7 @@ pub fn boolFromKdlStr(arg_str: []const u8) ?bool {
     {
         return false;
     }
-    return null;
+    return error.NotABool;
 }
 
 pub fn parseButton(s: []const u8) ?u32 {
@@ -96,16 +96,16 @@ const testing = std.testing;
 
 test "boolFromKdlStr" {
     // True valid
-    try testing.expectEqual(@as(?bool, true), boolFromKdlStr("#true"));
-    try testing.expectEqual(@as(?bool, true), boolFromKdlStr("true"));
+    try testing.expectEqual(true, try boolFromKdlStr("#true"));
+    try testing.expectEqual(true, try boolFromKdlStr("true"));
     // False valid
-    try testing.expectEqual(@as(?bool, false), boolFromKdlStr("#false"));
-    try testing.expectEqual(@as(?bool, false), boolFromKdlStr("false"));
+    try testing.expectEqual(false, try boolFromKdlStr("#false"));
+    try testing.expectEqual(false, try boolFromKdlStr("false"));
     // Invalid
-    try testing.expectEqual(@as(?bool, null), boolFromKdlStr("yes"));
-    try testing.expectEqual(@as(?bool, null), boolFromKdlStr("1"));
-    try testing.expectEqual(@as(?bool, null), boolFromKdlStr(""));
-    try testing.expectEqual(@as(?bool, null), boolFromKdlStr("TRUE"));
+    try testing.expectError(error.NotABool, boolFromKdlStr("yes"));
+    try testing.expectError(error.NotABool, boolFromKdlStr("1"));
+    try testing.expectError(error.NotABool, boolFromKdlStr(""));
+    try testing.expectError(error.NotABool, boolFromKdlStr("TRUE"));
 }
 
 test "parseButton named buttons" {

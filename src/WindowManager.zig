@@ -72,7 +72,63 @@ pub fn prevOutput(wm: *WindowManager, current: *Output) ?*Output {
     return @fieldParentPtr("link", prev_link);
 }
 
-fn manage_start(wm: *WindowManager) void {
+fn initialize(wm: *WindowManager) void {
+    if (wm.context.initialized) return;
+
+    // We need a seat to intitialize this stuff, so let's just not do it right now.
+    // The WM can run fine without it, though, it won't be fully usuable.
+    const seat = wm.seats.first() orelse return;
+    const river_seat_v1 = seat.river_seat_v1;
+
+    const context = wm.context;
+    context.initialized = true;
+
+    // Tag bindings
+    for (context.config.tag_binds.items) |tag_bind| {
+        comptime var i: u8 = 1;
+        comptime var buffer: [1]u8 = undefined;
+        inline while (i <= 9) : (i += 1) {
+            const tags: u32 = 1 << (i - 1);
+            buffer[0] = i + '0';
+            const command: XkbBindings.Command = switch (tag_bind.command) {
+                .set_output_tags => .{ .set_output_tags = tags },
+                .set_window_tags => .{ .set_window_tags = tags },
+                .toggle_output_tags => .{ .toggle_output_tags = tags },
+                .toggle_window_tags => .{ .toggle_window_tags = tags },
+                else => unreachable,
+            };
+            context.xkb_bindings.addBinding(river_seat_v1, @field(xkbcommon.Keysym, &buffer), tag_bind.modifiers, command);
+        }
+    }
+    // Rest of the keybinds
+    for (context.config.keybinds.keys(), context.config.keybinds.values()) |key, command| {
+        context.xkb_bindings.addBinding(river_seat_v1, key.keysym, key.modifiers, command);
+    }
+
+    // Pointer bindings
+    for (context.config.pointer_binds.items) |pointer_bind| {
+        const binding = river_seat_v1.getPointerBinding(pointer_bind.button, pointer_bind.modifiers) catch {
+            log.err("Failed to create pointer binding", .{});
+            continue;
+        };
+
+        switch (pointer_bind.action) {
+            .move_window => {
+                if (seat.move_pointer_binding) |old| old.destroy();
+                binding.setListener(*Seat, Seat.movePointerBindingListener, seat);
+                seat.move_pointer_binding = binding;
+            },
+            .resize_window => {
+                if (seat.resize_pointer_binding) |old| old.destroy();
+                binding.setListener(*Seat, Seat.resizePointerBindingListener, seat);
+                seat.resize_pointer_binding = binding;
+            },
+        }
+        binding.enable();
+    }
+}
+
+fn manage(wm: *WindowManager) void {
     const river_window_manager_v1 = wm.river_window_manager_v1;
     const context = wm.context;
 
@@ -82,54 +138,7 @@ fn manage_start(wm: *WindowManager) void {
     if (!context.initialized) {
         // This code runs during initial startup and after config reloads.
         @branchHint(.cold);
-        context.initialized = true;
-
-        const seat = wm.seats.first() orelse @panic("Failed to get seat");
-        const river_seat_v1 = seat.river_seat_v1;
-
-        // Tag bindings
-        for (context.config.tag_binds.items) |tag_bind| {
-            comptime var i: u8 = 1;
-            comptime var buffer: [1]u8 = undefined;
-            inline while (i <= 9) : (i += 1) {
-                const tags: u32 = 1 << (i - 1);
-                buffer[0] = i + '0';
-                const command: XkbBindings.Command = switch (tag_bind.command) {
-                    .set_output_tags => .{ .set_output_tags = tags },
-                    .set_window_tags => .{ .set_window_tags = tags },
-                    .toggle_output_tags => .{ .toggle_output_tags = tags },
-                    .toggle_window_tags => .{ .toggle_window_tags = tags },
-                    else => unreachable,
-                };
-                context.xkb_bindings.addBinding(river_seat_v1, @field(xkbcommon.Keysym, &buffer), tag_bind.modifiers, command);
-            }
-        }
-        // Rest of the keybinds
-        for (context.config.keybinds.keys(), context.config.keybinds.values()) |key, command| {
-            context.xkb_bindings.addBinding(river_seat_v1, key.keysym, key.modifiers, command);
-        }
-
-        // Pointer bindings
-        for (context.config.pointer_binds.items) |pointer_bind| {
-            const binding = river_seat_v1.getPointerBinding(pointer_bind.button, pointer_bind.modifiers) catch {
-                log.err("Failed to create pointer binding", .{});
-                continue;
-            };
-
-            switch (pointer_bind.action) {
-                .move_window => {
-                    if (seat.move_pointer_binding) |old| old.destroy();
-                    binding.setListener(*Seat, Seat.movePointerBindingListener, seat);
-                    seat.move_pointer_binding = binding;
-                },
-                .resize_window => {
-                    if (seat.resize_pointer_binding) |old| old.destroy();
-                    binding.setListener(*Seat, Seat.resizePointerBindingListener, seat);
-                    seat.resize_pointer_binding = binding;
-                },
-            }
-            binding.enable();
-        }
+        wm.initialize();
     }
 
     {
@@ -147,7 +156,7 @@ fn manage_start(wm: *WindowManager) void {
     river_window_manager_v1.manageFinish();
 }
 
-fn render_start(wm: *WindowManager) void {
+fn render(wm: *WindowManager) void {
     const river_window_manager_v1 = wm.river_window_manager_v1;
     {
         var it = wm.seats.iterator(.forward);
@@ -171,8 +180,8 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
         .unavailable => {
             fatal("Window manager unavailable (some other wm instance is running). Exiting", .{});
         },
-        .manage_start => wm.manage_start(),
-        .render_start => wm.render_start(),
+        .manage_start => wm.manage(),
+        .render_start => wm.render(),
         .output => |ev| {
             const output = Output.create(context, ev.id) catch @panic("Out of memory");
             wm.outputs.append(output);
@@ -212,12 +221,32 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
             // If there was already an output, but no seats, set the first output as focused
             if (wm.outputs.first()) |output| {
                 seat.pending_manage.output = .{ .output = output };
+
+                // Adopt any orphan windows that arrived before we had a seat
+                var it = wm.orphan_windows.iterator(.forward);
+                while (it.next()) |window| {
+                    window.pending_manage.pending_output = .{ .output = output };
+                }
+                if (wm.orphan_windows.first()) |first| {
+                    seat.pending_manage.window = .{ .window = first };
+                    seat.pending_manage.should_warp_pointer = true;
+                }
+                output.windows.appendList(&wm.orphan_windows);
             }
         },
         .window => |ev| {
             // TODO: Support multiple seats
-            const seat = wm.seats.first() orelse @panic("Failed to get seat");
-            const focused_output = seat.focused_output;
+            const seat = wm.seats.first();
+            const focused_output = if (seat) |s|
+                s.focused_output orelse if (s.pending_manage.output) |pending_output|
+                    switch (pending_output) {
+                        .output => |output| output,
+                        .clear_focus => null,
+                    }
+                else
+                    wm.outputs.first()
+            else
+                wm.outputs.first();
             const window_list = if (focused_output) |output|
                 &output.windows
             else
@@ -228,8 +257,10 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
                 .top => window_list.prepend(window),
                 .bottom => window_list.append(window),
             }
-            seat.pending_manage.window = .{ .window = window };
-            seat.pending_manage.should_warp_pointer = true;
+            if (seat) |s| {
+                s.pending_manage.window = .{ .window = window };
+                s.pending_manage.should_warp_pointer = true;
+            }
         },
         else => |ev| {
             log.debug("unhandled event: {s}", .{@tagName(ev)});
