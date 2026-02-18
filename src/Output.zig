@@ -576,8 +576,11 @@ pub fn manage(output: *Output) void {
         }
     }
 
-    // Calculate layout before managing windows
-    output.calculateLayout();
+    // Calculate layout before managing windows, but only if output dimensions are initialized
+    if (output.usable_geometry.width > 0 and output.usable_geometry.height > 0) {
+        output.calculateLayout();
+    }
+
     var it = output.windows.iterator(.forward);
     while (it.next()) |window| {
         window.manage();
@@ -612,6 +615,8 @@ pub fn render(output: *Output) void {
 /// - Single window: maximized
 /// - Multiple windows: stack (45% left, vertically tiled), primary (55% right)
 fn calculateLayout(output: *Output) void {
+    // Shouldn't be called if height/width are not positive
+    assert(output.geometry.width > 0 and output.geometry.height > 0);
     // Get a list of active windows
     var active_list: DoublyLinkedList = .{};
     var active_count: u31 = 0;
@@ -714,8 +719,14 @@ fn calculateLayout(output: *Output) void {
         }
 
         // Make space for borders
-        window.pending_manage.dimensions.?.height -= 2 * border_width;
-        window.pending_manage.dimensions.?.width -= 2 * border_width;
+        if (window.pending_manage.dimensions.?.height > 2 * border_width and
+            window.pending_manage.dimensions.?.width > 2 * border_width)
+        {
+            window.pending_manage.dimensions.?.height -= 2 * border_width;
+            window.pending_manage.dimensions.?.width -= 2 * border_width;
+        } else {
+            log.warn("Can't add borders to some window; {s}'s dimensions are too small.", .{output.name orelse "some output"});
+        }
         window.pending_render.position.?.x += border_width;
         window.pending_render.position.?.y += border_width;
     }
