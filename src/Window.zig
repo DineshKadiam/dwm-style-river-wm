@@ -11,6 +11,7 @@ river_node_v1: *river.NodeV1,
 
 app_id: ?[]const u8 = null,
 title: ?[]const u8 = null,
+parent: ?*river.WindowV1 = null,
 
 rect: utils.Rect = .{},
 
@@ -22,6 +23,7 @@ output: ?*Output,
 
 floating: bool = false,
 floating_rect: utils.Rect = .{},
+dimensions_hint: DimensionsHint = .{},
 
 initialized: bool = false,
 
@@ -62,6 +64,37 @@ pub const PendingRender = struct {
     focused: ?bool = null,
 
     show: ?bool = null,
+};
+
+pub const DimensionsHint = struct {
+    min_width: u31 = 0,
+    min_height: u31 = 0,
+    max_width: u31 = 0,
+    max_height: u31 = 0,
+
+    fn preferredWidth(hint: DimensionsHint) ?u31 {
+        if (hint.min_width != 0 and hint.max_width != 0)
+            // Two separate divisions so we don't overflow the u31
+            return hint.min_width / 2 + hint.max_width / 2
+        else if (hint.min_width != 0)
+            return hint.min_width
+        else if (hint.max_width != 0)
+            return hint.max_width
+        else
+            return null;
+    }
+
+    fn preferredHeight(hint: DimensionsHint) ?u31 {
+        if (hint.min_height != 0 and hint.max_height != 0)
+            // Two separate divisions so we don't overflow the u31
+            return hint.min_height / 2 + hint.max_height / 2
+        else if (hint.min_height != 0)
+            return hint.min_height
+        else if (hint.max_height != 0)
+            return hint.max_height
+        else
+            return null;
+    }
 };
 
 pub fn create(context: *Context, river_window_v1: *river.WindowV1, output: ?*Output) !*Window {
@@ -144,19 +177,39 @@ fn windowListener(river_window_v1: *river.WindowV1, event: river.WindowV1.Event,
             assert(ev.width > 0 and ev.height > 0);
             window.pending_manage.dimensions = .{ .width = @intCast(ev.width), .height = @intCast(ev.height) };
         },
-        .dimensions_hint => {
-            // TODO: Use this for clamping windows on resize
+        .dimensions_hint => |ev| {
+            window.dimensions_hint = .{
+                .min_width = @intCast(ev.min_width),
+                .min_height = @intCast(ev.min_height),
+                .max_width = @intCast(ev.max_width),
+                .max_height = @intCast(ev.max_height),
+            };
         },
         .app_id => |ev| {
             if (window.app_id) |app_id| utils.gpa.free(app_id);
-            window.app_id = utils.gpa.dupe(u8, std.mem.span(ev.app_id.?)) catch @panic("Out of memory");
+            window.app_id = if (ev.app_id) |aid|
+                utils.gpa.dupe(u8, std.mem.span(aid)) catch @panic("Out of memory")
+            else
+                null;
         },
         .title => |ev| {
             if (window.title) |title| utils.gpa.free(title);
-            window.title = utils.gpa.dupe(u8, std.mem.span(ev.title.?)) catch @panic("Out of memory");
+            window.title = if (ev.title) |t|
+                utils.gpa.dupe(u8, std.mem.span(t)) catch @panic("Out of memory")
+            else
+                null;
         },
-        .parent => {
-            // TODO: float this window directly over its parent
+        .parent => |ev| {
+            const parent = ev.parent orelse return;
+            window.parent = parent;
+
+            // Make window float on top of its parent
+            window.pending_manage.floating = true;
+            const parent_window: *Window = @ptrCast(@alignCast(parent.getUserData() orelse return));
+            window.pending_render.position = .{
+                .x = parent_window.rect.x + @divTrunc(parent_window.rect.width, 2),
+                .y = parent_window.rect.y + @divTrunc(parent_window.rect.height, 2),
+            };
         },
         else => |ev| {
             log.debug("unhandled event: {s}", .{@tagName(ev)});
@@ -186,9 +239,7 @@ pub fn initialize(window: *Window) void {
     const res = window.applyRules();
     if (res.tags) |tags| window.tags = tags;
     if (res.float) |should_float|
-        window.pending_manage.floating = should_float
-    else
-        window.pending_manage.floating = false;
+        window.pending_manage.floating = should_float;
 }
 
 pub fn manage(window: *Window) void {
@@ -208,10 +259,12 @@ pub fn manage(window: *Window) void {
             river_window_v1.setTiled(.{});
 
             if (window.floating_rect.width == 0) {
-                // Never floated before; use 75% of usable area, centered on output
+                // This window has never floated before, let's give it floating dimensions
+                // Go with the mid-point of the preferred width/height if the window has one
+                // If not, go with 75% of the output's usable size in the same dimension
                 if (window.output) |output| {
-                    window.floating_rect.width = @divFloor(output.usable_geometry.width * 3, 4);
-                    window.floating_rect.height = @divFloor(output.usable_geometry.height * 3, 4);
+                    window.floating_rect.width = if (window.dimensions_hint.preferredWidth()) |w| w else @divFloor(output.usable_geometry.width * 3, 4);
+                    window.floating_rect.height = if (window.dimensions_hint.preferredHeight()) |h| h else @divFloor(output.usable_geometry.height * 3, 4);
                     window.floating_rect.x = output.usable_geometry.x + @divFloor(output.usable_geometry.width, 2) - @divFloor(window.floating_rect.width, 2);
                     window.floating_rect.y = output.usable_geometry.y + @divFloor(output.usable_geometry.height, 2) - @divFloor(window.floating_rect.height, 2);
                 } else {
@@ -233,7 +286,7 @@ pub fn manage(window: *Window) void {
             window.floating_rect.y = window.rect.y;
         }
     }
-    // Layout (pre-computed by WindowManager.calculatePrimaryStackLayout())
+    // Layout (pre-computed by WindowManager.caluclateLayout())
     if (pending_manage.dimensions) |dimensions| {
         window.rect.width = dimensions.width;
         window.rect.height = dimensions.height;
