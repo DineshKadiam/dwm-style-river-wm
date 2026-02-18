@@ -2,6 +2,8 @@
 
 These are in rough order of my priority, though no promises I do them in this order.
 
+- [ ] Move orphan handling out of .output and .seat events; into manage()
+- [ ] Add focused window title to bar
 - [ ] Support overriding config location
 - [ ] Support configuring primary vs secondary stack side
 - [ ] Support switch handling (e.g. lid close)

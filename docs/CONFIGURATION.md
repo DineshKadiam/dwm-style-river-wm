@@ -71,6 +71,57 @@ borders {
 
 Colors are specified in `0xRRGGBB` or `0xRRGGBBAA` hex format.
 
+## Window Rules
+
+Window rules let you set certain properties on windows when they first appear,
+based on their `app_id` and/or `title`. Crucially, you can override them any time after
+that, it's only when the window is first created. Rules are placed inside a `window_rules` block:
+
+```kdl
+window_rules {
+    // Float Firefox picture-in-picture windows
+    float app_id="firefox" title="Picture-in-Picture"
+    // Float any window with "Preferences" in the title
+    float title="*Preferences*"
+    // Keep mpv windows tiled
+    no_float app_id="mpv"
+    // Send Slack to tag 3 (1<<2 = 0x0004)
+    tags 0x0004 app_id="Slack"
+}
+```
+
+### Rule Types
+
+| Rule       | Argument         | Description                              |
+|------------|------------------|------------------------------------------|
+| `float`    |                  | Make matching windows float              |
+| `no_float` |                  | Keep matching windows tiled              |
+| `tags`     | u32 (bitmask)    | Assign matching windows to specific tags |
+
+### Matching
+
+Each rule can have an `app_id=` and/or `title=` property. Both support glob patterns:
+
+| Pattern       | Matches                        |
+|---------------|--------------------------------|
+| `"foo"`       | Exact match only               |
+| `"foo*"`      | Starts with "foo"              |
+| `"*foo"`      | Ends with "foo"                |
+| `"*foo*"`     | Contains "foo"                 |
+| `"*"`         | Everything                     |
+
+A rule with no `app_id=` or `title=` property matches all windows. If both are
+specified, both must match.
+
+### Evaluation
+
+Rules are evaluated top-to-bottom. Each matching rule applies only the properties it
+specifies, so multiple rules can contribute different properties to the same window.
+For the same property, later rules override earlier ones.
+
+Rules are applied once during window initialization. Title changes after initialization
+do not re-trigger rules.
+
 ## Bar
 
 The bar is an optional widget that shows the time on your screen. Right now, that's it.
