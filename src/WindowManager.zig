@@ -212,12 +212,32 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
             // If there was already an output, but no seats, set the first output as focused
             if (wm.outputs.first()) |output| {
                 seat.pending_manage.output = .{ .output = output };
+
+                // Adopt any orphan windows that arrived before we had a seat
+                var it = wm.orphan_windows.iterator(.forward);
+                while (it.next()) |window| {
+                    window.pending_manage.pending_output = .{ .output = output };
+                }
+                if (wm.orphan_windows.first()) |first| {
+                    seat.pending_manage.window = .{ .window = first };
+                    seat.pending_manage.should_warp_pointer = true;
+                }
+                output.windows.appendList(&wm.orphan_windows);
             }
         },
         .window => |ev| {
             // TODO: Support multiple seats
-            const seat = wm.seats.first() orelse @panic("Failed to get seat");
-            const focused_output = seat.focused_output;
+            const seat = wm.seats.first();
+            const focused_output = if (seat) |s|
+                s.focused_output orelse if (s.pending_manage.output) |pending_output|
+                    switch (pending_output) {
+                        .output => |output| output,
+                        .clear_focus => null,
+                    }
+                else
+                    wm.outputs.first()
+            else
+                wm.outputs.first();
             const window_list = if (focused_output) |output|
                 &output.windows
             else
@@ -228,8 +248,10 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
                 .top => window_list.prepend(window),
                 .bottom => window_list.append(window),
             }
-            seat.pending_manage.window = .{ .window = window };
-            seat.pending_manage.should_warp_pointer = true;
+            if (seat) |s| {
+                s.pending_manage.window = .{ .window = window };
+                s.pending_manage.should_warp_pointer = true;
+            }
         },
         else => |ev| {
             log.debug("unhandled event: {s}", .{@tagName(ev)});
