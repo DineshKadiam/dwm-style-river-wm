@@ -72,28 +72,20 @@ pub const DimensionsHint = struct {
     max_width: u31 = 0,
     max_height: u31 = 0,
 
-    fn preferredWidth(hint: DimensionsHint) ?u31 {
-        if (hint.min_width != 0 and hint.max_width != 0)
-            // Two separate divisions so we don't overflow the u31
-            return hint.min_width / 2 + hint.max_width / 2
-        else if (hint.min_width != 0)
-            return hint.min_width
-        else if (hint.max_width != 0)
-            return hint.max_width
-        else
-            return null;
+    fn clampWidth(hint: DimensionsHint, width: u31) u31 {
+        return math.clamp(
+            width,
+            if (hint.min_width != 0) hint.min_width else 1,
+            if (hint.max_width != 0) hint.max_width else math.maxInt(u31),
+        );
     }
 
-    fn preferredHeight(hint: DimensionsHint) ?u31 {
-        if (hint.min_height != 0 and hint.max_height != 0)
-            // Two separate divisions so we don't overflow the u31
-            return hint.min_height / 2 + hint.max_height / 2
-        else if (hint.min_height != 0)
-            return hint.min_height
-        else if (hint.max_height != 0)
-            return hint.max_height
-        else
-            return null;
+    fn clampHeight(hint: DimensionsHint, height: u31) u31 {
+        return math.clamp(
+            height,
+            if (hint.min_height != 0) hint.min_height else 1,
+            if (hint.max_height != 0) hint.max_height else math.maxInt(u31),
+        );
     }
 };
 
@@ -249,6 +241,7 @@ pub fn manage(window: *Window) void {
     const pending_manage = window.pending_manage;
     const river_window_v1 = window.river_window_v1;
     // Floating status
+    var became_floating = false;
     if (pending_manage.floating) |floating| blk: {
         // This needs to be before proposing the new dimensions since we want to save the current ones!
         // Skip the rest of the block if floating matches what is already set
@@ -256,16 +249,16 @@ pub fn manage(window: *Window) void {
 
         window.floating = floating;
         if (floating) {
+            became_floating = true;
             // Let the window know it isn't tiled
             river_window_v1.setTiled(.{});
 
             if (window.floating_rect.width == 0) {
-                // This window has never floated before, let's give it floating dimensions
-                // Go with the mid-point of the preferred width/height if the window has one
-                // If not, go with 75% of the output's usable size in the same dimension
+                // This window has never floated before, let's give it floating dimensions.
+                // Use 75% of the output's usable size, clamped to the window's dimension hints.
                 if (window.output) |output| {
-                    window.floating_rect.width = if (window.dimensions_hint.preferredWidth()) |w| w else @divFloor(output.usable_geometry.width * 3, 4);
-                    window.floating_rect.height = if (window.dimensions_hint.preferredHeight()) |h| h else @divFloor(output.usable_geometry.height * 3, 4);
+                    window.floating_rect.width = window.dimensions_hint.clampWidth(@divFloor(output.usable_geometry.width * 3, 4));
+                    window.floating_rect.height = window.dimensions_hint.clampHeight(@divFloor(output.usable_geometry.height * 3, 4));
                     window.floating_rect.x = output.usable_geometry.x + @divFloor(output.usable_geometry.width, 2) - @divFloor(window.floating_rect.width, 2);
                     window.floating_rect.y = output.usable_geometry.y + @divFloor(output.usable_geometry.height, 2) - @divFloor(window.floating_rect.height, 2);
                 } else {
@@ -291,7 +284,10 @@ pub fn manage(window: *Window) void {
     if (pending_manage.dimensions) |dimensions| {
         window.rect.width = dimensions.width;
         window.rect.height = dimensions.height;
-        window.river_window_v1.proposeDimensions(dimensions.width, dimensions.height);
+        if (!became_floating) {
+            // We want to skip this if the floating block above already proposed dimensions
+            window.river_window_v1.proposeDimensions(dimensions.width, dimensions.height);
+        }
     }
     // Fullscreen and maximize operations
     if (pending_manage.fullscreen) |fullscreen| blk: {
@@ -398,6 +394,7 @@ fn applyRules(window: *Window) struct {
 
 const std = @import("std");
 const assert = std.debug.assert;
+const math = std.math;
 const DoublyLinkedList = std.DoublyLinkedList;
 
 const wayland = @import("wayland");
