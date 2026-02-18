@@ -150,22 +150,23 @@ fn windowListener(river_window_v1: *river.WindowV1, event: river.WindowV1.Event,
                         seat.pending_manage.pointer_resize_request = null;
                 }
             }
-            // If there's no output, we don't really care about focus and can skip this event
-            const output = if (window.output) |output| output else return;
-            var it = window.context.wm.seats.iterator(.forward);
-            while (it.next()) |seat| {
-                if (seat.focused_window == window) {
-                    // Find another window to focus and warp pointer there
-                    if (output.prevWindow(window)) |next_focus| {
-                        if (next_focus != window) {
-                            seat.pending_manage.window = .{ .window = next_focus };
-                            seat.pending_manage.should_warp_pointer = true;
+            if (window.output) |output| {
+                // Get a new window for the wm to focus
+                var it = window.context.wm.seats.iterator(.forward);
+                while (it.next()) |seat| {
+                    if (seat.focused_window == window) {
+                        // Find another window to focus and warp pointer there
+                        if (output.prevWindow(window)) |next_focus| {
+                            if (next_focus != window) {
+                                seat.pending_manage.window = .{ .window = next_focus };
+                                seat.pending_manage.should_warp_pointer = true;
+                            } else {
+                                // Only window in list - clear focus
+                                seat.pending_manage.window = .clear_focus;
+                            }
                         } else {
-                            // Only window in list - clear focus
                             seat.pending_manage.window = .clear_focus;
                         }
-                    } else {
-                        seat.pending_manage.window = .clear_focus;
                     }
                 }
             }
