@@ -333,13 +333,16 @@ const XkbBinding = struct {
         };
 
         if (pending_output) |output| {
-            // We have to remove window from current output's windows list first
-            window.link.remove();
-            output.windows.append(window);
+            // This should be a noop if there's only one output
+            if (output != window.output) {
+                // We have to remove window from current output's windows list first
+                window.link.remove();
+                output.windows.append(window);
 
-            seat.pending_manage.output = .{ .output = output };
-            seat.pending_manage.should_warp_pointer = true;
-            window.pending_manage.pending_output = .{ .output = output };
+                seat.pending_manage.output = .{ .output = output };
+                seat.pending_manage.should_warp_pointer = true;
+                window.pending_manage.pending_output = .{ .output = output };
+            }
         }
     }
 

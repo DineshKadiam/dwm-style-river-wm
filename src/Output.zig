@@ -205,8 +205,13 @@ fn riverOutputListener(river_output_v1: *river.OutputV1, event: river.OutputV1.E
                 if (seat.focused_output != output) break :blk;
 
                 const next_output = wm.nextOutput(output);
-                if (next_output == output) break :blk;
-                const o = next_output orelse break :blk;
+                if (next_output == output or next_output == null) {
+                    // This was the last output; clear focus
+                    seat.pending_manage.output = .clear_focus;
+                    seat.pending_manage.window = .clear_focus;
+                    break :blk;
+                }
+                const o = next_output.?;
 
                 seat.pending_manage.output = .{ .output = o };
                 if (o.windows.first()) |window| {
