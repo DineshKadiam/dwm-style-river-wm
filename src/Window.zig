@@ -193,6 +193,7 @@ fn windowListener(river_window_v1: *river.WindowV1, event: river.WindowV1.Event,
                 null;
         },
         .parent => |ev| {
+            // Nothing to do if ev.parent is null
             const parent = ev.parent orelse return;
             window.parent = parent;
 
@@ -204,6 +205,23 @@ fn windowListener(river_window_v1: *river.WindowV1, event: river.WindowV1.Event,
                 .y = parent_window.rect.y + @divTrunc(parent_window.rect.height, 2),
             };
         },
+        .fullscreen_requested => |ev| {
+            window.pending_manage.fullscreen = true;
+
+            // This event allows the window to provide an output preference,
+            // so we should move the window if it wants
+            if (ev.output) |river_output_v1| {
+                if (river_output_v1.getUserData()) |user_data| {
+                    const output: *Output = @ptrCast(@alignCast(user_data));
+                    // We have to remove window from current output's windows list first
+                    window.link.remove();
+                    output.windows.append(window);
+
+                    window.pending_manage.pending_output = .{ .output = output };
+                }
+            }
+        },
+        .exit_fullscreen_requested => window.pending_manage.fullscreen = false,
         else => |ev| {
             log.debug("unhandled event: {s}", .{@tagName(ev)});
         },

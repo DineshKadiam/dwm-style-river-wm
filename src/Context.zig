@@ -54,7 +54,7 @@ pub const Options = struct {
 
     river_input_manager_v1: *river.InputManagerV1,
     river_libinput_config_v1: *river.LibinputConfigV1,
-    river_layer_shell_v1: *river.LayerShellV1, // TODO
+    river_layer_shell_v1: *river.LayerShellV1,
     river_window_manager_v1: *river.WindowManagerV1,
     river_xkb_bindings_v1: *river.XkbBindingsV1,
 

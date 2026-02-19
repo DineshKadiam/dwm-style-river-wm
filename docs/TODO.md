@@ -2,6 +2,7 @@
 
 These are in rough order of my priority, though no promises I do them in this order.
 
+- [ ] Use set_xcursor_theme request
 - [ ] Add focused window title to bar
 - [ ] Support overriding config location
 - [ ] Support configuring primary vs secondary stack side

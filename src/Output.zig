@@ -626,9 +626,10 @@ fn calculateLayout(output: *Output) void {
         // window rules are reflected in the first frame's layout.
         window.initialize();
         if (output.tags & window.tags != 0x0000) {
-            // Floating windows should be shown but not included in this layout generation
+            // Fullscreen and floating windows should be shown but not included in layout generation
+            const will_be_fullscreen = window.pending_manage.fullscreen orelse window.fullscreen;
             const will_float = window.pending_manage.floating orelse window.floating;
-            if (!will_float) {
+            if (!will_be_fullscreen and !will_float) {
                 active_count += 1;
                 active_list.append(&window.active_list_node);
             }
