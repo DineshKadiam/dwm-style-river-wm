@@ -10,7 +10,7 @@ const BufferPool = @This();
 /// Note that we can absolutely work with higher buffer numbers if needed,
 /// however we consider that to be an anomaly and therefore do not want to
 /// keep all those extra buffers around if we can avoid it, as to not have
-/// unecessary memory overhead.
+/// unnecessary memory overhead.
 const max_buffer_multiplicity = 3;
 
 /// The buffers. This is a linked list and not an array list, because we

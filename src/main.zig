@@ -90,9 +90,6 @@ pub fn main() !void {
     try run(wl_display, context);
 }
 
-/// Function to handle the main event loop
-///
-/// Since we've added a bar with a clock,we need
 fn run(wl_display: *wl.Display, context: *Context) !void {
     var mask = posix.sigemptyset();
 

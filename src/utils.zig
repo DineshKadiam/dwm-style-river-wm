@@ -186,8 +186,6 @@ const wayland = @import("wayland");
 const river = wayland.client.river;
 const pixman = @import("pixman");
 
-const utils = @import("utils.zig");
-
 const log = std.log.scoped(.utils);
 
 const testing = std.testing;
