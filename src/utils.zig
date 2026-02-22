@@ -155,9 +155,9 @@ pub fn tokenizeToOwnedSlices(input: []const u8, delimiter: u8) ![][]const u8 {
     var it = std.mem.tokenizeScalar(u8, input, delimiter);
     while (it.next()) |part| {
         const duped = try gpa.dupe(u8, part);
-        try list.append(utils.gpa, duped);
+        try list.append(gpa, duped);
     }
-    return list.toOwnedSlice(utils.gpa);
+    return list.toOwnedSlice(gpa);
 }
 
 pub fn stripQuotes(s: []const u8) []const u8 {
@@ -185,8 +185,6 @@ const mem = std.mem;
 const wayland = @import("wayland");
 const river = wayland.client.river;
 const pixman = @import("pixman");
-
-const utils = @import("utils.zig");
 
 const log = std.log.scoped(.utils);
 

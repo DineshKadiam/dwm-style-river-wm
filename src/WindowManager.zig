@@ -83,8 +83,8 @@ pub fn prevOutput(wm: *WindowManager, current: *Output) ?*Output {
 fn initialize(wm: *WindowManager) void {
     if (wm.context.initialized) return;
 
-    // We need a seat to intitialize this stuff, so let's just not do it right now.
-    // The WM can run fine without it, though, it won't be fully usuable.
+    // We need a seat to initialize this stuff, so let's just not do it right now.
+    // The WM can run fine without it, though, it won't be fully usable.
     const seat = wm.seats.first() orelse return;
     const river_seat_v1 = seat.river_seat_v1;
 

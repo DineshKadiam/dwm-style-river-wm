@@ -334,4 +334,4 @@ const utils = @import("utils.zig");
 const Context = @import("Context.zig");
 const InputDevice = @import("InputDevice.zig");
 
-const log = std.log.scoped(.InputDevice);
+const log = std.log.scoped(.LibinputDevice);

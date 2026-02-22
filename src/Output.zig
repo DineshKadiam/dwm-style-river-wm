@@ -32,7 +32,6 @@ surfaces: ?struct {
     layer_surface: *zwlr.LayerSurfaceV1,
 } = null,
 
-// TODO: Make Bar a user option, can disable if they want
 bar: ?Bar,
 tag_overlay: ?TagOverlay,
 
@@ -439,8 +438,8 @@ fn calculateScale(image_dimension: c_int, output_dimension: u31, scale: u31) f64
 fn calculateTransform(image_dimension: c_int, output_dimension: u31, dimension_scale: f64) f64 {
     const numerator1: f64 = @floatFromInt(image_dimension);
     const denominator1: f64 = dimension_scale;
-    const subtruend: f64 = @floatFromInt(output_dimension);
-    const numerator2: f64 = numerator1 / denominator1 - subtruend;
+    const subtrahend: f64 = @floatFromInt(output_dimension);
+    const numerator2: f64 = numerator1 / denominator1 - subtrahend;
 
     return numerator2 / 2 / dimension_scale;
 }
@@ -565,7 +564,7 @@ pub fn manage(output: *Output) void {
         // Show tag overlay and arm the hide timer
         if (output.tag_overlay) |*tag_overlay| {
             if (tag_overlay.surfaces) |_| {
-                // The overlay is arleady visible, but we still need to re-render
+                // The overlay is already visible, but we still need to re-render
                 tag_overlay.render() catch |err| {
                     log.err("tag_overlay render failed: {}", .{err});
                 };

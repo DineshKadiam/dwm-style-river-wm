@@ -33,7 +33,7 @@ pending_manage: PendingManage = .{},
 /// State consumed in render() phase, reset at end of render().
 pending_render: PendingRender = .{},
 
-/// Used to put Windows into a list in calculatePrimaryStackLayout()
+/// Used to put Windows into a list when calculating the layout
 active_list_node: DoublyLinkedList.Node = .{},
 
 link: wl.list.Link,
@@ -298,7 +298,7 @@ pub fn manage(window: *Window) void {
             window.floating_rect.y = window.rect.y;
         }
     }
-    // Layout (pre-computed by WindowManager.caluclateLayout())
+    // Layout (pre-computed by WindowManager
     if (pending_manage.dimensions) |dimensions| {
         window.rect.width = dimensions.width;
         window.rect.height = dimensions.height;

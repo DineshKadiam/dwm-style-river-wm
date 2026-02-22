@@ -95,7 +95,7 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
 
                     const command: XkbBindings.Command = sw: switch (name) {
                         .spawn => {
-                            // TODO: Add propert(ies) to support ENV vars
+                            // TODO: Add properties to support ENV vars
                             const exec_str = utils.stripQuotes(node.arg(parser, 2) orelse {
                                 logWarnMissingNodeArg(name, "command");
                                 continue;
