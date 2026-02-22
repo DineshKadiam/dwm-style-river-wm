@@ -116,6 +116,13 @@ pub fn destroy(context: *Context) void {
     if (context.tag_overlay_timer_fd) |fd| posix.close(fd);
     context.buffer_pool.deinit();
 
+    // Destroy Wayland globals
+    context.river_layer_shell_v1.destroy();
+    context.zwlr_layer_shell_v1.destroy();
+    context.wl_shm.destroy();
+    context.wl_compositor.destroy();
+    context.wl_registry.destroy();
+
     utils.gpa.destroy(context);
 }
 

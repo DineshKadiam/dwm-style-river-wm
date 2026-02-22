@@ -52,7 +52,15 @@ pub fn destroy(wm: *WindowManager) void {
             seat.destroy();
         }
     }
+    {
+        var it = wm.orphan_windows.safeIterator(.forward);
+        while (it.next()) |window| {
+            window.link.remove();
+            window.destroy();
+        }
+    }
 
+    wm.river_window_manager_v1.destroy();
     utils.gpa.destroy(wm);
 }
 

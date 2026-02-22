@@ -118,20 +118,28 @@ pub fn create(context: *Context, river_output_v1: *river.OutputV1) !*Output {
 }
 
 pub fn destroy(output: *Output) void {
+    // Destroy any windows left on the Output
+    // This *should* be empty
     var it = output.windows.safeIterator(.forward);
     while (it.next()) |window| {
         window.link.remove();
         window.destroy();
     }
 
+    // Deinit optional surfaces
     if (output.bar) |*bar| bar.deinit();
     if (output.tag_overlay) |*tag_overlay| tag_overlay.deinit();
-
-    output.tag_layout_overrides.deinit(utils.gpa);
     output.deinitWallpaperLayerSurface();
-    if (output.wl_output) |wl_output| wl_output.release();
-    output.river_output_v1.destroy();
+
+    // Destroy/deinit other Output fields
+    output.tag_layout_overrides.deinit(utils.gpa);
+    if (output.name) |name| utils.gpa.free(name);
+
+    // Destroy/release relevant Wayland interfaces
     output.river_layer_shell_output_v1.destroy();
+    output.river_output_v1.destroy();
+    if (output.wl_output) |wl_output| wl_output.release();
+
     utils.gpa.destroy(output);
 }
 
@@ -302,6 +310,7 @@ fn wlOutputListener(_: *wl.Output, event: wl.Output.Event, output: *Output) void
             output.scale = @intCast(ev.factor);
         },
         .name => |ev| {
+            if (output.name) |old_name| utils.gpa.free(old_name);
             output.name = utils.gpa.dupe(u8, mem.span(ev.name)) catch @panic("Out of memory");
         },
         else => {},

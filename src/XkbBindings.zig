@@ -489,6 +489,7 @@ pub fn destroy(xkb_bindings: *XkbBindings) void {
         binding.xkb_binding_v1.destroy();
         utils.gpa.destroy(binding);
     }
+    xkb_bindings.xkb_bindings_v1.destroy();
     utils.gpa.destroy(xkb_bindings);
 }
 

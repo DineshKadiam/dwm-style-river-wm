@@ -38,6 +38,8 @@ pub fn create(context: *Context, river_input_manager_v1: *river.InputManagerV1, 
 }
 
 pub fn destroy(im: *InputManager) void {
+    im.river_input_manager_v1.destroy();
+    im.river_libinput_config_v1.destroy();
     utils.gpa.destroy(im);
 }
 

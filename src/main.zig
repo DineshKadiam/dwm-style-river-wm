@@ -40,12 +40,11 @@ pub fn main() !void {
     _ = fcft.init(.auto, false, fcft_log_level);
     defer fcft.fini();
 
-    const wayland_display_var = try utils.gpa.dupeZ(u8, process.getEnvVarOwned(utils.gpa, "WAYLAND_DISPLAY") catch {
-        fatal("Error getting WAYLAND_DISPLAY environment variable. Exiting", .{});
-    });
-    defer utils.gpa.free(wayland_display_var);
+    const wayland_display_var = posix.getenvZ("WAYLAND_DISPLAY") orelse {
+        fatal("WAYLAND_DISPLAY environment variable not set. Exiting", .{});
+    };
 
-    const wl_display = wl.Display.connect(null) catch {
+    const wl_display = wl.Display.connect(wayland_display_var) catch {
         fatal("Error connecting to Wayland server. Exiting", .{});
     };
     defer wl_display.disconnect();

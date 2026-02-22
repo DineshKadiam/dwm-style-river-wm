@@ -285,12 +285,13 @@ fn isSupported(comptime E: type, comptime S: type, val: E, support: S) bool {
 /// log any unsupported or invalid config responses from the compositor.
 fn applyResult(result: anyerror!*river.LibinputResultV1) void {
     const Listener = struct {
-        fn resultListener(_: *river.LibinputResultV1, event: river.LibinputResultV1.Event, _: ?*anyopaque) void {
+        fn resultListener(libinput_result: *river.LibinputResultV1, event: river.LibinputResultV1.Event, _: ?*anyopaque) void {
             switch (event) {
                 .success => {},
                 .unsupported => log.debug("Config option unsupported by device", .{}),
                 .invalid => log.warn("Invalid config value for device", .{}),
             }
+            libinput_result.destroy();
         }
     };
 
