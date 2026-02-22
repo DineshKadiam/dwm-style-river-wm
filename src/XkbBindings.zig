@@ -50,6 +50,47 @@ pub const Command = union(enum) {
 
     // When passthrough is enabled, only keybinds set to toggle_passthrough are active
     toggle_passthrough,
+
+    /// Explicitly list each variant so that, if we add a new one,
+    /// we'll get a reminder to free it here (instead of it being
+    /// swallowed by an `else =>`)
+    pub fn deinit(self: Command) void {
+        switch (self) {
+            .spawn => |argv| {
+                for (argv) |arg| utils.gpa.free(arg);
+                utils.gpa.free(argv);
+            },
+            .focus_next_window,
+            .focus_prev_window,
+            .focus_next_output,
+            .focus_prev_output,
+            .send_to_next_output,
+            .send_to_prev_output,
+            .zoom,
+            .toggle_float,
+            .change_ratio,
+            .increment_primary_count,
+            .decrement_primary_count,
+            .reload_config,
+            .toggle_fullscreen,
+            .close_window,
+            .set_output_tags,
+            .set_window_tags,
+            .toggle_output_tags,
+            .toggle_window_tags,
+            .move_up,
+            .move_down,
+            .move_left,
+            .move_right,
+            .resize_width,
+            .resize_height,
+            .center_float,
+            .swap_next,
+            .swap_prev,
+            .toggle_passthrough,
+            => {},
+        }
+    }
 };
 
 const XkbBinding = struct {

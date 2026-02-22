@@ -185,13 +185,7 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
                         .keysym = keysym,
                     });
                     if (gop.found_existing) {
-                        switch (gop.value_ptr.*) {
-                            .spawn => |argv| {
-                                for (argv) |arg| utils.gpa.free(arg);
-                                utils.gpa.free(argv);
-                            },
-                            else => unreachable,
-                        }
+                        gop.value_ptr.deinit();
                     }
                     gop.value_ptr.* = command;
                 } else {

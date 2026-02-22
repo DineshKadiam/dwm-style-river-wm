@@ -127,13 +127,7 @@ pub fn create() !*Config {
 
 pub fn destroy(config: *Config) void {
     for (config.keybinds.values()) |cmd| {
-        switch (cmd) {
-            .spawn => |argv| {
-                for (argv) |arg| utils.gpa.free(arg);
-                utils.gpa.free(argv);
-            },
-            else => {},
-        }
+        cmd.deinit();
     }
     config.keybinds.deinit(utils.gpa);
     config.tag_binds.deinit(utils.gpa);
