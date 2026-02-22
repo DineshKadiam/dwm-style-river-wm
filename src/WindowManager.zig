@@ -141,6 +141,8 @@ fn manage(wm: *WindowManager) void {
         wm.initialize();
     }
 
+    wm.context.xkb_bindings.manage();
+
     // Adopt orphan windows before outputs manage so they're included
     // in calculateLayout() and window.manage() this cycle.
     if (wm.orphan_windows.first() != null) {

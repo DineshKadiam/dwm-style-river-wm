@@ -47,6 +47,9 @@ pub const Command = union(enum) {
     // Swap window position in stack
     swap_next,
     swap_prev,
+
+    // When passthrough is enabled, only keybinds set to toggle_passthrough are active
+    toggle_passthrough,
 };
 
 const XkbBinding = struct {
@@ -93,6 +96,9 @@ const XkbBinding = struct {
 
     fn executeCommand(xkb_binding: *XkbBinding) void {
         const context = xkb_binding.context;
+
+        const first_seat = context.wm.seats.first() orelse null;
+
         // TODO: Should I log.warn when commands return early?
         switch (xkb_binding.command) {
             .spawn => |cmd| {
@@ -108,8 +114,7 @@ const XkbBinding = struct {
             .send_to_next_output => sendWindowToOutput(context, .next),
             .send_to_prev_output => sendWindowToOutput(context, .prev),
             .zoom => {
-                const wm = context.wm;
-                const seat = wm.seats.first() orelse return;
+                const seat = first_seat orelse return;
                 const current_focus = if (seat.pending_manage.window) |pending_focus| blk: {
                     switch (pending_focus) {
                         .clear_focus => return,
@@ -150,7 +155,7 @@ const XkbBinding = struct {
                 }
             },
             .toggle_float => {
-                const seat = context.wm.seats.first() orelse return;
+                const seat = first_seat orelse return;
                 const window = seat.focused_window orelse return;
                 // Noop if the window is fullscreened
                 if (window.fullscreen) return;
@@ -158,19 +163,19 @@ const XkbBinding = struct {
                 context.wm.river_window_manager_v1.manageDirty();
             },
             .change_ratio => |diff| {
-                const seat = context.wm.seats.first() orelse return;
+                const seat = first_seat orelse return;
                 const output = seat.focused_output orelse return;
                 output.pending_manage.primary_ratio = output.primary_ratio + diff;
                 context.wm.river_window_manager_v1.manageDirty();
             },
             .increment_primary_count => {
-                const seat = context.wm.seats.first() orelse return;
+                const seat = first_seat orelse return;
                 const output = seat.focused_output orelse return;
                 output.pending_manage.primary_count = output.primary_count + 1;
                 context.wm.river_window_manager_v1.manageDirty();
             },
             .decrement_primary_count => {
-                const seat = context.wm.seats.first() orelse return;
+                const seat = first_seat orelse return;
                 const output = seat.focused_output orelse return;
                 output.pending_manage.primary_count = output.primary_count - 1;
                 context.wm.river_window_manager_v1.manageDirty();
@@ -192,26 +197,26 @@ const XkbBinding = struct {
                 context.wm.river_window_manager_v1.manageDirty();
             },
             .toggle_fullscreen => {
-                const seat = context.wm.seats.first() orelse return;
+                const seat = first_seat orelse return;
                 const window = seat.focused_window orelse return;
                 window.pending_manage.fullscreen = !window.fullscreen;
                 context.wm.river_window_manager_v1.manageDirty();
             },
             .close_window => {
-                const seat = context.wm.seats.first() orelse return;
+                const seat = first_seat orelse return;
                 if (seat.focused_window) |window| {
                     window.river_window_v1.close();
                 }
             },
             .set_output_tags => |tags| {
                 // TODO: Support multiple seats
-                const seat = context.wm.seats.first() orelse return;
+                const seat = first_seat orelse return;
                 const output = seat.focused_output orelse return;
                 output.pending_manage.tags = tags;
                 context.wm.river_window_manager_v1.manageDirty();
             },
             .set_window_tags => |tags| {
-                const seat = context.wm.seats.first() orelse return;
+                const seat = first_seat orelse return;
                 // TODO: I don't think pending_focus should ever be set at this point?
                 // const window = seat.pending_manage.pending_focus orelse seat.focused;
                 const window = seat.focused_window orelse return;
@@ -220,7 +225,7 @@ const XkbBinding = struct {
             },
             .toggle_output_tags => |tags| {
                 // TODO: Support multiple seats
-                const seat = context.wm.seats.first() orelse return;
+                const seat = first_seat orelse return;
                 const output = seat.focused_output orelse return;
                 const old_tags = output.pending_manage.tags orelse output.tags;
                 const new_tags = old_tags ^ tags;
@@ -230,7 +235,7 @@ const XkbBinding = struct {
                 }
             },
             .toggle_window_tags => |tags| {
-                const seat = context.wm.seats.first() orelse return;
+                const seat = first_seat orelse return;
                 // TODO: I don't think pending_focus should ever be set at this point?
                 // const window = seat.pending_manage.pending_focus orelse seat.focused;
                 const window = seat.focused_window orelse return;
@@ -250,6 +255,10 @@ const XkbBinding = struct {
             .center_float => centerFloatingWindow(context),
             .swap_next => swapWindow(context, .next),
             .swap_prev => swapWindow(context, .prev),
+            .toggle_passthrough => {
+                context.xkb_bindings.pending_manage.toggle_passthrough = true;
+                context.wm.river_window_manager_v1.manageDirty();
+            },
         }
     }
 
@@ -406,7 +415,16 @@ context: *Context,
 
 xkb_bindings_v1: *river.XkbBindingsV1,
 
+/// When passthrough_active is true, keybinds (except for passthrough_toggle) are disabled.
+passthrough_active: bool = false,
+
 bindings: wl.list.Head(XkbBinding, .link),
+
+pending_manage: PendingManage = .{},
+
+const PendingManage = struct {
+    toggle_passthrough: bool = false,
+};
 
 pub fn create(context: *Context, xkb_bindings_v1: *river.XkbBindingsV1) !*XkbBindings {
     const xkb_bindings = try utils.gpa.create(XkbBindings);
@@ -443,6 +461,22 @@ pub fn addBinding(xkb_bindings: *XkbBindings, river_seat_v1: *river.SeatV1, keys
     xkb_bindings.bindings.append(xkb_binding);
 
     xkb_binding_v1.enable();
+}
+
+pub fn manage(xkb_bindings: *XkbBindings) void {
+    defer xkb_bindings.pending_manage = .{};
+
+    if (xkb_bindings.pending_manage.toggle_passthrough) {
+        xkb_bindings.passthrough_active = !xkb_bindings.passthrough_active;
+        var it = xkb_bindings.bindings.iterator(.forward);
+        while (it.next()) |binding| {
+            if (xkb_bindings.passthrough_active) {
+                binding.xkb_binding_v1.disable();
+            } else {
+                binding.xkb_binding_v1.enable();
+            }
+        }
+    }
 }
 
 const std = @import("std");

@@ -145,6 +145,7 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
                         .swap_next,
                         .swap_prev,
                         .center_float,
+                        .toggle_passthrough,
                         => |cmd| {
                             // None of these have arguments, just create the union and give it back
                             break :sw @unionInit(XkbBindings.Command, @tagName(cmd), {});

@@ -291,6 +291,7 @@ Full command reference:
 | `toggle_output_tags`     | tags (u32 bitmask) | Toggle a tag on the focused output              |
 | `toggle_window_tags`     | tags (u32 bitmask) | Toggle a tag on the focused window              |
 | `reload_config`          |                  | Reload the config file                            |
+| `toggle_passthrough`     |                  | Toggle passthrough mode to disable keybinds       |
 
 ### Tag Binds
 
