@@ -457,7 +457,7 @@ pub fn renderWallpaper(output: *Output) !void {
     }
     // Scale our loaded image and then copy it into the Buffer's pixman.Image
     const wallpaper_image = context.wallpaper_image orelse return error.MissingWallpaperImage;
-    const image = wallpaper_image.image;
+    const image = wallpaper_image.pix_image;
     const image_data = image.getData();
     const image_width = image.getWidth();
     const image_height = image.getHeight();
