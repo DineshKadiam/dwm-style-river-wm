@@ -14,7 +14,6 @@ argb_pixels: if (native_endian == .big) std.ArrayList(u32) else void = if (nativ
 // This is the actual scaled, transformed, and rendered image
 pix_image: *pixman.Image,
 
-// TODO: Make image_path nullable, if null, do a single color with a single_pixel_buffer instead(?)
 pub fn create(image_path: []const u8) !*WallpaperImage {
     var wallpaper_image = try utils.gpa.create(WallpaperImage);
     errdefer utils.gpa.destroy(wallpaper_image);

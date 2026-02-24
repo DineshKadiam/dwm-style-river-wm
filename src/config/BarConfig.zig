@@ -23,8 +23,6 @@ margin_top: i32 = 0,
 margin_right: i32 = 0,
 margin_bottom: i32 = 0,
 margin_left: i32 = 0,
-// TODO: Support only having the bar on specific outputs
-// output: []const u8,
 
 pub fn toBarOptions(config: BarConfig) Bar.Options {
     return .{

@@ -6,7 +6,7 @@ const NodeName = enum {
     float,
     no_float,
     tags,
-    // TODO: Add more of riverctl's rule options such as ssd/csd
+
 };
 
 pub const Rule = struct {

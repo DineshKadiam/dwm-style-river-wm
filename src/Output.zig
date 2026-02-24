@@ -207,7 +207,6 @@ fn riverOutputListener(river_output_v1: *river.OutputV1, event: river.OutputV1.E
             blk: {
                 // If the removed output was focused, move focus to the next
                 // available output (and its first window, if any).
-                // TODO: Support multiple seats
                 const seat = wm.seats.first() orelse break :blk;
                 if (seat.focused_output != output) break :blk;
 
@@ -622,8 +621,6 @@ pub fn render(output: *Output) void {
     }
 }
 
-// TODO - CONFIG: Allow primary on the left
-// TODO - CONFIG: Allow setting a ratio for single-window width (useful for ultrawides)
 /// Calculate primary/stack layout positions for all windows.
 /// - Single window: maximized
 /// - Multiple windows: stack (45% left, vertically tiled), primary (55% right)

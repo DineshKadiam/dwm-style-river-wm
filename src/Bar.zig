@@ -86,7 +86,6 @@ pub fn initSurface(bar: *Bar) !void {
     defer empty_region.destroy();
     wl_surface.setInputRegion(empty_region);
 
-    // TODO: Add padding to config
     const vertical_padding = 5;
     // Set size wants logical pixels, so we have to scale the height
     const logical_font_height = @divFloor(bar.fcft_fonts.height, @as(i32, bar.font_scale));
@@ -220,7 +219,6 @@ pub fn render(bar: *Bar) !void {
     // Convert time to a string
     var buf: [255:0]u8 = undefined;
     var fbs = io.fixedBufferStream(&buf);
-    // TODO: Support 12-hour clock (%I:%M)
     try dt.strftime(fbs.writer(), "%H:%M");
 
     // Convert ASCII text string to unicode

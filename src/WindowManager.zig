@@ -237,7 +237,6 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
             }
         },
         .seat => |ev| {
-            // TODO: Support multi-seat (maybe ?)
             const river_seat_v1 = ev.id;
             const river_seat_v1_version = river_seat_v1.getVersion();
             if (river_seat_v1_version < MIN_RIVER_SEAT_V1_VERSION) {

@@ -27,10 +27,6 @@ pub const Command = union(enum) {
     set_window_tags: u32,
     toggle_output_tags: u32,
     toggle_window_tags: u32,
-    // spawn_tagmask: u32, // TODO
-    // focus_previous_tags, // TODO
-    // send_to_previous_tags, // TODO
-
     // Move floating window by pixels
     move_up: i32,
     move_down: i32,
@@ -250,7 +246,6 @@ const XkbBinding = struct {
                 }
             },
             .set_output_tags => |tags| {
-                // TODO: Support multiple seats
                 const seat = first_seat orelse return;
                 const output = seat.focused_output orelse return;
                 output.pending_manage.tags = tags;
@@ -265,7 +260,6 @@ const XkbBinding = struct {
                 context.wm.river_window_manager_v1.manageDirty();
             },
             .toggle_output_tags => |tags| {
-                // TODO: Support multiple seats
                 const seat = first_seat orelse return;
                 const output = seat.focused_output orelse return;
                 const old_tags = output.pending_manage.tags orelse output.tags;
@@ -363,9 +357,6 @@ const XkbBinding = struct {
         }
     }
 
-    // TODO - CONFIG: Allow configuring whether focus follows the window
-    // TODO - CONFIG: Allow configuring whether window is prepended or appended
-    // TODO - CONFIG: Allow taking new output's tags
     fn sendWindowToOutput(context: *Context, direction: FocusDirection) void {
         const wm = context.wm;
         const seat = wm.seats.first() orelse return;
