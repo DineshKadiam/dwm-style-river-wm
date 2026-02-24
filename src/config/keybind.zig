@@ -100,7 +100,7 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
                                 logWarnMissingNodeArg(name, "command");
                                 continue;
                             });
-                            var split_exec = try utils.tokenizeToOwnedSlices(exec_str, ' ');
+                            var split_exec = try utils.tokenizeShell(exec_str);
                             if (split_exec.len > 0) {
                                 // Expand ~ in executable paths
                                 const expanded = helpers.expandTilde(split_exec[0]) catch |e| {
@@ -111,7 +111,7 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
                                         return e;
                                     }
                                 };
-                                // tokenizeToOwnedSlices dupes each token, so we have to
+                                // tokenizeShell dupes each token, so we have to
                                 // free the original value before replacing it.
                                 utils.gpa.free(split_exec[0]);
                                 split_exec[0] = expanded;

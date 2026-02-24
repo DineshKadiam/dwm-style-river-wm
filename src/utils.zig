@@ -150,12 +150,38 @@ pub fn parseModifiers(s: []const u8) !?river.SeatV1.Modifiers {
     return modifiers;
 }
 
-pub fn tokenizeToOwnedSlices(input: []const u8, delimiter: u8) ![][]const u8 {
+/// Split a string into tokens, respecting single and double quotes.
+/// Quoted sections have their quotes stripped. Returns an error if
+/// a quote is opened but never closed.
+pub fn tokenizeShell(input: []const u8) ![][]const u8 {
     var list: std.ArrayList([]const u8) = .empty;
-    var it = std.mem.tokenizeScalar(u8, input, delimiter);
-    while (it.next()) |part| {
-        const duped = try gpa.dupe(u8, part);
-        try list.append(gpa, duped);
+    errdefer {
+        for (list.items) |item| gpa.free(item);
+        list.deinit(gpa);
+    }
+    var i: usize = 0;
+    while (i < input.len) {
+        // Skip whitespace
+        while (i < input.len and std.ascii.isWhitespace(input[i])) : (i += 1) {}
+        if (i >= input.len) break;
+
+        var token: std.ArrayList(u8) = .empty;
+        errdefer token.deinit(gpa);
+        while (i < input.len and !std.ascii.isWhitespace(input[i])) {
+            if (input[i] == '\'' or input[i] == '"') {
+                const quote = input[i];
+                i += 1;
+                while (i < input.len and input[i] != quote) : (i += 1) {
+                    try token.append(gpa, input[i]);
+                }
+                if (i >= input.len) return error.UnmatchedQuote;
+                i += 1; // skip closing quote
+            } else {
+                try token.append(gpa, input[i]);
+                i += 1;
+            }
+        }
+        try list.append(gpa, try token.toOwnedSlice(gpa));
     }
     return list.toOwnedSlice(gpa);
 }
@@ -355,4 +381,69 @@ test "parseModifiers mod3 and mod5" {
     const mods = (try parseModifiers("mod3+mod5")).?;
     try testing.expect(mods.mod3);
     try testing.expect(mods.mod5);
+}
+
+test "tokenizeShell simple" {
+    const result = try tokenizeShell("foot -e htop");
+    defer {
+        for (result) |item| gpa.free(item);
+        gpa.free(result);
+    }
+    try testing.expectEqual(3, result.len);
+    try testing.expectEqualStrings("foot", result[0]);
+    try testing.expectEqualStrings("-e", result[1]);
+    try testing.expectEqualStrings("htop", result[2]);
+}
+
+test "tokenizeShell double quotes" {
+    const result = try tokenizeShell("notify-send \"Hello World\"");
+    defer {
+        for (result) |item| gpa.free(item);
+        gpa.free(result);
+    }
+    try testing.expectEqual(2, result.len);
+    try testing.expectEqualStrings("notify-send", result[0]);
+    try testing.expectEqualStrings("Hello World", result[1]);
+}
+
+test "tokenizeShell single quotes" {
+    const result = try tokenizeShell("notify-send 'Hello World'");
+    defer {
+        for (result) |item| gpa.free(item);
+        gpa.free(result);
+    }
+    try testing.expectEqual(2, result.len);
+    try testing.expectEqualStrings("notify-send", result[0]);
+    try testing.expectEqualStrings("Hello World", result[1]);
+}
+
+test "tokenizeShell mixed quotes" {
+    const result = try tokenizeShell("echo \"hello 'world'\"");
+    defer {
+        for (result) |item| gpa.free(item);
+        gpa.free(result);
+    }
+    try testing.expectEqual(2, result.len);
+    try testing.expectEqualStrings("echo", result[0]);
+    try testing.expectEqualStrings("hello 'world'", result[1]);
+}
+
+test "tokenizeShell empty string" {
+    const result = try tokenizeShell("");
+    defer gpa.free(result);
+    try testing.expectEqual(0, result.len);
+}
+
+test "tokenizeShell unmatched quote" {
+    try testing.expectError(error.UnmatchedQuote, tokenizeShell("echo \"hello"));
+}
+
+test "tokenizeShell quotes mid-token" {
+    const result = try tokenizeShell("foo'bar baz'qux");
+    defer {
+        for (result) |item| gpa.free(item);
+        gpa.free(result);
+    }
+    try testing.expectEqual(1, result.len);
+    try testing.expectEqualStrings("foobar bazqux", result[0]);
 }
