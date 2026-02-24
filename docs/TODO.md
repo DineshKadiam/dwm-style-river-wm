@@ -2,6 +2,8 @@
 
 These are in rough order of my priority, though no promises I do them in this order.
 
+- [ ] Check pointer position and only warp if not on focused window already
+- [ ] Change focus direction when closing window
 - [ ] Use set_xcursor_theme request
 - [ ] Add focused window title to bar
 - [ ] Support overriding config location

@@ -92,13 +92,7 @@ pub fn create() !*Config {
             log.err("Error while loading config: {s}. Continuing with default config", .{@errorName(err)});
             // Free any partially-loaded state and reset to defaults
             for (config.keybinds.values()) |cmd| {
-                switch (cmd) {
-                    .spawn => |argv| {
-                        for (argv) |arg| utils.gpa.free(arg);
-                        utils.gpa.free(argv);
-                    },
-                    else => {},
-                }
+                cmd.deinit();
             }
             config.keybinds.clearAndFree(utils.gpa);
             config.tag_binds.clearAndFree(utils.gpa);
