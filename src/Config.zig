@@ -28,6 +28,9 @@ primary_ratio: f32 = 0.55,
 /// output_width * single_window_ratio and be centered on the output
 single_window_ratio: f32 = 1.0,
 
+/// Side the primary should be on
+primary_side: PrimarySide = .left,
+
 /// Where a new window should attach, top or bottom of the stack
 attach_mode: AttachMode = .top,
 /// Should focus change when the cursor moves onto a new window
@@ -57,16 +60,16 @@ pub const PointerBind = pointer_bind.PointerBind;
 pub const WindowRule = window_rule.Rule;
 pub const WindowRuleAction = window_rule.Action;
 
-pub const AttachMode = enum {
-    top,
-    bottom,
-};
+pub const PrimarySide = enum { left, right };
+
+pub const AttachMode = enum { top, bottom };
 
 const NodeName = enum {
     attach_mode,
     primary_count,
     primary_ratio,
     single_window_ratio,
+    primary_side,
     focus_follows_pointer,
     pointer_warp_on_focus_change,
     wallpaper_image_path,
@@ -207,6 +210,16 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                                 log.warn("primary_ratio outside of valid range ({d} to {d}); clamping it", .{ min_primary_ratio, max_primary_ratio });
                             }
                             logDebugSettingNode(name, ratio_str);
+                        },
+                        .primary_side => {
+                            const primary_side_str = utils.stripQuotes(node.arg(&parser, 0) orelse "");
+                            if (std.meta.stringToEnum(PrimarySide, primary_side_str)) |mode| {
+                                config.primary_side = mode;
+                                logDebugSettingNode(name, primary_side_str);
+                            } else {
+                                logWarnInvalidNodeArg(name, primary_side_str);
+                                continue;
+                            }
                         },
                         .single_window_ratio => {
                             const ratio_str = utils.stripQuotes(node.arg(&parser, 0) orelse "");

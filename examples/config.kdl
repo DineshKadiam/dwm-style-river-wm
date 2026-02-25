@@ -9,6 +9,8 @@ primary_ratio 0.55
 // When this is < 1.0 and only one window is being tiled, the window will have width
 // output_width * single_window_ratio and be centered on the output
 single_window_ratio 0.70
+/// Side the primary should be on
+primary_side left 
 // Whether mousing over a new window should move focus
 focus_follows_pointer #true
 // Whether the focus should warp to the center of newly-focused windows

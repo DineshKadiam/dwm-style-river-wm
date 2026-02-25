@@ -639,8 +639,9 @@ pub fn render(output: *Output) void {
 }
 
 /// Calculate primary/stack layout positions for all windows.
-/// - Single window: maximized
-/// - Multiple windows: stack (45% left, vertically tiled), primary (55% right)
+/// - Single window: window is told it's maximized and takes up usable_width * single_window_ratio width
+/// - Multiple windows: two stacks, primary and secondary. By default, the stack is on the right and takes
+///     up 55% of the output width, but this can be configured. Each tagmask has its own primary ratio and count.
 fn calculateLayout(output: *Output) void {
     // Shouldn't be called if height/width are not positive
     assert(output.geometry.width > 0 and output.geometry.height > 0);
@@ -711,6 +712,12 @@ fn calculateLayout(output: *Output) void {
     else
         0;
 
+    // Determine the stack x coordinates based on whether primary is set to the left or right
+    const primary_x, const stack_x = switch (output.context.config.primary_side) {
+        .right => .{ output_x + @as(i32, stack_width), output_x },
+        .left => .{ output_x, output_x + @as(i32, primary_width) },
+    };
+
     // Iterate through the active windows and apply positions
     var i: u31 = 0;
     while (active_list.popFirst()) |node| : (i += 1) {
@@ -718,9 +725,9 @@ fn calculateLayout(output: *Output) void {
         window.pending_manage.maximized = false;
 
         if (i < primary_count) {
-            // Primary window(s) - right side
+            // Primary window(s)
             window.pending_render.position = .{
-                .x = output_x + @as(i32, stack_width),
+                .x = primary_x,
                 .y = output_y + @as(i32, i) * @as(i32, primary_height),
             };
             const pending_width = primary_width;
@@ -734,10 +741,10 @@ fn calculateLayout(output: *Output) void {
                 .height = pending_height,
             };
         } else {
-            // Stack window(s) - left side
+            // Stack window(s)
             const stack_index = i - primary_count;
             window.pending_render.position = .{
-                .x = output_x,
+                .x = stack_x,
                 .y = output_y + @as(i32, stack_index) * @as(i32, stack_height),
             };
             const pending_width = stack_width;

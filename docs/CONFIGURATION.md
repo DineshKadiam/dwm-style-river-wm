@@ -45,6 +45,7 @@ wallpaper_image_path "~/Pictures/wallpaper.png"
 | `attach_mode`                | enum   | `top`   | Where new windows go in the stack (`top` or `bottom`) |
 | `primary_count`              | u8     | `1`     | Number of windows in the primary stack (0+)         |
 | `primary_ratio`              | float  | `0.55`  | Proportion of output width for the primary stack (0.10-0.90) |
+| `primary_side`               | enum   | `left`  | Whether the primary stack should be on the `left` or `right` |
 | `single_window_ratio`        | float  | `1.00`  | Proportion of output width taken when a single tiled window is visible (0.10-1.00) |
 | `focus_follows_pointer`      | bool   | `#true` | Focus follows the pointer between windows           |
 | `pointer_warp_on_focus_change` | bool | `#true` | Warp pointer to center of newly-focused windows     |

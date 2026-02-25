@@ -2,16 +2,19 @@
 
 These are in rough order of my priority, though no promises I do them in this order.
 
-- [ ] Add config for single-window width ratio (mostly because my ultrawide makes a single window massive)
+- [ ] Support switch handling (e.g. lid close)
 - [ ] Check pointer position and only warp if not on focused window already
 - [ ] Change focus direction when closing window
 - [ ] Use set_xcursor_theme request
 - [ ] Add focused window title to bar
 - [ ] Support overriding config location
-- [ ] Support configuring primary vs secondary stack side
-- [ ] Support switch handling (e.g. lid close)
-- [ ] Support keybind modes (e.g. passthrough)
+- [ ] Add support for center-primary layout
+- [ ] Add bar padding to config
+- [ ] Support 12-hour clock format (maybe take any time format string?)
+- [ ] Support per-output bar visibility
+- [ ] Support more window rule options (e.g. ssd/csd)
 - [ ] Support solid `background-color` fallback (no wallpaper)
+- [ ] Support keybind modes
 - [ ] Support per-output wallpapers
 - [ ] Support `focus-follows-cursor` granularity (`normal` vs `always`)
 - [ ] Save window positions between restarts
@@ -21,10 +24,6 @@ These are in rough order of my priority, though no promises I do them in this or
 - [ ] Support configurable focus-follows-window on send-to-output
 - [ ] Support configurable prepend/append on send-to-output
 - [ ] Support taking new output's tags on send-to-output
-- [ ] Add bar padding to config
-- [ ] Support 12-hour clock format (maybe take any time format string?)
-- [ ] Support per-output bar visibility
-- [ ] Support more window rule options (e.g. ssd/csd)
 - [ ] Add `spawn_tagmask`, `focus_previous_tags`, `send_to_previous_tags` commands
 - [x] Support changeable primary ratio
 - [x] Support changeable primary count
@@ -46,3 +45,5 @@ These are in rough order of my priority, though no promises I do them in this or
 - [x] Support window rules (float/tags by app-id/title)
 - [x] Fix resizing size when you pop a window out, basically, it start with its current size but then when you try resize it goes to 75%
 - [x] Move orphan handling out of .output and .seat events; into manage()
+- [x] Add config for single-window width ratio (mostly because my ultrawide makes a single window massive)
+- [x] Support configuring primary vs secondary stack side
