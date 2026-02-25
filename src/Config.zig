@@ -4,7 +4,10 @@
 
 const Config = @This();
 
-const CONFIG_FILE = "beansprout/config.kdl";
+const config_file = "beansprout/config.kdl";
+
+pub const min_primary_ratio = 0.10;
+pub const max_primary_ratio = 0.90;
 
 /// Width of window borders in pixels
 border_width: u8 = 2,
@@ -19,6 +22,11 @@ primary_count: u8 = 1,
 /// Proportion of output width taken by the primary stack
 /// This is a global default, but each tagmask can have its own value
 primary_ratio: f32 = 0.55,
+/// Proportion of output width taken by a window if it's the only visible tiled window
+/// This is intended to be useful for ultrawides where a very wide window might not look very nice
+/// When this is < 1.0 and only one window is being tiled, the window will have width
+/// output_width * single_window_ratio and be centered on the output
+single_window_ratio: f32 = 1.0,
 
 /// Where a new window should attach, top or bottom of the stack
 attach_mode: AttachMode = .top,
@@ -58,6 +66,7 @@ const NodeName = enum {
     attach_mode,
     primary_count,
     primary_ratio,
+    single_window_ratio,
     focus_follows_pointer,
     pointer_warp_on_focus_change,
     wallpaper_image_path,
@@ -80,7 +89,7 @@ pub fn create() !*Config {
         defer utils.gpa.free(config_dir);
 
         var path_buf: [std.fs.max_path_bytes]u8 = undefined;
-        const config_path = std.fmt.bufPrint(&path_buf, "{s}/{s}", .{ config_dir, CONFIG_FILE }) catch return config;
+        const config_path = std.fmt.bufPrint(&path_buf, "{s}/{s}", .{ config_dir, config_file }) catch return config;
 
         const file = fs.openFileAbsolute(config_path, .{}) catch break :blk;
 
@@ -193,7 +202,24 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                                 logWarnInvalidNodeArg(name, ratio_str);
                                 continue;
                             };
-                            config.primary_ratio = std.math.clamp(ratio, 0.10, 0.90);
+                            config.primary_ratio = std.math.clamp(ratio, min_primary_ratio, max_primary_ratio);
+                            if (ratio != config.primary_ratio) {
+                                log.warn("primary_ratio outside of valid range ({d} to {d}); clamping it", .{ min_primary_ratio, max_primary_ratio });
+                            }
+                            logDebugSettingNode(name, ratio_str);
+                        },
+                        .single_window_ratio => {
+                            const ratio_str = utils.stripQuotes(node.arg(&parser, 0) orelse "");
+                            const ratio = fmt.parseFloat(f32, ratio_str) catch {
+                                logWarnInvalidNodeArg(name, ratio_str);
+                                continue;
+                            };
+                            // We use 1.00 here because it doesn't make sense for a window to have a ratio > 1,
+                            // i.e. for it to be wider than the output
+                            config.single_window_ratio = std.math.clamp(ratio, min_primary_ratio, 1.00);
+                            if (ratio != config.single_window_ratio) {
+                                log.warn("single_window_ratio outside of valid range ({d} to {d}); clamping it", .{ min_primary_ratio, 1.00 });
+                            }
                             logDebugSettingNode(name, ratio_str);
                         },
                         .attach_mode => {

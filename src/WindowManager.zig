@@ -4,7 +4,7 @@
 
 const WindowManager = @This();
 
-const MIN_RIVER_SEAT_V1_VERSION: u2 = 3;
+const min_river_seat_v1_version: u2 = 3;
 
 context: *Context,
 
@@ -239,9 +239,9 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
         .seat => |ev| {
             const river_seat_v1 = ev.id;
             const river_seat_v1_version = river_seat_v1.getVersion();
-            if (river_seat_v1_version < MIN_RIVER_SEAT_V1_VERSION) {
+            if (river_seat_v1_version < min_river_seat_v1_version) {
                 @branchHint(.cold); // If we're in here, the program is exiting anyways
-                utils.versionNotSupported(river.SeatV1, river_seat_v1_version, MIN_RIVER_SEAT_V1_VERSION);
+                utils.versionNotSupported(river.SeatV1, river_seat_v1_version, min_river_seat_v1_version);
             }
 
             const seat = Seat.create(context, river_seat_v1) catch @panic("Out of memory");

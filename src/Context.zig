@@ -151,6 +151,14 @@ pub fn manage(context: *Context) void {
         context.config = new_config;
         context.initialized = false;
 
+        // Update output defaults from new config
+        var out_it_cfg = context.wm.outputs.iterator(.forward);
+        while (out_it_cfg.next()) |output| {
+            output.primary_ratio = new_config.primary_ratio;
+            output.primary_count = new_config.primary_count;
+            output.single_window_ratio = new_config.single_window_ratio;
+        }
+
         // Mark all libinput devices as needing config re-application
         var dev_it = context.im.libinput_devices.iterator(.forward);
         while (dev_it.next()) |libinput_device| {

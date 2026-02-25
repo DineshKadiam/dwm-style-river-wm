@@ -4,6 +4,11 @@ attach_mode top
 primary_count 1
 // Proportion of output width taken by the primary stack
 primary_ratio 0.55
+// Proportion of output width taken by a window if it's the only visible tiled window
+// This is intended to be useful for ultrawides where a very wide window might not look very nice
+// When this is < 1.0 and only one window is being tiled, the window will have width
+// output_width * single_window_ratio and be centered on the output
+single_window_ratio 0.70
 // Whether mousing over a new window should move focus
 focus_follows_pointer #true
 // Whether the focus should warp to the center of newly-focused windows

@@ -41,6 +41,9 @@ primary_ratio: f32,
 /// Number of windows in the primary stack
 primary_count: u8,
 
+/// Proportion of output width taken by a window when it is the only visible tiled window
+single_window_ratio: f32,
+
 /// Per-tagmask layout overrides
 /// These only get added when the user modifies primary count or ratio
 /// Any tagmask NOT in this map keeps using the defaults from Config
@@ -74,6 +77,7 @@ pub const PendingManage = struct {
     tags: ?u32 = null,
     primary_ratio: ?f32 = null,
     primary_count: ?u8 = null,
+    single_window_ratio: ?f32 = null,
 };
 
 pub fn create(context: *Context, river_output_v1: *river.OutputV1) !*Output {
@@ -88,6 +92,7 @@ pub fn create(context: *Context, river_output_v1: *river.OutputV1) !*Output {
         .tag_overlay = null,
         .primary_count = context.config.primary_count,
         .primary_ratio = context.config.primary_ratio,
+        .single_window_ratio = context.config.single_window_ratio,
         .windows = undefined, // we will initialize this shortly
         .link = undefined, // Handled by the wl.list
     };
@@ -536,12 +541,24 @@ pub fn manage(output: *Output) void {
 
     if (output.pending_manage.primary_ratio) |primary_ratio| {
         // Ratios outside of this range could cause crashes (when doing the layout calculation)
-        output.primary_ratio = std.math.clamp(primary_ratio, 0.10, 0.90);
+        output.primary_ratio = std.math.clamp(
+            primary_ratio,
+            Config.min_primary_ratio,
+            Config.max_primary_ratio,
+        );
     }
     if (output.pending_manage.primary_count) |primary_count| {
         // Don't allow less than 1 primary
         output.primary_count = @max(1, primary_count);
     }
+    if (output.pending_manage.single_window_ratio) |single_window_ratio| {
+        output.single_window_ratio = std.math.clamp(
+            single_window_ratio,
+            Config.min_primary_ratio,
+            1.00,
+        );
+    }
+
     if (output.pending_manage.tags) |new_tags| {
         // Save current layout for the old tagmask
         output.tag_layout_overrides.put(utils.gpa, output.tags, .{
@@ -627,7 +644,8 @@ pub fn render(output: *Output) void {
 fn calculateLayout(output: *Output) void {
     // Shouldn't be called if height/width are not positive
     assert(output.geometry.width > 0 and output.geometry.height > 0);
-    // Get a list of active windows
+    // Get a list of active tiled windows
+    // i.e. any windows that are on this output with at least one active tag and aren't fullscreen or floating
     var active_list: DoublyLinkedList = .{};
     var active_count: u31 = 0;
     var it = output.windows.iterator(.forward);
@@ -661,9 +679,14 @@ fn calculateLayout(output: *Output) void {
     // Single window: maximize and return early
     if (active_count == 1) {
         const window: *Window = @fieldParentPtr("active_list_node", active_list.popFirst().?);
-        window.pending_render.position = .{ .x = output_x + border_width, .y = output_y + border_width };
+
+        const width = @as(u31, @intFromFloat(@as(f32, @floatFromInt(output_width)) * output.single_window_ratio)) -
+            2 * border_width;
+        const x = output_x + @divFloor(output_width - width, 2);
+
+        window.pending_render.position = .{ .x = x, .y = output_y + border_width };
         window.pending_manage.dimensions = .{
-            .width = output_width - 2 * border_width,
+            .width = width,
             .height = output_height - 2 * border_width,
         };
         window.pending_manage.maximized = true;
@@ -771,6 +794,7 @@ const utils = @import("utils.zig");
 const Rect = utils.Rect;
 const Bar = @import("Bar.zig");
 const Buffer = @import("Buffer.zig");
+const Config = @import("Config.zig");
 const Context = @import("Context.zig");
 const TagOverlay = @import("TagOverlay.zig");
 const Window = @import("Window.zig");
