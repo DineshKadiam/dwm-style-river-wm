@@ -11,6 +11,15 @@ pub fn build(b: *std.Build) void {
 
     const strip = b.option(bool, "strip", "Omit debug information") orelse false;
     const pie = b.option(bool, "pie", "Build a Position Independent Executable") orelse false;
+    const man_pages = b.option(
+        bool,
+        "man-pages",
+        "Set to true to build man pages. Requires scdoc. Defaults to true if scdoc is found.",
+    ) orelse scdoc_found: {
+        // Default to true if scdoc is available; else false.
+        _ = b.findProgram(&.{"scdoc"}, &.{}) catch break :scdoc_found false;
+        break :scdoc_found true;
+    };
 
     // Wayland
     const scanner = Scanner.create(b, .{});
@@ -74,6 +83,20 @@ pub fn build(b: *std.Build) void {
     beansprout.linkSystemLibrary("xkbcommon");
 
     b.installArtifact(beansprout);
+
+    const man_step = b.step("man", "Build man pages");
+    if (man_pages) {
+        inline for (.{ .{ "beansprout", "1" }, .{ "beansprout", "5" } }) |page| {
+            const scdoc = b.addSystemCommand(&.{ "/bin/sh", "-c", "scdoc < man/" ++ page[0] ++ "." ++ page[1] ++ ".scd" });
+            scdoc.addFileArg(b.path("man/" ++ page[0] ++ "." ++ page[1] ++ ".scd"));
+            const stdout = scdoc.captureStdOut();
+            const install = b.addInstallFile(stdout, "share/man/man" ++ page[1] ++ "/" ++ page[0] ++ "." ++ page[1]);
+            b.getInstallStep().dependOn(&install.step);
+            man_step.dependOn(&install.step);
+        }
+    } else {
+        man_step.dependOn(&b.addFail("man pages disabled; scdoc not found or -Dman-pages=false was set").step);
+    }
 
     const exe_unit_tests = b.addTest(.{
         .root_module = beansprout.root_module,

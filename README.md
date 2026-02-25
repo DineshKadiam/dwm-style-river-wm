@@ -35,6 +35,12 @@ Only needed at build-time:
 |--------------------|------------------------------|---------------------|
 | wayland-protocols  | `dev-libs/wayland-protocols` | `wayland-protocols` |
 
+Optional (for building man pages):
+
+| Dependency         | Gentoo Name                  | Debian/Ubuntu Name  |
+|--------------------|------------------------------|---------------------|
+| scdoc              | `app-text/scdoc`             | `scdoc`             |
+
 #### Note for Gentoo Users
 
 Beansprout is available in my personal [ebuild repo](https://codeberg.org/bwbuhse/beansprout).
