@@ -5,7 +5,7 @@
 const std = @import("std");
 const Scanner = @import("wayland").Scanner;
 
-pub fn build(b: *std.Build) void {
+pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
@@ -17,7 +17,10 @@ pub fn build(b: *std.Build) void {
         "Set to true to build man pages. Requires scdoc. Defaults to true if scdoc is found.",
     ) orelse scdoc_found: {
         // Default to true if scdoc is available; else false.
-        _ = b.findProgram(&.{"scdoc"}, &.{}) catch break :scdoc_found false;
+        _ = b.findProgram(&.{"scdoc"}, &.{}) catch |err| switch (err) {
+            error.FileNotFound => break :scdoc_found false,
+            else => return err,
+        };
         break :scdoc_found true;
     };
 
