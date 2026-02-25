@@ -91,7 +91,9 @@ pub fn build(b: *std.Build) !void {
     if (man_pages) {
         inline for (.{ .{ "beansprout", "1" }, .{ "beansprout", "5" } }) |page| {
             const scdoc = b.addSystemCommand(&.{ "/bin/sh", "-c", "scdoc < man/" ++ page[0] ++ "." ++ page[1] ++ ".scd" });
+            scdoc.setCwd(b.path("."));
             scdoc.addFileArg(b.path("man/" ++ page[0] ++ "." ++ page[1] ++ ".scd"));
+
             const stdout = scdoc.captureStdOut();
             const install = b.addInstallFile(stdout, "share/man/man" ++ page[1] ++ "/" ++ page[0] ++ "." ++ page[1]);
             b.getInstallStep().dependOn(&install.step);
