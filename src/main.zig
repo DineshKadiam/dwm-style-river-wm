@@ -146,9 +146,8 @@ fn run(wl_display: *wl.Display, context: *Context) !void {
             var it = context.wm.outputs.iterator(.forward);
             while (it.next()) |output| {
                 if (output.bar) |*bar| {
-                    bar.render() catch |err| {
-                        log.err("Bar timer render failed: {}", .{err});
-                    };
+                    bar.pending_render.draw = true;
+                    context.wm.river_window_manager_v1.manageDirty();
                 }
             }
         }

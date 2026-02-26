@@ -216,12 +216,7 @@ pub fn manage(context: *Context) void {
                         log.err("Failed to create bar: {}", .{e});
                         continue;
                     };
-                    // If the output already has a wl_output, init the surface immediately
-                    if (output.wl_output != null) {
-                        output.bar.?.initSurface() catch |e| {
-                            log.err("Failed to init bar surface: {}", .{e});
-                        };
-                    }
+                    output.bar.?.pending_manage.output_geometry = true;
                 }
             }
         }
