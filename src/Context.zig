@@ -216,6 +216,7 @@ pub fn manage(context: *Context) void {
                         log.err("Failed to create bar: {}", .{e});
                         continue;
                     };
+                    output.bar.?.pending_manage.output_geometry = true;
                 }
             }
         }
