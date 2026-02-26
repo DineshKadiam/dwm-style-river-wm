@@ -118,46 +118,4 @@ pub fn build(b: *std.Build) !void {
 }
 
 const version = manifest.version;
-/// Needed until https://github.com/ziglang/zig/issues/22775
-/// is addressed.
-const manifest: struct {
-    name: @Type(.enum_literal),
-    version: []const u8,
-    fingerprint: u64,
-    minimum_zig_version: []const u8,
-    dependencies: struct {
-        wayland: struct {
-            url: []const u8,
-            hash: []const u8,
-        },
-        xkbcommon: struct {
-            url: []const u8,
-            hash: []const u8,
-        },
-        kdl: struct {
-            url: []const u8,
-            hash: []const u8,
-        },
-        known_folders: struct {
-            url: []const u8,
-            hash: []const u8,
-        },
-        pixman: struct {
-            url: []const u8,
-            hash: []const u8,
-        },
-        zigimg: struct {
-            url: []const u8,
-            hash: []const u8,
-        },
-        fcft: struct {
-            url: []const u8,
-            hash: []const u8,
-        },
-        zeit: struct {
-            url: []const u8,
-            hash: []const u8,
-        },
-    },
-    paths: []const []const u8,
-} = @import("build.zig.zon");
+const manifest = @import("build.zig.zon");
