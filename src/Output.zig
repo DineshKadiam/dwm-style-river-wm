@@ -19,7 +19,11 @@ name: ?[]const u8 = null,
 scale: u31 = 1,
 geometry: Rect = .{},
 
-// Area left after layer shell surfaces take exclusive area
+// Area available for window layout (output geometry minus bar space)
+// Maybe I'll re-add support for layer shell exclusive areas later,
+// but adding that makes it more work for me and I don't personally
+// know of anything that makes me want them since external bars won't
+// work with beansprout.
 usable_geometry: Rect = .{},
 
 // Information for this Output's wallpaper
@@ -72,8 +76,6 @@ pub const PendingManage = struct {
     position: ?struct { x: i32, y: i32 } = null,
     dimensions: ?struct { width: u31, height: u31 } = null,
 
-    usable_geometry: ?Rect = null,
-
     tags: ?u32 = null,
     primary_ratio: ?f32 = null,
     primary_count: ?u8 = null,
@@ -116,7 +118,6 @@ pub fn create(context: *Context, river_output_v1: *river.OutputV1) !*Output {
     output.windows.init();
 
     output.river_output_v1.setListener(*Output, riverOutputListener, output);
-    output.river_layer_shell_output_v1.setListener(*Output, riverLayerShellOutputListener, output);
 
     return output;
 }
@@ -285,16 +286,10 @@ fn wlOutputListener(_: *wl.Output, event: wl.Output.Event, output: *Output) void
                 return;
             };
             if (output.bar) |*bar| {
-                bar.initSurface() catch |err| {
-                    const output_name = output.name orelse "some output";
-                    log.err("failed to init bar for {s}: {}", .{ output_name, err });
-                    return;
-                };
-                // Re-render bar if the scale changed
-                if (bar.configured and output.scale != bar.font_scale) {
-                    bar.render() catch |err| {
-                        log.err("Bar render failed: {}", .{err});
-                    };
+                // Trigger a full manage cycle if the scale changed so that
+                // fonts are reloaded and bar geometry is recalculated.
+                if (output.scale != bar.font_scale) {
+                    bar.pending_manage.output_geometry = true;
                 }
             }
             // Re-render wallpaper if scale changed
@@ -317,26 +312,6 @@ fn wlOutputListener(_: *wl.Output, event: wl.Output.Event, output: *Output) void
             output.name = utils.gpa.dupe(u8, mem.span(ev.name)) catch @panic("Out of memory");
         },
         else => {},
-    }
-}
-
-// Used for the river_layer_shell_output_v1 interface
-fn riverLayerShellOutputListener(
-    river_layer_shell_output_v1: *river.LayerShellOutputV1,
-    event: river.LayerShellOutputV1.Event,
-    output: *Output,
-) void {
-    assert(output.river_layer_shell_output_v1 == river_layer_shell_output_v1);
-    switch (event) {
-        .non_exclusive_area => |ev| {
-            output.pending_manage.usable_geometry = .{
-                .x = ev.x,
-                .y = ev.y,
-                .width = @intCast(ev.width),
-                .height = @intCast(ev.height),
-            };
-            output.context.wm.river_window_manager_v1.manageDirty();
-        },
     }
 }
 
@@ -535,8 +510,10 @@ pub fn manage(output: *Output) void {
         output.geometry.height = dimensions.height;
     }
 
-    if (output.pending_manage.usable_geometry) |usable_geometry| {
-        output.usable_geometry = usable_geometry;
+    if (output.pending_manage.position != null or output.pending_manage.dimensions != null) {
+        if (output.bar) |*bar| {
+            bar.pending_manage.output_geometry = true;
+        }
     }
 
     if (output.pending_manage.primary_ratio) |primary_ratio| {
@@ -605,6 +582,34 @@ pub fn manage(output: *Output) void {
         }
     }
 
+    if (output.bar) |*bar| {
+        bar.manage() catch |err| {
+            log.err("Bar manage failed: {}", .{err});
+        };
+    }
+
+    // Compute usable geometry from output geometry minus bar space.
+    // We don't use non_exclusive_area from layer shell since we don't support
+    // other layer shell clients with exclusive zones (layer shell clients that
+    // don't use exclusive areas are fine).
+    output.usable_geometry = output.geometry;
+    if (output.bar) |bar| {
+        if (bar.geometry.height > 0) {
+            const bar_height: i32 = bar.geometry.height;
+            const margins = bar.options.margins;
+            const reserved: u31 = @intCast(bar_height + margins.top + margins.bottom);
+            switch (bar.options.position) {
+                .top => {
+                    output.usable_geometry.y += bar_height + margins.top + margins.bottom;
+                    output.usable_geometry.height -|= reserved;
+                },
+                .bottom => {
+                    output.usable_geometry.height -|= reserved;
+                },
+            }
+        }
+    }
+
     // Calculate layout before managing windows, but only if output dimensions are initialized
     if (output.usable_geometry.width > 0 and output.usable_geometry.height > 0) {
         output.calculateLayout();
@@ -617,6 +622,10 @@ pub fn manage(output: *Output) void {
 }
 
 pub fn render(output: *Output) void {
+    if (output.bar) |*bar| {
+        bar.render();
+    }
+
     const seat = output.context.wm.seats.first();
     const focused = if (seat) |s| s.focused_window else null;
 
@@ -670,7 +679,7 @@ fn calculateLayout(output: *Output) void {
 
     if (active_count == 0) return;
 
-    // We have to use the usable area for the layout so windows don't overlap with widgets
+    // Use the usable area for layout so windows don't overlap the bar
     const output_x = output.usable_geometry.x;
     const output_y = output.usable_geometry.y;
     const output_width = output.usable_geometry.width;
@@ -681,14 +690,14 @@ fn calculateLayout(output: *Output) void {
     if (active_count == 1) {
         const window: *Window = @fieldParentPtr("active_list_node", active_list.popFirst().?);
 
-        const width = @as(u31, @intFromFloat(@as(f32, @floatFromInt(output_width)) * output.single_window_ratio)) -
+        const width = @as(u31, @intFromFloat(@as(f32, @floatFromInt(output_width)) * output.single_window_ratio)) -|
             2 * border_width;
         const x = output_x + @divFloor(output_width - width, 2);
 
         window.pending_render.position = .{ .x = x, .y = output_y + border_width };
         window.pending_manage.dimensions = .{
             .width = width,
-            .height = output_height - 2 * border_width,
+            .height = output_height -| 2 * border_width,
         };
         window.pending_manage.maximized = true;
         return;

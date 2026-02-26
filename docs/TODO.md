@@ -2,10 +2,11 @@
 
 These are in rough order of my priority, though no promises I do them in this order.
 
-- [ ] Support switch handling (e.g. lid close)
+- [ ] Add build-time options for including the wallpaper (and maybe bar)
 - [ ] Check pointer position and only warp if not on focused window already
 - [ ] Change focus direction when closing window
 - [ ] Use set_xcursor_theme request
+- [ ] Support configuring bar item positions (left/center/right)
 - [ ] Add focused window title to bar
 - [ ] Support overriding config location
 - [ ] Add support for center-primary layout
@@ -25,6 +26,7 @@ These are in rough order of my priority, though no promises I do them in this or
 - [ ] Support configurable prepend/append on send-to-output
 - [ ] Support taking new output's tags on send-to-output
 - [ ] Add `spawn_tagmask`, `focus_previous_tags`, `send_to_previous_tags` commands
+- [ ] Support switch handling (e.g. lid close)
 - [x] Support changeable primary ratio
 - [x] Support changeable primary count
 - [x] Support multiple outputs

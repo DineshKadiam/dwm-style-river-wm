@@ -56,10 +56,7 @@ pub const PendingManage = struct {
 };
 
 pub const PendingRender = struct {
-    position: ?struct {
-        x: i32,
-        y: i32,
-    } = null,
+    position: ?struct { x: i32, y: i32 } = null,
 
     focused: ?bool = null,
 
