@@ -224,17 +224,9 @@ pub fn draw(bar: *Bar) !void {
     var fbs = io.fixedBufferStream(&buf);
     try dt.strftime(fbs.writer(), "%H:%M");
 
-    // Convert ASCII text string to unicode
-    // XXX: Not sure if this even needs to be converted to unicode
-    var codepoint_it = (try unicode.Utf8View.init(fbs.getWritten())).iterator();
-    const codepoint_count = try unicode.utf8CountCodepoints(fbs.getWritten());
-    // We use u32 for fcft even if zig uses u21
-    var codepoints: []u32 = try utils.gpa.alloc(u32, codepoint_count);
+    // Convert date string to Unicode codepoints
+    const codepoints = try utils.utf8ToCodepoints(fbs.getWritten());
     defer utils.gpa.free(codepoints);
-    var i: usize = 0;
-    while (codepoint_it.nextCodepoint()) |cp| : (i += 1) {
-        codepoints[i] = cp;
-    }
 
     const text_width = try bar.textWidth(codepoints);
     var x: i32 = @divFloor(buffer.width - text_width, 2);
@@ -393,7 +385,6 @@ const assert = std.debug.assert;
 const io = std.io;
 const mem = std.mem;
 const process = std.process;
-const unicode = std.unicode;
 
 const wayland = @import("wayland");
 const wl = wayland.client.wl;

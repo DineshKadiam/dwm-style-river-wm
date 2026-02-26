@@ -145,7 +145,7 @@ fn windowListener(river_window_v1: *river.WindowV1, event: river.WindowV1.Event,
                 while (it.next()) |seat| {
                     if (seat.focused_window == window) {
                         // Find another window to focus and warp pointer there
-                        if (output.prevWindow(window)) |next_focus| {
+                        if (output.nextWindow(window)) |next_focus| {
                             if (next_focus != window) {
                                 seat.pending_manage.window = .{ .window = next_focus };
                                 seat.pending_manage.should_warp_pointer = true;
