@@ -380,4 +380,4 @@ All libinput configuration options supported by river are also supported by
 
 # SEE ALSO
 
-*beansprout*(1), *river*(1)
+*beansprout*(1), *river*(1), *strftime*(3)
