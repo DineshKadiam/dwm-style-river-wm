@@ -12,6 +12,7 @@ const NodeName = enum {
     vertical_padding,
     horizontal_padding,
     margins,
+    time_format,
 };
 const MarginsNodeName = enum { top, right, bottom, left };
 
@@ -38,6 +39,10 @@ vertical_padding: u8 = 5,
 /// Horizontal padding between bar edges and content, in pixels
 horizontal_padding: u8 = 5,
 
+/// strftime format string for the clock display.
+/// null means use the default.
+time_format: ?[]const u8 = null,
+
 pub fn toBarOptions(config: BarConfig) Bar.Options {
     return .{
         .fonts = config.fonts orelse "monospace:size=14",
@@ -52,6 +57,7 @@ pub fn toBarOptions(config: BarConfig) Bar.Options {
         },
         .vertical_padding = config.vertical_padding,
         .horizontal_padding = config.horizontal_padding,
+        .time_format = config.time_format orelse Bar.default_time_format,
     };
 }
 
@@ -92,7 +98,18 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
                                 logWarnInvalidNodeArg(name, val_str);
                             }
                         },
-
+                        .time_format => {
+                            if (node.argcount() < 1) {
+                                logWarnMissingNodeArg(name, "format string");
+                                continue;
+                            }
+                            if (validateTimeFormat(val_str)) {
+                                config.bar_config.?.time_format = utils.gpa.dupe(u8, val_str) catch @panic("Out of memory");
+                                logDebugSettingNode(name, val_str);
+                            } else {
+                                logWarnInvalidNodeArg(name, val_str);
+                            }
+                        },
                         .margins => next_child_block = .margins,
                         inline .background_color,
                         .text_color,
@@ -192,15 +209,26 @@ inline fn logWarnInvalidNodeArg(node_name: anytype, node_value: []const u8) void
     }
 }
 
+fn validateTimeFormat(format: []const u8) bool {
+    // Try formatting with a dummy time to validate the format string
+    var buf: [255]u8 = undefined;
+    var writer = Io.Writer.fixed(&buf);
+    const dummy_time = zeit.Time{};
+    dummy_time.strftime(&writer, format) catch return false;
+    return true;
+}
+
 inline fn logWarnMissingNodeArg(node_name: NodeName, comptime arg: []const u8) void {
     log.warn("\"bar.{s}\" missing " ++ arg ++ " argument. Ignoring", .{@tagName(node_name)});
 }
 
 const std = @import("std");
 const fmt = std.fmt;
+const Io = std.Io;
 
 const kdl = @import("kdl");
 const pixman = @import("pixman");
+const zeit = @import("zeit");
 
 const utils = @import("../utils.zig");
 const Bar = @import("../Bar.zig");

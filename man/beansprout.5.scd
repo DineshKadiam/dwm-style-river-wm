@@ -143,6 +143,11 @@ bar {
 *horizontal_padding* _pixels_
 	Horizontal padding between bar edges and text. (Default: 5)
 
+*time_format* _format_
+	strftime format string for the clock display. Invalid format strings
+	are ignored and the default is used instead. Set to an empty string
+	to hide the clock. (Default: "%Y-%m-%d %H:%M, %A")
+
 The bar also supports *margins* and *anchors* child blocks; see *TAG OVERLAY*
 for their format.
 

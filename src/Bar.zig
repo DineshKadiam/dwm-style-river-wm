@@ -7,6 +7,9 @@ const Bar = @This();
 /// Standard base DPI at a scale of 1
 const base_dpi = 96;
 
+/// Default strftime string to use for the clock
+pub const default_time_format = "%Y-%m-%d %H:%M, %A";
+
 context: *Context,
 
 /// The timezone of the computer.
@@ -61,6 +64,9 @@ pub const Options = struct {
     vertical_padding: u8 = 5,
     /// Horizontal padding between bar edges and content, in pixels
     horizontal_padding: u8 = 5,
+
+    /// strftime format string for the clock display
+    time_format: []const u8 = default_time_format,
 };
 
 pub fn init(context: *Context, output: *Output, options: Options) !Bar {
@@ -240,7 +246,7 @@ pub fn draw(bar: *Bar) !void {
     // Convert time to a string
     var time_buf: [255:0]u8 = undefined;
     var time_writer = Io.Writer.fixed(&time_buf);
-    try dt.strftime(&time_writer, "%H:%M");
+    try dt.strftime(&time_writer, options.time_format);
 
     // Convert date string to Unicode codepoints
     const time_codepoints = try utils.utf8ToCodepoints(time_writer.buffered());

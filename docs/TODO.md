@@ -10,7 +10,6 @@ These are in rough order of my priority, though no promises I do them in this or
 - [ ] Support configuring bar item positions (left/center/right)
 - [ ] Support overriding config location
 - [ ] Add support for center-primary layout
-- [ ] Support 12-hour clock format (maybe take any time format string?)
 - [ ] Support per-output bar visibility
 - [ ] Support more window rule options (e.g. ssd/csd)
 - [ ] Support solid `background-color` fallback (no wallpaper)
@@ -50,3 +49,4 @@ These are in rough order of my priority, though no promises I do them in this or
 - [x] Support configuring primary vs secondary stack side
 - [x] Add focused window title to bar
 - [x] Add bar padding to config
+- [x] Support 12-hour clock format (maybe take any time format string?)

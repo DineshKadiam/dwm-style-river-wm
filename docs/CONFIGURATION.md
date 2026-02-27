@@ -147,6 +147,7 @@ bar {
 | `position`           | enum   | `top`              | Bar position (`top` or `bottom`)              |
 | `vertical_padding`   | u8     | `5`                | Vertical padding above and below text         |
 | `horizontal_padding` | u8     | `5`                | Horizontal padding between bar edges and text |
+| `time_format`        | string | `%Y-%m-%d %H:%M, %A` | strftime format string for the clock display (an empty string hides the clock) |
 
 ### Margins
 
