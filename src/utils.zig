@@ -193,6 +193,21 @@ pub fn stripQuotes(s: []const u8) []const u8 {
     return s;
 }
 
+/// Convert a Utf-8 string into codepoints
+/// Caller owns the returned slice and is responsible for freeing it.
+pub fn utf8ToCodepoints(utf8: []const u8) ![]u32 {
+    var codepoint_it = (try unicode.Utf8View.init(utf8)).iterator();
+    const codepoint_count = try unicode.utf8CountCodepoints(utf8);
+    // We use u32 for fcft even if zig uses u21
+    const codepoints: []u32 = try gpa.alloc(u32, codepoint_count);
+    var i: usize = 0;
+    while (codepoint_it.nextCodepoint()) |cp| : (i += 1) {
+        codepoints[i] = cp;
+    }
+
+    return codepoints;
+}
+
 /// Report that the given WaylandGlobal wasn't advertised and exit the program
 pub fn interfaceNotAdvertised(comptime WaylandGlobal: type) noreturn {
     fatal("{s} not advertised. Exiting", .{WaylandGlobal.interface.name});
@@ -207,6 +222,7 @@ const std = @import("std");
 const fatal = std.process.fatal;
 const fmt = std.fmt;
 const mem = std.mem;
+const unicode = std.unicode;
 
 const wayland = @import("wayland");
 const river = wayland.client.river;
@@ -446,4 +462,42 @@ test "tokenizeShell quotes mid-token" {
     }
     try testing.expectEqual(1, result.len);
     try testing.expectEqualStrings("foobar bazqux", result[0]);
+}
+
+test "utf8ToCodepoints ASCII" {
+    const codepoints = try utf8ToCodepoints("hello");
+    defer gpa.free(codepoints);
+    try testing.expectEqual(5, codepoints.len);
+    try testing.expectEqual('h', codepoints[0]);
+    try testing.expectEqual('e', codepoints[1]);
+    try testing.expectEqual('l', codepoints[2]);
+    try testing.expectEqual('l', codepoints[3]);
+    try testing.expectEqual('o', codepoints[4]);
+}
+
+test "utf8ToCodepoints multi-byte" {
+    const codepoints = try utf8ToCodepoints("grüezi");
+    defer gpa.free(codepoints);
+    try testing.expectEqual(6, codepoints.len);
+    try testing.expectEqual('g', codepoints[0]);
+    try testing.expectEqual('r', codepoints[1]);
+    try testing.expectEqual(0x00FC, codepoints[2]); // ü
+    try testing.expectEqual('e', codepoints[3]);
+    try testing.expectEqual('z', codepoints[4]);
+    try testing.expectEqual('i', codepoints[5]);
+}
+
+test "utf8ToCodepoints empty" {
+    const codepoints = try utf8ToCodepoints("");
+    defer gpa.free(codepoints);
+    try testing.expectEqual(0, codepoints.len);
+}
+
+test "utf8ToCodepoints emoji" {
+    // 🇨🇦 is two regional indicator symbols: U+1F1E8 U+1F1E6
+    const codepoints = try utf8ToCodepoints("🇨🇦");
+    defer gpa.free(codepoints);
+    try testing.expectEqual(2, codepoints.len);
+    try testing.expectEqual(0x1F1E8, codepoints[0]);
+    try testing.expectEqual(0x1F1E6, codepoints[1]);
 }

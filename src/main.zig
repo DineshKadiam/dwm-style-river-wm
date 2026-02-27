@@ -129,19 +129,17 @@ fn run(wl_display: *wl.Display, context: *Context) !void {
             fatal("wl_display flush failed: E{s}", .{@tagName(errno)});
         }
 
-        // Get the number of milliseconds to the top of the next minute
-        const time = std.time.timestamp();
-        if (time < 0) {
-            log.err("Got a negative time ({d})", .{time});
-            return error.InvalidTime;
-        }
-        const timeout: i32 = @intCast((@divFloor(time, 60) * 60 + 60 - time) * 1000);
+        // Get the number of milliseconds to the top of the next second
+        const time_ns = std.time.nanoTimestamp();
+        const ns_per_sec = std.time.ns_per_s;
+        const remainder_ns = @mod(time_ns, ns_per_sec);
+        const timeout: i32 = @intCast(@divFloor(ns_per_sec - remainder_ns, std.time.ns_per_ms));
 
         const poll_rc = posix.poll(&pollfds, timeout) catch |err| {
             fatal("Failed to poll {s}", .{@errorName(err)});
         };
         if (poll_rc == 0) {
-            // If poll returns 0, it timed out, meaning we hit the top of the minute
+            // If poll returns 0, it timed out, meaning we hit the top of the next second
             // and need to update the clock.
             var it = context.wm.outputs.iterator(.forward);
             while (it.next()) |output| {

@@ -28,6 +28,7 @@ borders {
 // Bar widget; shows the time
 bar {
     position top
+    time_format "%H:%M"
 }
 // Tag overlay widget; shown briefly when switching tags
 // Remove this block to disable the overlay entirely

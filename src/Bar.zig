@@ -7,6 +7,9 @@ const Bar = @This();
 /// Standard base DPI at a scale of 1
 const base_dpi = 96;
 
+/// Default strftime string to use for the clock
+pub const default_time_format = "%Y-%m-%d %H:%M, %A";
+
 context: *Context,
 
 /// The timezone of the computer.
@@ -43,6 +46,7 @@ pub const PendingRender = struct {
 };
 
 pub const Position = enum { top, bottom };
+pub const Component = enum { title, clock, wm_info, none };
 
 pub const Options = struct {
     /// Comma separated list of FontConfig formatted font specifications
@@ -55,7 +59,22 @@ pub const Options = struct {
     /// Whether the bar is at the top or bottom of the screen
     position: Position = .top,
     /// Directional margins top, right, bottom, left, in pixels
-    margins: struct { top: i32 = 0, right: i32 = 0, bottom: i32 = 0, left: i32 = 0 } = .{},
+    margins: struct { top: u8 = 0, right: u8 = 0, bottom: u8 = 0, left: u8 = 0 } = .{},
+
+    /// Vertical padding between bar edges and content, in pixels
+    vertical_padding: u8 = 5,
+    /// Horizontal padding between bar edges and content, in pixels
+    horizontal_padding: u8 = 5,
+
+    /// strftime format string for the clock display
+    time_format: []const u8 = default_time_format,
+
+    /// Which component to show on the left side of the bar
+    left: Component = .title,
+    /// Which component to show in the center of the bar
+    center: Component = .clock,
+    /// Which component to show on the right side of the bar
+    right: Component = .wm_info,
 };
 
 pub fn init(context: *Context, output: *Output, options: Options) !Bar {
@@ -98,18 +117,30 @@ pub fn init(context: *Context, output: *Output, options: Options) !Bar {
             .node = node,
         },
         .configured = true,
+        .pending_manage = .{ .output_geometry = true },
     };
 }
 
 pub fn deinit(bar: *Bar) void {
     bar.configured = false;
     bar.timezone.deinit();
+    bar.fcft_fonts.destroy();
     if (bar.surfaces) |surfaces| {
         surfaces.node.destroy();
         surfaces.river_shell_surface.destroy();
         surfaces.wl_surface.destroy();
         bar.context.buffer_pool.surface_count -= 1;
     }
+}
+
+/// Update bar options in-place without destroying/recreating Wayland surfaces
+/// This is used when reloading the config
+pub fn reconfigure(bar: *Bar, options: Options) !void {
+    const new_fonts = try getFcftFonts(options.fonts, bar.font_scale);
+    bar.fcft_fonts.destroy();
+    bar.fcft_fonts = new_fonts;
+    bar.options = options;
+    bar.pending_manage.output_geometry = true;
 }
 
 pub fn manage(bar: *Bar) !void {
@@ -131,10 +162,9 @@ pub fn manage(bar: *Bar) !void {
         bar.font_scale = scale;
     }
 
-    const vertical_padding = 5;
     const logical_font_height = @divFloor(bar.fcft_fonts.height, @as(i32, bar.font_scale));
-    const height: u31 = @intCast(logical_font_height + 2 * vertical_padding);
-    const width: u31 = output.geometry.width;
+    const height: u31 = @intCast(logical_font_height + 2 * options.vertical_padding);
+    const width: u31 = output.geometry.width -| @as(u31, @intCast(options.margins.left + options.margins.right));
 
     if (bar.geometry.width != width or bar.geometry.height != height) {
         bar.geometry.width = width;
@@ -206,46 +236,90 @@ pub fn draw(bar: *Bar) !void {
     );
 
     // Set-up text color
-    const text_color = options.text_color;
-    const color = pixman.Image.createSolidFill(&text_color) orelse return error.FailedToCreatePixmanImage;
-    defer _ = color.unref();
+    const text_color = pixman.Image.createSolidFill(&options.text_color) orelse return error.FailedToCreatePixmanImage;
+    defer _ = text_color.unref();
 
-    // Get the current time in seconds since the epoch,
-    // then load the local timezone,
-    // then convert `now` to the `local` timezone
-    const now = try zeit.instant(.{});
-    const now_local = now.in(&bar.timezone);
-
-    // Generate date/time info for this instant
-    const dt = now_local.time();
-
-    // Convert time to a string
-    var buf: [255:0]u8 = undefined;
-    var fbs = io.fixedBufferStream(&buf);
-    try dt.strftime(fbs.writer(), "%H:%M");
-
-    // Convert ASCII text string to unicode
-    // XXX: Not sure if this even needs to be converted to unicode
-    var codepoint_it = (try unicode.Utf8View.init(fbs.getWritten())).iterator();
-    const codepoint_count = try unicode.utf8CountCodepoints(fbs.getWritten());
-    // We use u32 for fcft even if zig uses u21
-    var codepoints: []u32 = try utils.gpa.alloc(u32, codepoint_count);
-    defer utils.gpa.free(codepoints);
-    var i: usize = 0;
-    while (codepoint_it.nextCodepoint()) |cp| : (i += 1) {
-        codepoints[i] = cp;
-    }
-
-    const text_width = try bar.textWidth(codepoints);
-    var x: i32 = @divFloor(buffer.width - text_width, 2);
+    // Y is shared between all components
     const y: i32 = @divFloor(buffer.height - bar.fcft_fonts.height, 2);
 
-    // Actually render the unicode codepoints
-    try bar.renderChars(codepoints, buffer, &x, y, color);
+    // Pre-compute codepoints for each component type
 
-    // Finally, attach the buffer to the surface
+    // Clock
+    var time_buf: [255:0]u8 = undefined;
+    var time_writer = Io.Writer.fixed(&time_buf);
+    const now = try zeit.instant(.{});
+    const now_local = now.in(&bar.timezone);
+    try now_local.time().strftime(&time_writer, options.time_format);
+    const clock_codepoints = try utils.utf8ToCodepoints(time_writer.buffered());
+    defer utils.gpa.free(clock_codepoints);
+
+    // Title (empty string if no focused window)
+    const focused_title: []const u8 = if (context.wm.seats.first()) |seat|
+        if (seat.focused_window) |window| window.title orelse "" else ""
+    else
+        "";
+    const title_codepoints = try utils.utf8ToCodepoints(focused_title);
+    defer utils.gpa.free(title_codepoints);
+
+    // WM info
+    const output = bar.output;
+    var wm_info_buf: [255:0]u8 = undefined;
+    var wm_info_writer = Io.Writer.fixed(&wm_info_buf);
+    const ratio_percent: u32 = @intFromFloat(@round(output.primary_ratio * 100));
+    try wm_info_writer.print("P:{d}/{d}% W:{d}({d})", .{
+        output.primary_count,
+        ratio_percent,
+        output.countVisible(),
+        output.windows.length(),
+    });
+    const wm_info_codepoints = try utils.utf8ToCodepoints(wm_info_writer.buffered());
+    defer utils.gpa.free(wm_info_codepoints);
+
+    // Map a Component to its pre-computed codepoints slice
+    const componentSlice = struct {
+        fn f(component: Component, clock: []u32, title: []u32, wm_info: []u32) []u32 {
+            return switch (component) {
+                .clock => clock,
+                .title => title,
+                .wm_info => wm_info,
+                .none => &.{},
+            };
+        }
+    }.f;
+
+    // Measure center first — needed to constrain left and right widths
+    const center_codepoints = componentSlice(options.center, clock_codepoints, title_codepoints, wm_info_codepoints);
+    const center_width = try bar.textWidth(center_codepoints);
+    var center_x: i32 = @divFloor(buffer.width - center_width, 2);
+
+    // Render left slot
+    const left_codepoints = componentSlice(options.left, clock_codepoints, title_codepoints, wm_info_codepoints);
+    if (left_codepoints.len > 0) {
+        const max_width = center_x - 2 * options.horizontal_padding;
+        const truncated = try bar.truncateToWidth(left_codepoints, max_width);
+        var x: i32 = options.horizontal_padding;
+        try bar.renderChars(truncated, buffer, &x, y, text_color);
+    }
+
+    // Render right slot
+    const right_codepoints = componentSlice(options.right, clock_codepoints, title_codepoints, wm_info_codepoints);
+    if (right_codepoints.len > 0) {
+        const max_width = buffer.width - (center_x + center_width) - 2 * options.horizontal_padding;
+        const truncated = try bar.truncateToWidth(right_codepoints, max_width);
+        const text_width = try bar.textWidth(truncated);
+        var x: i32 = buffer.width - text_width - options.horizontal_padding;
+        try bar.renderChars(truncated, buffer, &x, y, text_color);
+    }
+
+    // Render center slot
+    if (center_codepoints.len > 0) {
+        try bar.renderChars(center_codepoints, buffer, &center_x, y, text_color);
+    }
+
+    // Attach the buffer to the surface
     const surfaces = bar.surfaces orelse return error.NoSurfaces;
     const wl_surface = surfaces.wl_surface;
+    // sync_next_commit ensures frame-perfect application
     surfaces.river_shell_surface.syncNextCommit();
     wl_surface.setBufferScale(scale);
     wl_surface.attach(buffer.wl_buffer, 0, 0);
@@ -253,7 +327,6 @@ pub fn draw(bar: *Bar) !void {
     wl_surface.commit();
 }
 
-// TODO: This should be moved to utils once fonts are in config
 /// Computes the pixel width of a text string.
 fn textWidth(bar: *Bar, text: []const u32) !i32 {
     var width: i32 = 0;
@@ -268,6 +341,25 @@ fn textWidth(bar: *Bar, text: []const u32) !i32 {
         }
     }
     return width;
+}
+
+/// Return the longest prefix of `text` that fits within `max_width` pixels.
+fn truncateToWidth(bar: *Bar, text: []const u32, max_width: i32) ![]const u32 {
+    var width: i32 = 0;
+    for (text, 0..) |cp, i| {
+        const glyph = try bar.fcft_fonts.rasterizeCharUtf32(cp, .default);
+        if (i > 0) {
+            var x_kern: c_long = 0;
+            if (bar.fcft_fonts.kerning(text[i - 1], cp, &x_kern, null)) {
+                width += @intCast(x_kern);
+            }
+        }
+        if (width + glyph.advance.x > max_width) {
+            return text[0..i];
+        }
+        width += glyph.advance.x;
+    }
+    return text;
 }
 
 // Borrowed and modified from https://git.sr.ht/~novakane/zig-fcft-example
@@ -373,7 +465,7 @@ fn getFcftFonts(fonts: []const u8, scale: u31) !*fcft.Font {
             log.debug("Scaling font DPI: base={d} scale={d}", .{ base_dpi, scale });
             const scaled = try arena_alloc.dupeZ(
                 u8,
-                try std.fmt.allocPrint(arena_alloc, "{s}:dpi={}", .{ font, @as(u32, base_dpi) * scale }),
+                try fmt.allocPrint(arena_alloc, "{s}:dpi={}", .{ font, @as(u32, base_dpi) * scale }),
             );
             try list.append(arena_alloc, scaled);
         } else {
@@ -390,10 +482,10 @@ fn getFcftFonts(fonts: []const u8, scale: u31) !*fcft.Font {
 
 const std = @import("std");
 const assert = std.debug.assert;
-const io = std.io;
+const fmt = std.fmt;
 const mem = std.mem;
 const process = std.process;
-const unicode = std.unicode;
+const Io = std.Io;
 
 const wayland = @import("wayland");
 const wl = wayland.client.wl;

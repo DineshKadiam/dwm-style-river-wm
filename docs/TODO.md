@@ -2,16 +2,14 @@
 
 These are in rough order of my priority, though no promises I do them in this order.
 
+- [ ] Support window tag/order caching between WM restarts (within a river session)
+- [ ] Add gap support
 - [ ] Add build-time options for including the wallpaper (and maybe bar)
 - [ ] Check pointer position and only warp if not on focused window already
 - [ ] Change focus direction when closing window
 - [ ] Use set_xcursor_theme request
-- [ ] Support configuring bar item positions (left/center/right)
-- [ ] Add focused window title to bar
 - [ ] Support overriding config location
 - [ ] Add support for center-primary layout
-- [ ] Add bar padding to config
-- [ ] Support 12-hour clock format (maybe take any time format string?)
 - [ ] Support per-output bar visibility
 - [ ] Support more window rule options (e.g. ssd/csd)
 - [ ] Support solid `background-color` fallback (no wallpaper)
@@ -49,3 +47,7 @@ These are in rough order of my priority, though no promises I do them in this or
 - [x] Move orphan handling out of .output and .seat events; into manage()
 - [x] Add config for single-window width ratio (mostly because my ultrawide makes a single window massive)
 - [x] Support configuring primary vs secondary stack side
+- [x] Add focused window title to bar
+- [x] Add bar padding to config
+- [x] Support 12-hour clock format (maybe take any time format string?)
+- [x] Support configuring bar item positions (left/center/right)
