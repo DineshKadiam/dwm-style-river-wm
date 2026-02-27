@@ -46,6 +46,7 @@ pub const PendingRender = struct {
 };
 
 pub const Position = enum { top, bottom };
+pub const Component = enum { title, clock, wm_info, none };
 
 pub const Options = struct {
     /// Comma separated list of FontConfig formatted font specifications
@@ -67,6 +68,13 @@ pub const Options = struct {
 
     /// strftime format string for the clock display
     time_format: []const u8 = default_time_format,
+
+    /// Which component to show on the left side of the bar
+    left: Component = .title,
+    /// Which component to show in the center of the bar
+    center: Component = .clock,
+    /// Which component to show on the right side of the bar
+    right: Component = .wm_info,
 };
 
 pub fn init(context: *Context, output: *Output, options: Options) !Bar {
@@ -234,55 +242,26 @@ pub fn draw(bar: *Bar) !void {
     // Y is shared between all components
     const y: i32 = @divFloor(buffer.height - bar.fcft_fonts.height, 2);
 
-    // Get the current time in seconds since the epoch,
-    // then load the local timezone,
-    // then convert `now` to the `local` timezone
-    const now = try zeit.instant(.{});
-    const now_local = now.in(&bar.timezone);
+    // Pre-compute codepoints for each component type
 
-    // Generate date/time info for this instant
-    const dt = now_local.time();
-
-    // Convert time to a string
+    // Clock
     var time_buf: [255:0]u8 = undefined;
     var time_writer = Io.Writer.fixed(&time_buf);
-    try dt.strftime(&time_writer, options.time_format);
+    const now = try zeit.instant(.{});
+    const now_local = now.in(&bar.timezone);
+    try now_local.time().strftime(&time_writer, options.time_format);
+    const clock_codepoints = try utils.utf8ToCodepoints(time_writer.buffered());
+    defer utils.gpa.free(clock_codepoints);
 
-    // Convert date string to Unicode codepoints
-    const time_codepoints = try utils.utf8ToCodepoints(time_writer.buffered());
-    defer utils.gpa.free(time_codepoints);
+    // Title (empty string if no focused window)
+    const focused_title: []const u8 = if (context.wm.seats.first()) |seat|
+        if (seat.focused_window) |window| window.title orelse "" else ""
+    else
+        "";
+    const title_codepoints = try utils.utf8ToCodepoints(focused_title);
+    defer utils.gpa.free(title_codepoints);
 
-    // Get the width of the date string so we can truncate title
-    const center_width = try bar.textWidth(time_codepoints);
-    // X changes
-    var center_x: i32 = @divFloor(buffer.width - center_width, 2);
-
-    // Write title of focused window to the left side of the bar
-    if (context.wm.seats.first()) |seat| {
-        if (seat.focused_window) |window| {
-            if (window.title) |title| {
-                if (title.len > 0) {
-                    const title_codepoints = try utils.utf8ToCodepoints(title);
-                    defer utils.gpa.free(title_codepoints);
-
-                    const max_left_width = center_x - 2 * options.horizontal_padding;
-                    const truncated_codepoints = try bar.truncateToWidth(title_codepoints, max_left_width);
-
-                    var left_x: i32 = options.horizontal_padding;
-
-                    try bar.renderChars(
-                        truncated_codepoints,
-                        buffer,
-                        &left_x,
-                        y,
-                        text_color,
-                    );
-                }
-            }
-        }
-    }
-
-    // Put WM info on the right side of the bar
+    // WM info
     const output = bar.output;
     var wm_info_buf: [255:0]u8 = undefined;
     var wm_info_writer = Io.Writer.fixed(&wm_info_buf);
@@ -296,23 +275,48 @@ pub fn draw(bar: *Bar) !void {
     const wm_info_codepoints = try utils.utf8ToCodepoints(wm_info_writer.buffered());
     defer utils.gpa.free(wm_info_codepoints);
 
-    const max_right_width = buffer.width - (center_x + center_width) - 2 * options.horizontal_padding;
-    const right_truncated = try bar.truncateToWidth(wm_info_codepoints, max_right_width);
-    const right_text_width = try bar.textWidth(right_truncated);
+    // Map a Component to its pre-computed codepoints slice
+    const componentSlice = struct {
+        fn f(component: Component, clock: []u32, title: []u32, wm_info: []u32) []u32 {
+            return switch (component) {
+                .clock => clock,
+                .title => title,
+                .wm_info => wm_info,
+                .none => &.{},
+            };
+        }
+    }.f;
 
-    var right_x: i32 = buffer.width - right_text_width - options.horizontal_padding;
-    try bar.renderChars(
-        right_truncated,
-        buffer,
-        &right_x,
-        y,
-        text_color,
-    );
+    // Measure center first — needed to constrain left and right widths
+    const center_codepoints = componentSlice(options.center, clock_codepoints, title_codepoints, wm_info_codepoints);
+    const center_width = try bar.textWidth(center_codepoints);
+    var center_x: i32 = @divFloor(buffer.width - center_width, 2);
 
-    // Finally, put the time in the center of the bar
-    try bar.renderChars(time_codepoints, buffer, &center_x, y, text_color);
+    // Render left slot
+    const left_codepoints = componentSlice(options.left, clock_codepoints, title_codepoints, wm_info_codepoints);
+    if (left_codepoints.len > 0) {
+        const max_width = center_x - 2 * options.horizontal_padding;
+        const truncated = try bar.truncateToWidth(left_codepoints, max_width);
+        var x: i32 = options.horizontal_padding;
+        try bar.renderChars(truncated, buffer, &x, y, text_color);
+    }
 
-    // Really finally, attach the buffer to the surface
+    // Render right slot
+    const right_codepoints = componentSlice(options.right, clock_codepoints, title_codepoints, wm_info_codepoints);
+    if (right_codepoints.len > 0) {
+        const max_width = buffer.width - (center_x + center_width) - 2 * options.horizontal_padding;
+        const truncated = try bar.truncateToWidth(right_codepoints, max_width);
+        const text_width = try bar.textWidth(truncated);
+        var x: i32 = buffer.width - text_width - options.horizontal_padding;
+        try bar.renderChars(truncated, buffer, &x, y, text_color);
+    }
+
+    // Render center slot
+    if (center_codepoints.len > 0) {
+        try bar.renderChars(center_codepoints, buffer, &center_x, y, text_color);
+    }
+
+    // Attach the buffer to the surface
     const surfaces = bar.surfaces orelse return error.NoSurfaces;
     const wl_surface = surfaces.wl_surface;
     // sync_next_commit ensures frame-perfect application

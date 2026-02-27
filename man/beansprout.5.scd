@@ -114,9 +114,8 @@ initialization do not re-trigger rules.
 
 # BAR
 
-The bar is an optional widget that shows the focused window title on the left,
-the date/time in the center, and layout info (primary count/ratio and visible
-window count) on the right. It is only created when a *bar* block is present
+The bar is an optional widget that displays configurable components in three
+slots: left, center, and right. It is only created when a *bar* block is present
 in the config:
 
 ```
@@ -137,6 +136,15 @@ bar {
 *position* *top*|*bottom*
 	Bar position. (Default: *top*)
 
+*left* *title*|*clock*|*wm_info*|*none*
+	Component shown in the left slot. (Default: *title*)
+
+*center* *title*|*clock*|*wm_info*|*none*
+	Component shown in the center slot. (Default: *clock*)
+
+*right* *title*|*clock*|*wm_info*|*none*
+	Component shown in the right slot. (Default: *wm_info*)
+
 *vertical_padding* _pixels_
 	Vertical padding above and below text. (Default: 5)
 
@@ -145,8 +153,7 @@ bar {
 
 *time_format* _format_
 	strftime format string for the clock display. Invalid format strings
-	are ignored and the default is used instead. Set to an empty string
-	to hide the clock. (Default: "%Y-%m-%d %H:%M, %A")
+	are ignored and the default is used instead. (Default: "%Y-%m-%d %H:%M, %A")
 
 The bar also supports *margins* and *anchors* child blocks; see *TAG OVERLAY*
 for their format.

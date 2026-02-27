@@ -9,6 +9,9 @@ const NodeName = enum {
     text_color,
     background_color,
     position,
+    left,
+    center,
+    right,
     vertical_padding,
     horizontal_padding,
     margins,
@@ -24,6 +27,13 @@ background_color: pixman.Color = utils.parseRgbaPixmanComptime("0x1e1e2e"),
 
 /// Whether the bar is at the top or bottom of the screen
 position: Bar.Position = .top,
+
+/// Which component to show on the left side of the bar
+left: Bar.Component = .title,
+/// Which component to show in the center of the bar
+center: Bar.Component = .clock,
+/// Which component to show on the right side of the bar
+right: Bar.Component = .wm_info,
 
 /// Margin above the top of the bar and another element (a window or the top of the output)
 margin_top: u8 = 0,
@@ -49,6 +59,9 @@ pub fn toBarOptions(config: BarConfig) Bar.Options {
         .text_color = config.text_color,
         .background_color = config.background_color,
         .position = config.position,
+        .left = config.left,
+        .center = config.center,
+        .right = config.right,
         .margins = .{
             .top = config.margin_top,
             .right = config.margin_right,
@@ -129,6 +142,15 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
                                 continue;
                             };
                             @field(config.bar_config.?, @tagName(tag)) = padding;
+                            logDebugSettingNode(name, padding_str);
+                        },
+                        inline .left, .center, .right => |tag| {
+                            if (std.meta.stringToEnum(Bar.Component, val_str)) |component| {
+                                @field(config.bar_config.?, @tagName(tag)) = component;
+                                logDebugSettingNode(name, val_str);
+                            } else {
+                                logWarnInvalidNodeArg(name, val_str);
+                            }
                         },
                     }
                 } else {
