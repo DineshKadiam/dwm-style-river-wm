@@ -124,9 +124,16 @@ fn run(wl_display: *wl.Display, context: *Context) !void {
     };
 
     while (true) {
-        const errno = wl_display.flush();
-        if (errno != .SUCCESS) {
-            fatal("wl_display flush failed: E{s}", .{@tagName(errno)});
+        const flush_errno = wl_display.flush();
+        if (flush_errno == .AGAIN) {
+            // Send buffer is full; ask poll to wake us when the socket is writable
+            // again so we can retry the flush at the top of the next iteration.
+            pollfds[poll_wayland].events = posix.POLL.IN | posix.POLL.OUT;
+        } else if (flush_errno != .SUCCESS) {
+            fatal("wl_display flush failed: E{s}", .{@tagName(flush_errno)});
+        } else {
+            // Flush succeeded; stop polling for writability.
+            pollfds[poll_wayland].events = posix.POLL.IN;
         }
 
         // Get the number of milliseconds to the top of the next second

@@ -319,8 +319,6 @@ pub fn draw(bar: *Bar) !void {
     // Attach the buffer to the surface
     const surfaces = bar.surfaces orelse return error.NoSurfaces;
     const wl_surface = surfaces.wl_surface;
-    // sync_next_commit ensures frame-perfect application
-    surfaces.river_shell_surface.syncNextCommit();
     wl_surface.setBufferScale(scale);
     wl_surface.attach(buffer.wl_buffer, 0, 0);
     wl_surface.damageBuffer(0, 0, render_width, render_height);
