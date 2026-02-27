@@ -560,6 +560,33 @@ pub fn manage(output: *Output) void {
 
         output.tags = new_tags;
 
+        // If the focused window is no longer visible on the new tags, update focus.
+        if (output.context.wm.seats.first()) |seat| {
+            if (seat.focused_output == output) {
+                // Whether focus has changed, either to a new window or to no focus
+                const should_update_focus = if (seat.focused_window) |w|
+                    w.tags & new_tags == 0
+                else
+                    true;
+                if (should_update_focus) {
+                    var new_focus: ?*Window = null;
+                    var it = output.windows.iterator(.forward);
+                    while (it.next()) |window| {
+                        if (window.tags & new_tags != 0) {
+                            new_focus = window;
+                            break;
+                        }
+                    }
+                    if (new_focus) |w| {
+                        seat.pending_manage.window = .{ .window = w };
+                        seat.pending_manage.should_warp_pointer = true;
+                    } else {
+                        seat.pending_manage.window = .clear_focus;
+                    }
+                }
+            }
+        }
+
         // Show tag overlay and arm the hide timer
         if (output.tag_overlay) |*tag_overlay| {
             if (tag_overlay.surfaces) |_| {
