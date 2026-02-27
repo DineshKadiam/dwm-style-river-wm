@@ -97,6 +97,9 @@ pub fn create(context: *Context, river_window_v1: *river.WindowV1, output: ?*Out
         .output = output,
         .tags = if (output) |o| o.tags else 0x0001,
         .link = undefined, // Handled by the wl.list
+        // Ensure borders are applied on the first render cycle, even for windows that
+        // are never explicitly told they are unfocused (e.g. on WM restart).
+        .pending_render = .{ .focused = false },
     };
 
     window.river_window_v1.setListener(*Window, windowListener, window);
