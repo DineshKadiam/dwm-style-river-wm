@@ -137,9 +137,15 @@ pub fn manage(seat: *Seat) void {
             switch (pending_window) {
                 .window => |window| {
                     if (seat.focused_window) |focused| {
-                        // Tell the previously focused Window that it's no longer focused
                         if (focused != window) {
+                            // Tell the previously focused Window that it's no longer focused
                             focused.pending_render.focused = false;
+                            // Update the Bar to have the newly-focused window's title
+                            if (focused.output) |output| {
+                                if (output.bar) |*bar| {
+                                    bar.pending_render.draw = true;
+                                }
+                            }
                         }
                     }
                     seat.focused_window = window;

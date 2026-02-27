@@ -188,6 +188,19 @@ fn windowListener(river_window_v1: *river.WindowV1, event: river.WindowV1.Event,
                 utils.gpa.dupe(u8, std.mem.span(t)) catch @panic("Out of memory")
             else
                 null;
+
+            // Need to update the bar if this window is focused
+            if (window.context.wm.seats.first()) |seat| {
+                if (seat.focused_window) |focused_window| {
+                    if (focused_window == window) {
+                        if (window.output) |output| {
+                            if (output.bar) |*bar| {
+                                bar.pending_render.draw = true;
+                            }
+                        }
+                    }
+                }
+            }
         },
         .parent => |ev| {
             // Nothing to do if ev.parent is null

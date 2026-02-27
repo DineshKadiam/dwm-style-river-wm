@@ -200,23 +200,33 @@ pub fn manage(context: *Context) void {
             }
         }
 
-        // Recreate or destroy bars on all outputs
+        // Update, create, or destroy bars on all outputs
         const has_bar = new_config.bar_config != null;
         if (had_bar or has_bar) {
             var out_it = context.wm.outputs.iterator(.forward);
             while (out_it.next()) |output| {
-                // Destroy existing bar
-                if (output.bar) |*bar| {
-                    bar.deinit();
-                    output.bar = null;
-                }
-                // Create new bar if configured
                 if (new_config.bar_config) |bar_config| {
-                    output.bar = Bar.init(context, output, bar_config.toBarOptions()) catch |e| {
-                        log.err("Failed to create bar: {}", .{e});
-                        continue;
-                    };
-                    output.bar.?.pending_manage.output_geometry = true;
+                    if (output.bar) |*bar| {
+                        // Existing bar; reconfigure in-place to keep surfaces
+                        bar.reconfigure(bar_config.toBarOptions()) catch |e| {
+                            log.err("Failed to reconfigure bar: {}", .{e});
+                            bar.deinit();
+                            output.bar = null;
+                            continue;
+                        };
+                    } else {
+                        // No bar; we need to initialize a new one
+                        output.bar = Bar.init(context, output, bar_config.toBarOptions()) catch |e| {
+                            log.err("Failed to create bar: {}", .{e});
+                            continue;
+                        };
+                    }
+                } else {
+                    // New config doesn't have a bar; destroy existing one
+                    if (output.bar) |*bar| {
+                        bar.deinit();
+                        output.bar = null;
+                    }
                 }
             }
         }

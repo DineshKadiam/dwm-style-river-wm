@@ -9,6 +9,8 @@ const NodeName = enum {
     text_color,
     background_color,
     position,
+    vertical_padding,
+    horizontal_padding,
     margins,
 };
 const MarginsNodeName = enum { top, right, bottom, left };
@@ -18,11 +20,23 @@ const MarginsNodeName = enum { top, right, bottom, left };
 fonts: ?[]const u8 = null,
 text_color: pixman.Color = utils.parseRgbaPixmanComptime("0xcdd6f4"),
 background_color: pixman.Color = utils.parseRgbaPixmanComptime("0x1e1e2e"),
+
+/// Whether the bar is at the top or bottom of the screen
 position: Bar.Position = .top,
-margin_top: i32 = 0,
-margin_right: i32 = 0,
-margin_bottom: i32 = 0,
-margin_left: i32 = 0,
+
+/// Margin above the top of the bar and another element (a window or the top of the output)
+margin_top: u8 = 0,
+/// Margin above the right of the bar and another element (a window or the top of the output)
+margin_right: u8 = 0,
+/// Margin above bottom top of the bar and another element (a window or the top of the output)
+margin_bottom: u8 = 0,
+/// Margin above left top of the bar and another element (a window or the top of the output)
+margin_left: u8 = 0,
+
+/// Vertical padding between bar edges and content, in pixels
+vertical_padding: u8 = 5,
+/// Horizontal padding between bar edges and content, in pixels
+horizontal_padding: u8 = 5,
 
 pub fn toBarOptions(config: BarConfig) Bar.Options {
     return .{
@@ -36,6 +50,8 @@ pub fn toBarOptions(config: BarConfig) Bar.Options {
             .bottom = config.margin_bottom,
             .left = config.margin_left,
         },
+        .vertical_padding = config.vertical_padding,
+        .horizontal_padding = config.horizontal_padding,
     };
 }
 
@@ -76,6 +92,7 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
                                 logWarnInvalidNodeArg(name, val_str);
                             }
                         },
+
                         .margins => next_child_block = .margins,
                         inline .background_color,
                         .text_color,
@@ -85,6 +102,16 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
                                 continue;
                             };
                             logDebugSettingNode(name, val_str);
+                        },
+                        inline .vertical_padding,
+                        .horizontal_padding,
+                        => |tag| {
+                            const padding_str = utils.stripQuotes(node.arg(parser, 0) orelse "");
+                            const padding = fmt.parseInt(u8, padding_str, 10) catch {
+                                logWarnInvalidNodeArg(name, padding_str);
+                                continue;
+                            };
+                            @field(config.bar_config.?, @tagName(tag)) = padding;
                         },
                     }
                 } else {
@@ -117,7 +144,7 @@ fn loadMarginsBlock(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8)
                         continue;
                     }
                     const val_str = utils.stripQuotes(node.arg(parser, 0) orelse "");
-                    const val = fmt.parseInt(i32, val_str, 10) catch {
+                    const val = fmt.parseInt(u8, val_str, 10) catch {
                         logWarnInvalidNodeArg(name, val_str);
                         continue;
                     };

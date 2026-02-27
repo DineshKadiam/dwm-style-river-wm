@@ -523,10 +523,16 @@ pub fn manage(output: *Output) void {
             Config.min_primary_ratio,
             Config.max_primary_ratio,
         );
+        if (output.bar) |*bar| {
+            bar.pending_render.draw = true;
+        }
     }
     if (output.pending_manage.primary_count) |primary_count| {
         // Don't allow less than 1 primary
         output.primary_count = @max(1, primary_count);
+        if (output.bar) |*bar| {
+            bar.pending_render.draw = true;
+        }
     }
     if (output.pending_manage.single_window_ratio) |single_window_ratio| {
         output.single_window_ratio = std.math.clamp(
@@ -579,6 +585,10 @@ pub fn manage(output: *Output) void {
                     log.err("Failed to arm tag overlay timer: {}", .{err});
                 };
             }
+        }
+
+        if (output.bar) |*bar| {
+            bar.pending_render.draw = true;
         }
     }
 
@@ -792,6 +802,15 @@ pub fn occupiedTags(output: *Output) u32 {
         occupied_tags |= window.tags;
     }
     return occupied_tags;
+}
+
+pub fn countVisible(output: *Output) usize {
+    var visible: usize = 0;
+    var it = output.windows.iterator(.forward);
+    while (it.next()) |window| {
+        if (window.tags & output.tags != 0) visible += 1;
+    }
+    return visible;
 }
 
 const std = @import("std");

@@ -114,8 +114,10 @@ initialization do not re-trigger rules.
 
 # BAR
 
-The bar is an optional widget that shows the time. It is only created when a
-*bar* block is present:
+The bar is an optional widget that shows the focused window title on the left,
+the date/time in the center, and layout info (primary count/ratio and visible
+window count) on the right. It is only created when a *bar* block is present
+in the config:
 
 ```
 bar {
@@ -135,8 +137,16 @@ bar {
 *position* *top*|*bottom*
 	Bar position. (Default: *top*)
 
+*vertical_padding* _pixels_
+	Vertical padding above and below text. (Default: 5)
+
+*horizontal_padding* _pixels_
+	Horizontal padding between bar edges and text. (Default: 5)
+
 The bar also supports *margins* and *anchors* child blocks; see *TAG OVERLAY*
 for their format.
+
+An empty block can be used to enable the widget with all defaults.
 
 # TAG OVERLAY
 

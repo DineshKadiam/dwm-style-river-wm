@@ -126,10 +126,11 @@ do not re-trigger rules.
 
 ## Bar
 
-The bar is an optional widget that shows the time on your screen. Right now, that's it.
-It is only created when a `bar` block is present in the config. All settings have
-defaults, with the color based on the Catppuccin Mocha theme. An empty block can be used
-to enable the widget with all defaults:
+The bar is an optional widget that shows the focused window title on the left,
+the date/time in the center, and layout info (primary count/ratio and visible
+window count) on the right. It is only created when a `bar` block is present in
+the config. All settings have defaults, with the color based on the Catppuccin
+Mocha theme. An empty block can be used to enable the widget with all defaults:
 
 ```kdl
 bar {
@@ -140,10 +141,12 @@ bar {
 
 | Setting            | Type   | Default            | Description                       |
 |--------------------|--------|--------------------|-----------------------------------|
-| `fonts`            | string | `monospace:size=14` | Comma-separated FontConfig fonts |
-| `text_color`       | color  | `0xcdd6f4`         | Text color                        |
-| `background_color` | color  | `0x1e1e2e`         | Background color                  |
-| `position`         | enum   | `top`              | Bar position (`top` or `bottom`)  |
+| `fonts`              | string | `monospace:size=14` | Comma-separated FontConfig fonts             |
+| `text_color`         | color  | `0xcdd6f4`         | Text color                                    |
+| `background_color`   | color  | `0x1e1e2e`         | Background color                              |
+| `position`           | enum   | `top`              | Bar position (`top` or `bottom`)              |
+| `vertical_padding`   | u8     | `5`                | Vertical padding above and below text         |
+| `horizontal_padding` | u8     | `5`                | Horizontal padding between bar edges and text |
 
 ### Margins
 
