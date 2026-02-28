@@ -1,5 +1,7 @@
 # beansprout
 
+![Single window with gaps](docs/screenshots/single-window.png)
+![Tiled windows](docs/screenshots/tiled-windows.png)
 
 ## Overview
 
