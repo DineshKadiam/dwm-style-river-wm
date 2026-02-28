@@ -269,16 +269,6 @@ fn riverOutputListener(river_output_v1: *river.OutputV1, event: river.OutputV1.E
 // Used for the wl_output global interface that corresponds to the river_output_v1
 fn wlOutputListener(_: *wl.Output, event: wl.Output.Event, output: *Output) void {
     switch (event) {
-        .mode => |ev| {
-            if (ev.width < 0 or ev.height < 0) {
-                // I'm not actually sure if this is possible, but just to be safe
-                log.warn("Received wl_output.mode event with a negative width or height ({d}x{d})", .{ ev.width, ev.height });
-                return;
-            }
-
-            output.geometry.width = @intCast(ev.width);
-            output.geometry.height = @intCast(ev.height);
-        },
         .done => {
             output.initWallpaperLayerSurface() catch |err| {
                 const output_name = output.name orelse "some output";
