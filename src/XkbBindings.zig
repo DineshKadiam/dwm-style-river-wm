@@ -335,7 +335,12 @@ const XkbBinding = struct {
             .prev => wm.outputs.last(),
         };
 
-        if (pending_focus) |output| {
+        if (pending_focus) |output| blk: {
+            // This should be a noop if there's only one output
+            if (output == seat.focused_output) {
+                break :blk;
+            }
+
             seat.pending_manage.output = .{ .output = output };
 
             // We got the new output, but we need to switch window focus, too
@@ -373,17 +378,19 @@ const XkbBinding = struct {
             .prev => wm.outputs.last(),
         };
 
-        if (pending_output) |output| {
+        if (pending_output) |output| blk: {
             // This should be a noop if there's only one output
-            if (output != window.output) {
-                // We have to remove window from current output's windows list first
-                window.link.remove();
-                output.windows.append(window);
-
-                seat.pending_manage.output = .{ .output = output };
-                seat.pending_manage.should_warp_pointer = true;
-                window.pending_manage.pending_output = .{ .output = output };
+            if (output == window.output) {
+                break :blk;
             }
+
+            // We have to remove window from current output's windows list first
+            window.link.remove();
+            output.windows.append(window);
+
+            seat.pending_manage.output = .{ .output = output };
+            seat.pending_manage.should_warp_pointer = true;
+            window.pending_manage.pending_output = .{ .output = output };
         }
     }
 
