@@ -25,16 +25,14 @@ output: *Output,
 // Bar geometry
 geometry: Rect = .{},
 
-surfaces: ?struct {
+surfaces: struct {
     wl_surface: *wl.Surface,
     river_shell_surface: *river.ShellSurfaceV1,
     node: *river.NodeV1,
-} = null,
+},
 
 pending_manage: PendingManage = .{},
 pending_render: PendingRender = .{},
-
-configured: bool = false,
 
 pub const PendingManage = struct {
     output_geometry: bool = false,
@@ -116,21 +114,20 @@ pub fn init(context: *Context, output: *Output, options: Options) !Bar {
             .river_shell_surface = river_shell_surface,
             .node = node,
         },
-        .configured = true,
         .pending_manage = .{ .output_geometry = true },
     };
 }
 
 pub fn deinit(bar: *Bar) void {
-    bar.configured = false;
+    bar.output.bar = null;
+
     bar.timezone.deinit();
     bar.fcft_fonts.destroy();
-    if (bar.surfaces) |surfaces| {
-        surfaces.node.destroy();
-        surfaces.river_shell_surface.destroy();
-        surfaces.wl_surface.destroy();
-        bar.context.buffer_pool.surface_count -= 1;
-    }
+
+    bar.surfaces.node.destroy();
+    bar.surfaces.river_shell_surface.destroy();
+    bar.surfaces.wl_surface.destroy();
+    bar.context.buffer_pool.surface_count -= 1;
 }
 
 /// Update bar options in-place without destroying/recreating Wayland surfaces
@@ -144,52 +141,50 @@ pub fn reconfigure(bar: *Bar, options: Options) !void {
 }
 
 pub fn manage(bar: *Bar) !void {
-    if (!bar.configured) return;
     defer bar.pending_manage = .{};
 
-    // The only manage actions we need to do are when the output changes geometry
-    if (!bar.pending_manage.output_geometry) return;
+    // Need to adjust for new output dimensions
+    if (bar.pending_manage.output_geometry) {
+        const output = bar.output;
+        const options = bar.options;
 
-    const output = bar.output;
-    const options = bar.options;
+        // Recreate fonts if the output scale changed, so geometry calculations
+        // below use the correct font metrics.
+        const scale = output.scale;
+        if (scale != bar.font_scale) {
+            bar.fcft_fonts.destroy();
+            bar.fcft_fonts = try getFcftFonts(bar.options.fonts, scale);
+            bar.font_scale = scale;
+        }
 
-    // Recreate fonts if the output scale changed, so geometry calculations
-    // below use the correct font metrics.
-    const scale = output.scale;
-    if (scale != bar.font_scale) {
-        bar.fcft_fonts.destroy();
-        bar.fcft_fonts = try getFcftFonts(bar.options.fonts, scale);
-        bar.font_scale = scale;
+        const logical_font_height = @divFloor(bar.fcft_fonts.height, @as(i32, bar.font_scale));
+        const height: u31 = @intCast(logical_font_height + 2 * options.vertical_padding);
+        const width: u31 = output.geometry.width -| @as(u31, @intCast(options.margins.left + options.margins.right));
+
+        if (bar.geometry.width != width or bar.geometry.height != height) {
+            bar.geometry.width = width;
+            bar.geometry.height = height;
+
+            const opaque_region = try bar.context.wl_compositor.createRegion();
+            defer opaque_region.destroy();
+            opaque_region.add(0, 0, width, height);
+            bar.surfaces.wl_surface.setOpaqueRegion(opaque_region);
+        }
+
+        const x = output.geometry.x + options.margins.left;
+        const y = switch (options.position) {
+            .top => output.geometry.y + options.margins.top,
+            .bottom => output.geometry.y + output.geometry.height - bar.geometry.height - options.margins.bottom,
+        };
+        bar.pending_render.position = .{ .x = x, .y = y };
+        bar.pending_render.draw = true;
     }
-
-    const logical_font_height = @divFloor(bar.fcft_fonts.height, @as(i32, bar.font_scale));
-    const height: u31 = @intCast(logical_font_height + 2 * options.vertical_padding);
-    const width: u31 = output.geometry.width -| @as(u31, @intCast(options.margins.left + options.margins.right));
-
-    if (bar.geometry.width != width or bar.geometry.height != height) {
-        bar.geometry.width = width;
-        bar.geometry.height = height;
-
-        const opaque_region = try bar.context.wl_compositor.createRegion();
-        defer opaque_region.destroy();
-        opaque_region.add(0, 0, width, height);
-        bar.surfaces.?.wl_surface.setOpaqueRegion(opaque_region);
-    }
-
-    const x = output.geometry.x + options.margins.left;
-    const y = switch (options.position) {
-        .top => output.geometry.y + options.margins.top,
-        .bottom => output.geometry.y + output.geometry.height - bar.geometry.height - options.margins.bottom,
-    };
-    bar.pending_render.position = .{ .x = x, .y = y };
-    bar.pending_render.draw = true;
 }
 
 pub fn render(bar: *Bar) void {
-    if (!bar.configured) return;
     defer bar.pending_render = .{};
 
-    const surfaces = bar.surfaces orelse return;
+    const surfaces = bar.surfaces;
 
     if (bar.pending_render.position) |position| {
         surfaces.node.setPosition(position.x, position.y);
@@ -204,7 +199,7 @@ pub fn render(bar: *Bar) void {
 }
 
 /// Draw the bar and its components (clock, title, etc.)
-pub fn draw(bar: *Bar) !void {
+fn draw(bar: *Bar) !void {
     const context = bar.context;
     const options = bar.options;
 
@@ -317,7 +312,7 @@ pub fn draw(bar: *Bar) !void {
     }
 
     // Attach the buffer to the surface
-    const surfaces = bar.surfaces orelse return error.NoSurfaces;
+    const surfaces = bar.surfaces;
     const wl_surface = surfaces.wl_surface;
     wl_surface.setBufferScale(scale);
     wl_surface.attach(buffer.wl_buffer, 0, 0);

@@ -241,9 +241,7 @@ pub fn manage(context: *Context) void {
                     if (output.wallpaper) |*wp| wp.deinit();
                     output.wallpaper = null;
                 } else if (output.wallpaper) |*wp| {
-                    wp.render() catch |err| {
-                        log.err("Wallpaper re-render failed: {}", .{err});
-                    };
+                    wp.pending_render.draw = true;
                 } else {
                     output.wallpaper = Wallpaper.init(context, output) catch |err| {
                         log.err("Failed to init wallpaper surface: {}", .{err});

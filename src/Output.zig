@@ -273,14 +273,6 @@ fn wlOutputListener(_: *wl.Output, event: wl.Output.Event, output: *Output) void
                     bar.pending_manage.output_geometry = true;
                 }
             }
-            // Re-render wallpaper if scale changed
-            if (output.wallpaper) |*wp| {
-                if (wp.configured and output.scale != wp.render_scale) {
-                    wp.render() catch |err| {
-                        log.err("Wallpaper render failed: {}", .{err});
-                    };
-                }
-            }
         },
         .scale => |ev| {
             if (ev.factor < 0) {
@@ -288,7 +280,13 @@ fn wlOutputListener(_: *wl.Output, event: wl.Output.Event, output: *Output) void
                 log.warn("Received wl_output.scale event with a negative factor ({d})", .{ev.factor});
                 return;
             }
-            output.scale = @intCast(ev.factor);
+            const new_scale: u31 = @intCast(ev.factor);
+            if (new_scale != output.scale) {
+                output.scale = new_scale;
+                if (output.wallpaper) |*wallpaper| {
+                    wallpaper.pending_render.draw = true;
+                }
+            }
         },
         .name => |ev| {
             if (output.name) |old_name| utils.gpa.free(old_name);
@@ -311,6 +309,9 @@ pub fn manage(output: *Output) void {
     }
 
     if (output.pending_manage.position != null or output.pending_manage.dimensions != null) {
+        if (output.wallpaper) |*wallpaper| {
+            wallpaper.pending_render.draw = true;
+        }
         if (output.bar) |*bar| {
             bar.pending_manage.output_geometry = true;
         }
@@ -459,6 +460,10 @@ pub fn manage(output: *Output) void {
 }
 
 pub fn render(output: *Output) void {
+    if (output.wallpaper) |*wallpaper| {
+        wallpaper.render();
+    }
+
     if (output.bar) |*bar| {
         bar.render();
     }

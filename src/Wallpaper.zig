@@ -7,13 +7,17 @@ const Wallpaper = @This();
 context: *Context,
 output: *Output,
 
-wl_surface: *wl.Surface,
-layer_surface: *zwlr.LayerSurfaceV1,
+surfaces: struct {
+    wl_surface: *wl.Surface,
+    river_shell_surface: *river.ShellSurfaceV1,
+    node: *river.NodeV1,
+},
 
-render_scale: u31 = 0,
-render_width: u31 = 0,
-render_height: u31 = 0,
-configured: bool = false,
+pending_render: PendingRender = .{},
+
+pub const PendingRender = struct {
+    draw: bool = false,
+};
 
 /// Decoded image data shared across all outputs.
 /// Stored on Context; each output's Wallpaper references it for rendering.
@@ -98,13 +102,21 @@ pub fn init(context: *Context, output: *Output) !Wallpaper {
     const wl_surface = try context.wl_compositor.createSurface();
     errdefer wl_surface.destroy();
 
-    const layer_surface = try context.zwlr_layer_shell_v1.getLayerSurface(wl_surface, output.wl_output, .background, "beansprout-wallpaper");
-    errdefer layer_surface.destroy();
+    const river_shell_surface = try context
+        .wm
+        .river_window_manager_v1
+        .getShellSurface(wl_surface);
+    errdefer river_shell_surface.destroy();
+
+    const node = try river_shell_surface.getNode();
+    errdefer node.destroy();
 
     // We don't want our surface to have any input region (default is infinite)
     const empty_region = try context.wl_compositor.createRegion();
     defer empty_region.destroy();
     wl_surface.setInputRegion(empty_region);
+
+    context.buffer_pool.surface_count += 1;
 
     // Full surface should be opaque
     const opaque_region = try context.wl_compositor.createRegion();
@@ -112,60 +124,51 @@ pub fn init(context: *Context, output: *Output) !Wallpaper {
     defer opaque_region.destroy();
     wl_surface.setOpaqueRegion(opaque_region);
 
-    layer_surface.setExclusiveZone(-1);
-    layer_surface.setAnchor(.{ .top = true, .right = true, .bottom = true, .left = true });
-
-    context.buffer_pool.surface_count += 1;
-
-    layer_surface.setListener(*Output, layerSurfaceListener, output);
-    wl_surface.commit();
-
     return .{
         .context = context,
         .output = output,
-        .wl_surface = wl_surface,
-        .layer_surface = layer_surface,
+        .surfaces = .{
+            .wl_surface = wl_surface,
+            .river_shell_surface = river_shell_surface,
+            .node = node,
+        },
+        .pending_render = .{ .draw = true },
     };
 }
 
 pub fn deinit(wallpaper: *Wallpaper) void {
-    wallpaper.layer_surface.destroy();
-    wallpaper.wl_surface.destroy();
+    wallpaper.output.wallpaper = null;
+
+    wallpaper.surfaces.node.destroy();
+    wallpaper.surfaces.river_shell_surface.destroy();
+    wallpaper.surfaces.wl_surface.destroy();
     wallpaper.context.buffer_pool.surface_count -= 1;
 }
 
-fn layerSurfaceListener(layer_surface: *zwlr.LayerSurfaceV1, event: zwlr.LayerSurfaceV1.Event, output: *Output) void {
-    switch (event) {
-        .configure => |ev| {
-            layer_surface.ackConfigure(ev.serial);
+pub fn render(wallpaper: *Wallpaper) void {
+    defer wallpaper.pending_render = .{};
 
-            const wallpaper = &(output.wallpaper orelse return);
+    // We draw whenever the output's dimensions or scale change
+    if (wallpaper.pending_render.draw) {
+        const output = wallpaper.output;
+        const geometry = output.geometry;
+        const width = geometry.width;
+        const height = geometry.height;
+        const scale = output.scale;
 
-            const width: u31 = @intCast(ev.width);
-            const height: u31 = @intCast(ev.height);
+        const opaque_region = wallpaper.context.wl_compositor.createRegion() catch |err| {
+            log.err("Failed to create opaque region: {}", .{err});
+            return;
+        };
+        defer opaque_region.destroy();
+        opaque_region.add(0, 0, width, height);
 
-            if (wallpaper.configured and
-                wallpaper.render_width == width and
-                wallpaper.render_height == height and
-                output.scale == wallpaper.render_scale)
-            {
-                wallpaper.wl_surface.commit();
-                return;
-            }
+        wallpaper.surfaces.node.placeBottom();
 
-            log.debug("configuring wallpaper surface with width {} and height {}", .{ width, height });
-            wallpaper.render_width = width;
-            wallpaper.render_height = height;
-            wallpaper.configured = true;
-
-            wallpaper.render() catch |err| {
-                log.err("Wallpaper render failed: {}", .{err});
-            };
-        },
-        .closed => {
-            if (output.wallpaper) |*wp| wp.deinit();
-            output.wallpaper = null;
-        },
+        wallpaper.surfaces.wl_surface.setOpaqueRegion(opaque_region);
+        wallpaper.draw(width, height, scale) catch |err| {
+            log.err("Wallpaper draw failed: {}", .{err});
+        };
     }
 }
 
@@ -188,12 +191,8 @@ fn calculateTransform(image_dimension: c_int, output_dimension: u31, dimension_s
 }
 
 /// Render the wallpaper image onto the layer surface
-pub fn render(wallpaper: *Wallpaper) !void {
+fn draw(wallpaper: *Wallpaper, width: u31, height: u31, scale: u31) !void {
     const context = wallpaper.context;
-    const output = wallpaper.output;
-    const width = wallpaper.render_width;
-    const height = wallpaper.render_height;
-    const scale = output.scale;
 
     // Don't have anything to render
     if (width == 0 or height == 0 or scale == 0) {
@@ -253,13 +252,11 @@ pub fn render(wallpaper: *Wallpaper) !void {
     log.info("render: {}x{} (scaled from {}x{})", .{ width * scale, height * scale, image_width, image_height });
 
     // Attach the buffer to the surface
-    const wl_surface = wallpaper.wl_surface;
+    const wl_surface = wallpaper.surfaces.wl_surface;
     wl_surface.setBufferScale(scale);
     wl_surface.attach(buffer.wl_buffer, 0, 0);
     wl_surface.damageBuffer(0, 0, width * scale, height * scale);
     wl_surface.commit();
-
-    wallpaper.render_scale = scale;
 }
 
 const std = @import("std");
@@ -268,7 +265,7 @@ const native_endian = builtin.cpu.arch.endian();
 
 const wayland = @import("wayland");
 const wl = wayland.client.wl;
-const zwlr = wayland.client.zwlr;
+const river = wayland.client.river;
 const pixman = @import("pixman");
 const zigimg = @import("zigimg");
 
