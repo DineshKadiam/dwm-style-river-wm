@@ -61,6 +61,9 @@ pub const PendingRender = struct {
     focused: ?bool = null,
 
     show: ?bool = null,
+
+    // This could probably be a tagged union and just take *where* to place it (for above/below)
+    place_top: bool = false,
 };
 
 pub const DimensionsHint = struct {
@@ -328,6 +331,8 @@ pub fn manage(window: *Window) void {
             const output = window.output orelse break :blk;
             window.river_window_v1.fullscreen(output.river_output_v1);
             window.river_window_v1.informFullscreen();
+            // We need to do this so the window appears on top of the bar
+            window.pending_render.place_top = true;
         } else {
             window.river_window_v1.exitFullscreen();
             window.river_window_v1.informNotFullscreen();
@@ -383,6 +388,10 @@ pub fn render(window: *Window) void {
         } else {
             window.river_window_v1.hide();
         }
+    }
+
+    if (window.pending_render.place_top) {
+        window.river_node_v1.placeTop();
     }
 }
 
