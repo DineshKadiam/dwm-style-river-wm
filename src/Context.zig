@@ -28,7 +28,7 @@ buffer_pool: BufferPool = .{},
 
 /// Holds a pixman.Image (and its raw pixels) for the wallpaper
 /// (same image on all outputs, but scaled separately)
-wallpaper_image: ?*WallpaperImage,
+wallpaper_image: ?*Wallpaper.Image,
 
 // WM Configuration
 config: *Config,
@@ -238,14 +238,16 @@ pub fn manage(context: *Context) void {
             var out_it = context.wm.outputs.iterator(.forward);
             while (out_it.next()) |output| {
                 if (context.wallpaper_image == null) {
-                    output.deinitWallpaperLayerSurface();
-                } else if (output.surfaces != null) {
-                    output.renderWallpaper() catch |err| {
+                    if (output.wallpaper) |*wp| wp.deinit();
+                    output.wallpaper = null;
+                } else if (output.wallpaper) |*wp| {
+                    wp.render() catch |err| {
                         log.err("Wallpaper re-render failed: {}", .{err});
                     };
                 } else {
-                    output.initWallpaperLayerSurface() catch |err| {
+                    output.wallpaper = Wallpaper.init(context, output) catch |err| {
                         log.err("Failed to init wallpaper surface: {}", .{err});
+                        continue;
                     };
                 }
             }
@@ -259,10 +261,10 @@ pub fn manage(context: *Context) void {
     }
 }
 
-fn loadWallpaperImage(config: *Config) ?*WallpaperImage {
+fn loadWallpaperImage(config: *Config) ?*Wallpaper.Image {
     const image_path = config.wallpaper_image_path orelse return null;
     if (image_path.len == 0) return null;
-    return WallpaperImage.create(image_path) catch |e| {
+    return Wallpaper.Image.create(image_path) catch |e| {
         log.err("Failed to load wallpaper image from path \"{s}\": {s}", .{ image_path, @errorName(e) });
         return null;
     };
@@ -291,7 +293,7 @@ const Config = @import("Config.zig");
 const InputManager = @import("InputManager.zig");
 const Output = @import("Output.zig");
 const TagOverlay = @import("TagOverlay.zig");
-const WallpaperImage = @import("WallpaperImage.zig");
+const Wallpaper = @import("Wallpaper.zig");
 const WindowManager = @import("WindowManager.zig");
 const XkbBindings = @import("XkbBindings.zig");
 

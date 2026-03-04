@@ -26,15 +26,7 @@ geometry: Rect = .{},
 // work with beansprout.
 usable_geometry: Rect = .{},
 
-// Information for this Output's wallpaper
-wallpaper_render_scale: u31 = 0,
-wallpaper_render_width: u31 = 0,
-wallpaper_render_height: u31 = 0,
-
-surfaces: ?struct {
-    wl_surface: *wl.Surface,
-    layer_surface: *zwlr.LayerSurfaceV1,
-} = null,
+wallpaper: ?Wallpaper = null,
 
 bar: ?Bar,
 tag_overlay: ?TagOverlay,
@@ -58,9 +50,6 @@ tags: u32 = 0x0001,
 
 /// State consumed in manage() phase, reset at end of manage().
 pending_manage: PendingManage = .{},
-
-/// Used for wallpaper rendering management
-configured: bool = false,
 
 windows: wl.list.Head(Window, .link),
 
@@ -134,7 +123,7 @@ pub fn destroy(output: *Output) void {
     // Deinit optional surfaces
     if (output.bar) |*bar| bar.deinit();
     if (output.tag_overlay) |*tag_overlay| tag_overlay.deinit();
-    output.deinitWallpaperLayerSurface();
+    if (output.wallpaper) |*wp| wp.deinit();
 
     // Destroy/deinit other Output fields
     output.tag_layout_overrides.deinit(utils.gpa);
@@ -270,11 +259,13 @@ fn riverOutputListener(river_output_v1: *river.OutputV1, event: river.OutputV1.E
 fn wlOutputListener(_: *wl.Output, event: wl.Output.Event, output: *Output) void {
     switch (event) {
         .done => {
-            output.initWallpaperLayerSurface() catch |err| {
-                const output_name = output.name orelse "some output";
-                log.err("failed to add a surface to {s}: {}", .{ output_name, err });
-                return;
-            };
+            if (output.context.wallpaper_image != null and output.wallpaper == null) {
+                output.wallpaper = Wallpaper.init(output.context, output) catch |err| {
+                    const output_name = output.name orelse "some output";
+                    log.err("failed to add a wallpaper surface to {s}: {}", .{ output_name, err });
+                    return;
+                };
+            }
             if (output.bar) |*bar| {
                 // Trigger a full manage cycle if the scale changed so that
                 // fonts are reloaded and bar geometry is recalculated.
@@ -283,10 +274,12 @@ fn wlOutputListener(_: *wl.Output, event: wl.Output.Event, output: *Output) void
                 }
             }
             // Re-render wallpaper if scale changed
-            if (output.configured and output.scale != output.wallpaper_render_scale) {
-                output.renderWallpaper() catch |err| {
-                    log.err("Wallpaper render failed: {}", .{err});
-                };
+            if (output.wallpaper) |*wp| {
+                if (wp.configured and output.scale != wp.render_scale) {
+                    wp.render() catch |err| {
+                        log.err("Wallpaper render failed: {}", .{err});
+                    };
+                }
             }
         },
         .scale => |ev| {
@@ -303,189 +296,6 @@ fn wlOutputListener(_: *wl.Output, event: wl.Output.Event, output: *Output) void
         },
         else => {},
     }
-}
-
-pub fn initWallpaperLayerSurface(output: *Output) !void {
-    if (output.context.wallpaper_image == null) {
-        // No wallpaper image, so we don't need any surfaces
-        return;
-    }
-
-    if (output.surfaces) |_| {
-        // This output already has a surface, we can exit early
-        return;
-    }
-
-    const context = output.context;
-
-    const wl_surface = try context.wl_compositor.createSurface();
-    errdefer wl_surface.destroy();
-
-    const layer_surface = try context.zwlr_layer_shell_v1.getLayerSurface(wl_surface, output.wl_output, .background, "beansprout-wallpaper");
-    errdefer layer_surface.destroy();
-
-    // We don't want our surface to have any input region (default is infinite)
-    const empty_region = try context.wl_compositor.createRegion();
-    defer empty_region.destroy();
-    wl_surface.setInputRegion(empty_region);
-
-    // Full surface should be opaque
-    const opaque_region = try context.wl_compositor.createRegion();
-    opaque_region.add(0, 0, output.geometry.width, output.geometry.height);
-    defer opaque_region.destroy();
-    wl_surface.setOpaqueRegion(opaque_region);
-
-    layer_surface.setExclusiveZone(-1);
-    layer_surface.setAnchor(.{ .top = true, .right = true, .bottom = true, .left = true });
-
-    output.surfaces = .{
-        .wl_surface = wl_surface,
-        .layer_surface = layer_surface,
-    };
-    context.buffer_pool.surface_count += 1;
-
-    layer_surface.setListener(*Output, wallpaperLayerSurfaceListener, output);
-    wl_surface.commit();
-}
-
-pub fn deinitWallpaperLayerSurface(output: *Output) void {
-    if (output.surfaces) |surfaces| {
-        surfaces.layer_surface.destroy();
-        surfaces.wl_surface.destroy();
-        output.context.buffer_pool.surface_count -= 1;
-    }
-
-    output.surfaces = null;
-    output.configured = false;
-}
-
-fn wallpaperLayerSurfaceListener(layer_surface: *zwlr.LayerSurfaceV1, event: zwlr.LayerSurfaceV1.Event, output: *Output) void {
-    switch (event) {
-        .configure => |ev| {
-            layer_surface.ackConfigure(ev.serial);
-
-            const width: u31 = @intCast(ev.width);
-            const height: u31 = @intCast(ev.height);
-
-            if (output.configured and
-                output.wallpaper_render_width == width and
-                output.wallpaper_render_height == height and
-                output.scale == output.wallpaper_render_scale)
-            {
-                if (output.surfaces) |surfaces| {
-                    surfaces.wl_surface.commit();
-                } else {
-                    log.warn("Output is marked as configured but is missing its surfaces.", .{});
-                }
-                return;
-            }
-
-            log.debug("configuring wallpaper surface with width {} and height {}", .{ width, height });
-            output.wallpaper_render_width = width;
-            output.wallpaper_render_height = height;
-            output.configured = true;
-
-            output.renderWallpaper() catch |err| {
-                log.err("Wallpaper render failed: {}", .{err});
-            };
-        },
-        .closed => {
-            output.deinitWallpaperLayerSurface();
-        },
-    }
-}
-
-/// Calculates image_dimension / (output_dimension * scale)
-fn calculateScale(image_dimension: c_int, output_dimension: u31, scale: u31) f64 {
-    const numerator: f64 = @floatFromInt(image_dimension);
-    const denominator: f64 = @floatFromInt(output_dimension * scale);
-
-    return numerator / denominator;
-}
-
-/// Calculates (image_dimension / dimension_scale - output_dimension) / 2 / dimension_scale
-fn calculateTransform(image_dimension: c_int, output_dimension: u31, dimension_scale: f64) f64 {
-    const numerator1: f64 = @floatFromInt(image_dimension);
-    const denominator1: f64 = dimension_scale;
-    const subtrahend: f64 = @floatFromInt(output_dimension);
-    const numerator2: f64 = numerator1 / denominator1 - subtrahend;
-
-    return numerator2 / 2 / dimension_scale;
-}
-
-/// Render the wallpaper image onto the layer surface
-pub fn renderWallpaper(output: *Output) !void {
-    const context = output.context;
-    const width = output.wallpaper_render_width;
-    const height = output.wallpaper_render_height;
-    const scale = output.scale;
-
-    // Don't have anything to render
-    if (width == 0 or height == 0 or scale == 0) {
-        return;
-    }
-    // Scale our loaded image and then copy it into the Buffer's pixman.Image
-    const wallpaper_image = context.wallpaper_image orelse return error.MissingWallpaperImage;
-    const image = wallpaper_image.pix_image;
-    const image_data = image.getData();
-    const image_width = image.getWidth();
-    const image_height = image.getHeight();
-    const image_stride = image.getStride();
-    const image_format = image.getFormat();
-
-    const buffer = try context.buffer_pool.nextBuffer(context.wl_shm, width * scale, height * scale);
-
-    const pix = pixman.Image.createBitsNoClear(image_format, image_width, image_height, image_data, image_stride) orelse {
-        log.err("Failed to copy the wallpaper image for rendering", .{});
-        return error.FailedToCreatePixmanImage;
-    };
-    defer _ = pix.unref();
-
-    // Calculate image scale
-    var sx: f64 = @as(f64, @floatFromInt(image_width)) / @as(f64, @floatFromInt(width * scale));
-    var sy: f64 = calculateScale(image_height, height, scale);
-
-    const s = if (sx > sy) sy else sx;
-    sx = s;
-    sy = s;
-
-    // Calculate translation offsets to center the image on the output.
-    // If the scaled image is larger than the output, the offset crops equally from both sides.
-    const tx: f64 = calculateTransform(image_width, width * scale, sx);
-    const ty: f64 = calculateTransform(image_height, height * scale, sy);
-
-    // Build a combined source-to-destination transform matrix.
-    // Pixman transforms map destination pixels back to source pixels, so:
-    //   t_scale: maps a destination pixel to the corresponding source pixel (scaling)
-    //   t_trans: shifts the sampling point to center the image
-    //   t = t_trans * t_scale: first scale, then translate (in source space)
-    var t_scale: pixman.FTransform = undefined;
-    var t_trans: pixman.FTransform = undefined;
-    var t: pixman.FTransform = undefined;
-    // t2 is the fixed-point version of t, which is what pixman actually uses internally
-    var t2: pixman.Transform = undefined;
-
-    pixman.FTransform.initScale(&t_scale, sx, sy);
-    pixman.FTransform.initTranslate(&t_trans, tx, ty);
-    pixman.FTransform.multiply(&t, &t_trans, &t_scale);
-    _ = pixman.Transform.fromFTransform(&t2, &t);
-    _ = pix.setTransform(&t2);
-    _ = pix.setFilter(.best, &[_]pixman.Fixed{}, 0);
-
-    // Combine the transformed source image into the buffer.
-    pixman.Image.composite32(.src, pix, null, buffer.pixman_image, 0, 0, 0, 0, 0, 0, width * scale, height * scale);
-
-    log.info("render: {}x{} (scaled from {}x{})", .{ width * scale, height * scale, image_width, image_height });
-
-    // Attach the buffer to the surface
-    const surfaces = output.surfaces orelse return error.NoSurfaces;
-    const wl_surface = surfaces.wl_surface;
-    wl_surface.setBufferScale(scale);
-    wl_surface.attach(buffer.wl_buffer, 0, 0);
-    wl_surface.damageBuffer(0, 0, width * scale, height * scale);
-    wl_surface.commit();
-
-    output.wallpaper_render_scale = scale;
 }
 
 pub fn manage(output: *Output) void {
@@ -840,15 +650,14 @@ const wayland = @import("wayland");
 const wl = wayland.client.wl;
 const river = wayland.client.river;
 const zwlr = wayland.client.zwlr;
-const pixman = @import("pixman");
 
 const utils = @import("utils.zig");
 const Rect = utils.Rect;
 const Bar = @import("Bar.zig");
-const Buffer = @import("Buffer.zig");
 const Config = @import("Config.zig");
 const Context = @import("Context.zig");
 const TagOverlay = @import("TagOverlay.zig");
+const Wallpaper = @import("Wallpaper.zig");
 const Window = @import("Window.zig");
 
 const log = std.log.scoped(.Output);
