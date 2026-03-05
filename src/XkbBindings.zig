@@ -140,6 +140,7 @@ const XkbBinding = struct {
         switch (xkb_binding.command) {
             .spawn => |cmd| {
                 var child = std.process.Child.init(cmd, utils.gpa);
+                child.env_map = &context.env;
                 _ = child.spawn() catch |err| {
                     log.err("Failed to spawn \"{s}\": {}", .{ cmd[0], err });
                 };

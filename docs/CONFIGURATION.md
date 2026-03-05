@@ -195,29 +195,6 @@ tag_overlay {
 | `square_inactive_border_color`      | color | `0x6c7086`   | Inactive tag square border                |
 | `square_inactive_occupied_color`    | color | `0xcdd6f4`   | Inactive tag occupied indicator           |
 
-### Anchors
-
-The `anchors` child block controls which edge(s) of the screen the overlay
-attaches to. Each direction is a boolean (`#true` / `#false`). Default: none, i.e. centered on output.
-
-| Setting  | Type | Default  |
-|----------|------|----------|
-| `top`    | bool | `#false` |
-| `right`  | bool | `#false` |
-| `bottom` | bool | `#false` |
-| `left`   | bool | `#false` |
-
-### Margins
-
-The `margins` child block sets pixel offsets from the anchored edge(s).
-
-| Setting  | Type | Default |
-|----------|------|---------|
-| `top`    | i32  | `0`     |
-| `right`  | i32  | `0`     |
-| `bottom` | i32  | `0`     |
-| `left`   | i32  | `0`     |
-
 ## Keybinds
 
 Keyboard bindings are placed inside a `keybinds` block. Each binding has the

@@ -33,10 +33,6 @@ wallpaper_image: ?*Wallpaper.Image,
 // WM Configuration
 config: *Config,
 
-/// Shared timerfd for hiding tag overlays after their timeout expires.
-/// This stays null if no tag overlays exist.
-tag_overlay_timer_fd: ?posix.fd_t,
-
 /// State consumed in manage() phase, reset at end of manage().
 pending_manage: PendingManage = .{},
 
@@ -73,16 +69,11 @@ pub fn create(options: Options) !*Context {
     const xkb_bindings = try XkbBindings.create(context, options.river_xkb_bindings_v1);
     errdefer xkb_bindings.destroy();
 
-    const env = try process.getEnvMap(utils.gpa);
+    var env = try process.getEnvMap(utils.gpa);
     errdefer env.deinit();
 
-    const tag_overlay_timer_fd: ?posix.fd_t = if (options.config.tag_overlay_config) |_|
-        posix.timerfd_create(.MONOTONIC, .{ .CLOEXEC = true }) catch |e| blk: {
-            log.err("Failed to create tag overlay timer: {}", .{e});
-            break :blk null;
-        }
-    else
-        null;
+    // Don't force children to have WAYLAND_DEBUG
+    env.remove("WAYLAND_DEBUG");
 
     context.* = .{
         .initialized = false,
@@ -98,7 +89,6 @@ pub fn create(options: Options) !*Context {
         .wm = wm,
         .xkb_bindings = xkb_bindings,
         .config = options.config,
-        .tag_overlay_timer_fd = tag_overlay_timer_fd,
     };
 
     return context;
@@ -113,7 +103,6 @@ pub fn destroy(context: *Context) void {
     if (context.wallpaper_image) |wallpaper_image| {
         wallpaper_image.destroy();
     }
-    if (context.tag_overlay_timer_fd) |fd| posix.close(fd);
     context.buffer_pool.deinit();
 
     // Destroy Wayland globals
@@ -168,30 +157,21 @@ pub fn manage(context: *Context) void {
         // Handle tag overlay config changes
         const has_overlay = new_config.tag_overlay_config != null;
 
-        if (!had_overlay and has_overlay) {
-            // Create timerfd for newly enabled tag overlay
-            context.tag_overlay_timer_fd = posix.timerfd_create(.MONOTONIC, .{ .CLOEXEC = true }) catch |e| blk: {
-                log.err("Failed to create tag overlay timer: {}", .{e});
-                break :blk null;
-            };
-        } else if (had_overlay and !has_overlay) {
-            // Close timerfd for disabled tag overlay
-            if (context.tag_overlay_timer_fd) |fd| posix.close(fd);
-            context.tag_overlay_timer_fd = null;
-        }
-
-        // Recreate or destroy tag overlays on all outputs
+        // Reconfigure, create, or destroy tag overlays on all outputs
         if (had_overlay or has_overlay) {
             var out_it = context.wm.outputs.iterator(.forward);
             while (out_it.next()) |output| {
-                // Destroy existing overlay
                 if (output.tag_overlay) |*tag_overlay| {
-                    tag_overlay.deinit();
-                    output.tag_overlay = null;
-                }
-                // Create new overlay if configured
-                // Create new overlay struct if configured (surfaces created on-demand)
-                if (new_config.tag_overlay_config) |tag_overlay_config| {
+                    if (new_config.tag_overlay_config) |tag_overlay_config| {
+                        // Reconfigure existing overlay
+                        tag_overlay.deinitSurfaces();
+                        tag_overlay.reconfigure(tag_overlay_config.toTagOverlayOptions());
+                    } else {
+                        // Remove overlay
+                        tag_overlay.deinit();
+                    }
+                } else if (new_config.tag_overlay_config) |tag_overlay_config| {
+                    // Create new overlay struct (surfaces created on-demand)
                     output.tag_overlay = TagOverlay.init(context, output, tag_overlay_config.toTagOverlayOptions()) catch |e| {
                         log.err("Failed to create tag overlay: {}", .{e});
                         continue;

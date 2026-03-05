@@ -19,7 +19,6 @@ These are in rough order of my priority, though no promises I do them in this or
 - [ ] Save window positions between restarts
 - [ ] Support multiple seats
 - [ ] Support clipping floating windows on edge of/between outputs
-- [ ] Use per-output timerfds for tag overlay instead of a single shared one
 - [ ] Support configurable focus-follows-window on send-to-output
 - [ ] Support configurable prepend/append on send-to-output
 - [ ] Support taking new output's tags on send-to-output
