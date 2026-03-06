@@ -13,19 +13,23 @@ options: Options,
 
 output: *Output,
 
-// Overlay geometry
-width: u31 = 0,
-height: u31 = 0,
-scale: u31 = 1,
-
 rows: u31,
 
 surfaces: ?struct {
     wl_surface: *wl.Surface,
-    layer_surface: *zwlr.LayerSurfaceV1,
+    river_shell_surface: *river.ShellSurfaceV1,
+    node: *river.NodeV1,
 } = null,
 
-configured: bool = false,
+/// Monotonic timestamp of the last time the overlay was shown/refreshed.
+/// Used by the event loop to hide the overlay after `options.timeout` ms.
+last_shown: ?time.Instant = null,
+
+pending_render: PendingRender = .{},
+
+pub const PendingRender = struct {
+    draw: bool = false,
+};
 
 pub const Options = struct {
     /// Width of the widget border in pixels
@@ -65,10 +69,6 @@ pub const Options = struct {
     // square_urgent_border_color: pixman.Color,
     // /// Occupied indicator color of urgent tag squares
     // square_urgent_occupied_color: pixman.Color,
-    /// Directional anchors top, right bottom, left; true for on, false for off
-    anchors: zwlr.LayerSurfaceV1.Anchor,
-    /// Directional margins top, right, bottom, left, in pixels
-    margins: struct { top: i32 = 0, right: i32 = 0, bottom: i32 = 0, left: i32 = 0 } = .{},
     /// Duration of widget display in milliseconds
     timeout: u32,
 };
@@ -84,113 +84,86 @@ pub fn init(context: *Context, output: *Output, options: Options) !TagOverlay {
     };
 }
 
-pub fn initSurface(tag_overlay: *TagOverlay) !void {
-    if (tag_overlay.surfaces) |_| {
-        // This tag overlay already has a layer surface, we can exit early
+pub fn deinit(tag_overlay: *TagOverlay) void {
+    tag_overlay.deinitSurfaces();
+    tag_overlay.output.tag_overlay = null;
+}
+
+pub fn reconfigure(tag_overlay: *TagOverlay, options: Options) void {
+    tag_overlay.options = options;
+    tag_overlay.rows = math.divCeil(u31, options.tag_amount, options.tags_per_row) catch {
+        log.err("Failed to calculate rows for tag overlay", .{});
         return;
-    }
+    };
+}
+
+pub fn initSurfaces(tag_overlay: *TagOverlay) !void {
+    if (tag_overlay.surfaces != null) return;
 
     const context = tag_overlay.context;
-    const options = tag_overlay.options;
 
     const wl_surface = try context.wl_compositor.createSurface();
     errdefer wl_surface.destroy();
 
-    const layer_surface = try context
-        .zwlr_layer_shell_v1
-        .getLayerSurface(wl_surface, tag_overlay.output.wl_output, .overlay, "beansprout-tag-overlay");
-    errdefer layer_surface.destroy();
-    layer_surface.setExclusiveZone(-1);
+    const river_shell_surface = try context
+        .wm
+        .river_window_manager_v1
+        .getShellSurface(wl_surface);
+    errdefer river_shell_surface.destroy();
+
+    const node = try river_shell_surface.getNode();
+    errdefer node.destroy();
 
     // We don't want our surface to have any input region (default is infinite)
     const empty_region = try context.wl_compositor.createRegion();
     defer empty_region.destroy();
     wl_surface.setInputRegion(empty_region);
 
-    const surface_width: u31 = @as(u31, @min(options.tag_amount, options.tags_per_row)) * (@as(u31, options.square_size) + options.square_padding) + options.square_padding + 2 * @as(u31, options.border_width);
-    const surface_height: u31 = @as(u31, tag_overlay.rows) * (@as(u31, options.square_size) + options.square_padding) + options.square_padding + 2 * @as(u31, options.border_width);
-    layer_surface.setSize(surface_width, surface_height);
+    const now = time.Instant.now() catch
+        std.process.fatal("System does not support a monotonic or steady clock", .{});
 
-    layer_surface.setAnchor(options.anchors);
-    layer_surface.setMargin(options.margins.top, options.margins.right, options.margins.bottom, options.margins.left);
-
-    tag_overlay.surfaces = .{ .wl_surface = wl_surface, .layer_surface = layer_surface };
     context.buffer_pool.surface_count += 1;
 
-    layer_surface.setListener(*TagOverlay, layerSurfaceListener, tag_overlay);
-    wl_surface.commit();
+    tag_overlay.surfaces = .{
+        .wl_surface = wl_surface,
+        .river_shell_surface = river_shell_surface,
+        .node = node,
+    };
+    tag_overlay.last_shown = now;
+    tag_overlay.pending_render.draw = true;
 }
 
-/// Destroy surfaces only (used to hide the overlay). The TagOverlay struct stays valid
-/// and can be re-shown by calling initSurface() again.
 pub fn deinitSurfaces(tag_overlay: *TagOverlay) void {
-    tag_overlay.configured = false;
-    if (tag_overlay.surfaces) |surfaces| {
-        surfaces.layer_surface.destroy();
-        surfaces.wl_surface.destroy();
-        tag_overlay.context.buffer_pool.surface_count -= 1;
-        tag_overlay.surfaces = null;
+    const surfaces = tag_overlay.surfaces orelse return;
+    surfaces.node.destroy();
+    surfaces.river_shell_surface.destroy();
+    surfaces.wl_surface.destroy();
+    tag_overlay.context.buffer_pool.surface_count -= 1;
+    tag_overlay.surfaces = null;
+    tag_overlay.last_shown = null;
+}
+
+pub fn render(tag_overlay: *TagOverlay) void {
+    defer tag_overlay.pending_render = .{};
+
+    if (tag_overlay.pending_render.draw) {
+        tag_overlay.draw() catch |err| {
+            log.err("tag_overlay draw failed: {}", .{err});
+        };
     }
 }
 
-pub fn deinit(tag_overlay: *TagOverlay) void {
-    tag_overlay.deinitSurfaces();
-}
-
-pub fn layerSurfaceListener(
-    layer_surface: *zwlr.LayerSurfaceV1,
-    event: zwlr.LayerSurfaceV1.Event,
-    tag_overlay: *TagOverlay,
-) void {
-    assert(tag_overlay.surfaces.?.layer_surface == layer_surface);
-    switch (event) {
-        .configure => |ev| {
-            layer_surface.ackConfigure(ev.serial);
-            const width: u31 = @intCast(ev.width);
-            const height: u31 = @intCast(ev.height);
-
-            if (tag_overlay.configured and
-                tag_overlay.width == width and
-                tag_overlay.height == height and
-                tag_overlay.output.scale == tag_overlay.scale)
-            {
-                tag_overlay.surfaces.?.wl_surface.commit();
-                return;
-            }
-
-            log.debug("Configuring tag_overlay surface with width {} and height {}", .{ width, height });
-            tag_overlay.width = width;
-            tag_overlay.height = height;
-
-            // Full surface should be opaque
-            const opaque_region: *wl.Region = tag_overlay.context.wl_compositor.createRegion() catch |e| {
-                log.err("Failed to create opaque region for tag_overlay: {}", .{e});
-                return;
-            };
-            defer opaque_region.destroy();
-            opaque_region.add(0, 0, tag_overlay.width, tag_overlay.height);
-            tag_overlay.surfaces.?.wl_surface.setOpaqueRegion(opaque_region);
-
-            tag_overlay.configured = true;
-
-            tag_overlay.render() catch |err| {
-                log.err("tag_overlay render failed: {}", .{err});
-            };
-        },
-        .closed => {
-            tag_overlay.deinit();
-        },
-    }
-}
-
-pub fn render(tag_overlay: *TagOverlay) !void {
+pub fn draw(tag_overlay: *TagOverlay) !void {
+    const surfaces = tag_overlay.surfaces orelse return;
     const context = tag_overlay.context;
     const options = tag_overlay.options;
 
     // Scaled width/height
+    const surface_width: u31 = @as(u31, @min(options.tag_amount, options.tags_per_row)) * (@as(u31, options.square_size) + options.square_padding) + options.square_padding + 2 * @as(u31, options.border_width);
+    const surface_height: u31 = @as(u31, tag_overlay.rows) * (@as(u31, options.square_size) + options.square_padding) + options.square_padding + 2 * @as(u31, options.border_width);
     const scale = tag_overlay.output.scale;
-    const render_width = tag_overlay.width * scale;
-    const render_height = tag_overlay.height * scale;
+    const render_width = surface_width * scale;
+    const render_height = surface_height * scale;
 
     // Don't have anything to render
     if (render_width == 0 or render_height == 0) {
@@ -198,7 +171,7 @@ pub fn render(tag_overlay: *TagOverlay) !void {
     }
     const buffer = try context.buffer_pool.nextBuffer(context.wl_shm, render_width, render_height);
 
-    buffer.borderedRectangle(.{ .width = tag_overlay.width, .height = tag_overlay.height }, options.border_width, scale, &options.background_color, &options.border_color);
+    buffer.borderedRectangle(.{ .width = surface_width, .height = surface_height }, options.border_width, scale, &options.background_color, &options.border_color);
 
     const focused_tags = tag_overlay.output.tags;
     const occupied_tags = tag_overlay.output.occupiedTags();
@@ -237,8 +210,14 @@ pub fn render(tag_overlay: *TagOverlay) !void {
         }
     }
 
+    // Position the overlay centered on the output
+    const output_geo = tag_overlay.output.geometry;
+    const x = output_geo.x + @divFloor(output_geo.width - surface_width, 2);
+    const y = output_geo.y + @divFloor(output_geo.height - surface_height, 2);
+    surfaces.node.setPosition(x, y);
+    surfaces.node.placeTop();
+
     // Finally, attach the buffer to the surface
-    const surfaces = tag_overlay.surfaces orelse return error.NoSurfaces;
     const wl_surface = surfaces.wl_surface;
     wl_surface.setBufferScale(scale);
     wl_surface.attach(buffer.wl_buffer, 0, 0);
@@ -249,10 +228,11 @@ pub fn render(tag_overlay: *TagOverlay) !void {
 const std = @import("std");
 const assert = std.debug.assert;
 const math = std.math;
+const time = std.time;
 
 const wayland = @import("wayland");
 const wl = wayland.client.wl;
-const zwlr = wayland.client.zwlr;
+const river = wayland.client.river;
 const fcft = @import("fcft");
 const pixman = @import("pixman");
 

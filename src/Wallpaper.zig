@@ -137,12 +137,13 @@ pub fn init(context: *Context, output: *Output) !Wallpaper {
 }
 
 pub fn deinit(wallpaper: *Wallpaper) void {
-    wallpaper.output.wallpaper = null;
-
     wallpaper.surfaces.node.destroy();
     wallpaper.surfaces.river_shell_surface.destroy();
     wallpaper.surfaces.wl_surface.destroy();
+
     wallpaper.context.buffer_pool.surface_count -= 1;
+
+    wallpaper.output.wallpaper = null;
 }
 
 pub fn render(wallpaper: *Wallpaper) void {

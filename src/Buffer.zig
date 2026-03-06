@@ -161,5 +161,10 @@ const seal = switch (builtin.target.os.tag) {
     },
     else => @compileError("target OS not supported"),
 };
+comptime {
+    if (@hasField(os.linux.F, "SEAL_SEAL")) {
+        @compileError("SEAL_SEAL added to std.os.linux, get rid of the hardcoded values above.");
+    }
+}
 
 const log = std.log.scoped(.Buffer);

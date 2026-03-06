@@ -126,9 +126,7 @@ pub fn load(config: *Config, parser: *kdl.Parser, name: ?[]const u8, hostname: ?
                     helpers.logWarnInvalidNode(node.name);
                 }
             },
-            .child_block_begin => {
-                try helpers.skipChildBlock(parser);
-            },
+            .child_block_begin => try helpers.skipChildBlock(parser),
             .child_block_end => {
                 try config.input_configs.append(utils.gpa, input_config);
                 return;

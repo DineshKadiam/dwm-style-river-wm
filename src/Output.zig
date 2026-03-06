@@ -102,7 +102,6 @@ pub fn create(context: *Context, river_output_v1: *river.OutputV1) !*Output {
             break :blk null;
         };
     } else null;
-    errdefer if (output.tag_overlay) |*to| to.deinit();
 
     output.windows.init();
 
@@ -388,31 +387,15 @@ pub fn manage(output: *Output) void {
             }
         }
 
-        // Show tag overlay and arm the hide timer
-        if (output.tag_overlay) |*tag_overlay| {
-            if (tag_overlay.surfaces) |_| {
-                // The overlay is already visible, but we still need to re-render
-                tag_overlay.render() catch |err| {
-                    log.err("tag_overlay render failed: {}", .{err});
-                };
-            } else {
-                // Create surface; the configure handler renders for us
-                tag_overlay.initSurface() catch |err| {
-                    log.err("tag_overlay initSurface failed: {}", .{err});
-                };
-            }
-            if (output.context.tag_overlay_timer_fd) |fd| {
-                const timeout_ms: isize = tag_overlay.options.timeout;
-                posix.timerfd_settime(fd, .{}, &.{
-                    .it_interval = .{ .sec = 0, .nsec = 0 },
-                    .it_value = .{
-                        .sec = @divFloor(timeout_ms, 1000),
-                        .nsec = @mod(timeout_ms, 1000) * std.time.ns_per_ms,
-                    },
-                }, null) catch |err| {
-                    log.err("Failed to arm tag overlay timer: {}", .{err});
-                };
-            }
+        // Show tag overlay (or refresh its timeout if already visible)
+        if (output.tag_overlay) |*tag_overlay| blk: {
+            tag_overlay.initSurfaces() catch |e| {
+                log.err("Failed to show TagOverlay: {}", .{e});
+                break :blk;
+            };
+            tag_overlay.last_shown = time.Instant.now() catch
+                std.process.fatal("System does not support a monotonic or steady clock", .{});
+            tag_overlay.pending_render.draw = true;
         }
 
         if (output.bar) |*bar| {
@@ -486,6 +469,10 @@ pub fn render(output: *Output) void {
         if (f.floating and f.output == output and output.tags & f.tags != 0) {
             f.river_node_v1.placeTop();
         }
+    }
+
+    if (output.tag_overlay) |*tag_overlay| {
+        tag_overlay.render();
     }
 }
 
@@ -649,12 +636,12 @@ const std = @import("std");
 const assert = std.debug.assert;
 const mem = std.mem;
 const posix = std.posix;
+const time = std.time;
 const DoublyLinkedList = std.DoublyLinkedList;
 
 const wayland = @import("wayland");
 const wl = wayland.client.wl;
 const river = wayland.client.river;
-const zwlr = wayland.client.zwlr;
 
 const utils = @import("utils.zig");
 const Rect = utils.Rect;

@@ -12,8 +12,6 @@ const Globals = struct {
 
     wl_compositor: ?*wl.Compositor = null,
     wl_shm: ?*wl.Shm = null,
-
-    zwlr_layer_shell_v1: ?*zwlr.LayerShellV1 = null,
 };
 
 const usage: []const u8 =
@@ -68,8 +66,6 @@ pub fn main() !void {
     const river_window_manager_v1 = globals.river_window_manager_v1 orelse utils.interfaceNotAdvertised(river.WindowManagerV1);
     const river_xkb_bindings_v1 = globals.river_xkb_bindings_v1 orelse utils.interfaceNotAdvertised(river.XkbBindingsV1);
 
-    const zwlr_layer_shell_v1 = globals.zwlr_layer_shell_v1 orelse utils.interfaceNotAdvertised(zwlr.LayerShellV1);
-
     const config = try Config.create();
     defer config.destroy();
     const context = try Context.create(.{
@@ -82,7 +78,6 @@ pub fn main() !void {
         .river_layer_shell_v1 = river_layer_shell_v1,
         .river_window_manager_v1 = river_window_manager_v1,
         .river_xkb_bindings_v1 = river_xkb_bindings_v1,
-        .zwlr_layer_shell_v1 = zwlr_layer_shell_v1,
         .config = config,
     });
     defer context.destroy();
@@ -102,9 +97,8 @@ fn run(wl_display: *wl.Display, context: *Context) !void {
 
     const poll_wayland = 0;
     const poll_sig = 1;
-    const poll_tag_overlay_timer = 2;
 
-    var pollfds: [3]posix.pollfd = undefined;
+    var pollfds: [2]posix.pollfd = undefined;
 
     pollfds[poll_wayland] = .{
         .fd = wl_display.getFd(),
@@ -113,12 +107,6 @@ fn run(wl_display: *wl.Display, context: *Context) !void {
     };
     pollfds[poll_sig] = .{
         .fd = sig_fd,
-        .events = posix.POLL.IN,
-        .revents = 0,
-    };
-    pollfds[poll_tag_overlay_timer] = .{
-        // poll ignores negative fds
-        .fd = context.tag_overlay_timer_fd orelse -1,
         .events = posix.POLL.IN,
         .revents = 0,
     };
@@ -136,18 +124,38 @@ fn run(wl_display: *wl.Display, context: *Context) !void {
             pollfds[poll_wayland].events = posix.POLL.IN;
         }
 
-        // Get the number of milliseconds to the top of the next second
-        const time_ns = std.time.nanoTimestamp();
-        const ns_per_sec = std.time.ns_per_s;
-        const remainder_ns = @mod(time_ns, ns_per_sec);
-        const timeout: i32 = @intCast(@divFloor(ns_per_sec - remainder_ns, std.time.ns_per_ms));
+        // Compute poll timeout: minimum of clock update and tag overlay expiry
+        var timeout: i32 = blk: {
+            // Milliseconds until the top of the next second (for clock updates)
+            const time_ns = time.nanoTimestamp();
+            const remainder_ns = @mod(time_ns, time.ns_per_s);
+            break :blk @intCast(@divFloor(time.ns_per_s - remainder_ns, time.ns_per_ms));
+        };
+
+        // Check for expired tag overlays and find the soonest expiry
+        const now = time.Instant.now() catch
+            fatal("System does not support a monotonic or steady clock", .{});
+        {
+            var it = context.wm.outputs.iterator(.forward);
+            while (it.next()) |output| {
+                const tag_overlay = output.tag_overlay orelse continue;
+                const last_shown = tag_overlay.last_shown orelse continue;
+                const elapsed_ns = now.since(last_shown);
+                const timeout_ns: u64 = @as(u64, tag_overlay.options.timeout) * time.ns_per_ms;
+                if (elapsed_ns >= timeout_ns) {
+                    output.tag_overlay.?.deinitSurfaces();
+                } else {
+                    const remaining_ms: i32 = @intCast((timeout_ns - elapsed_ns) / time.ns_per_ms);
+                    timeout = @min(timeout, remaining_ms);
+                }
+            }
+        }
 
         const poll_rc = posix.poll(&pollfds, timeout) catch |err| {
             fatal("Failed to poll {s}", .{@errorName(err)});
         };
         if (poll_rc == 0) {
-            // If poll returns 0, it timed out, meaning we hit the top of the next second
-            // and need to update the clock.
+            // Update the clock
             var it = context.wm.outputs.iterator(.forward);
             while (it.next()) |output| {
                 if (output.bar) |*bar| {
@@ -168,8 +176,6 @@ fn run(wl_display: *wl.Display, context: *Context) !void {
                 @branchHint(.cold);
                 fatal("Wayland display dispatch failed", .{});
             }
-            // Re-sync in case a config reload created or destroyed the timerfd
-            pollfds[poll_tag_overlay_timer].fd = context.tag_overlay_timer_fd orelse -1;
         }
 
         if (pollfds[poll_sig].revents & posix.POLL.HUP != 0) {
@@ -180,24 +186,6 @@ fn run(wl_display: *wl.Display, context: *Context) !void {
             @branchHint(.cold);
             log.info("Exiting beansprout", .{});
             break;
-        }
-
-        if (pollfds[poll_tag_overlay_timer].revents & posix.POLL.HUP != 0) {
-            @branchHint(.cold);
-            fatal("Tag overlay timer fd hung up", .{});
-        }
-        if (pollfds[poll_tag_overlay_timer].revents & posix.POLL.IN != 0) {
-            // Read to consume the timer event
-            var buf: [8]u8 = undefined;
-            _ = posix.read(context.tag_overlay_timer_fd.?, &buf) catch {};
-
-            // Hide all tag overlays by destroying their surfaces
-            var it = context.wm.outputs.iterator(.forward);
-            while (it.next()) |output| {
-                if (output.tag_overlay) |*tag_overlay| {
-                    tag_overlay.deinitSurfaces();
-                }
-            }
         }
     }
 }
@@ -281,11 +269,6 @@ fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, globals: *
                 globals.river_xkb_bindings_v1 = registry.bind(ev.name, river.XkbBindingsV1, 2) catch |e| {
                     fatal("Failed to bind to river_xkb_bindings_v1: {any}", .{@errorName(e)});
                 };
-            } else if (mem.orderZ(u8, ev.interface, zwlr.LayerShellV1.interface.name) == .eq) {
-                if (ev.version < 3) utils.versionNotSupported(zwlr.LayerShellV1, ev.version, 3);
-                globals.zwlr_layer_shell_v1 = registry.bind(ev.name, zwlr.LayerShellV1, 3) catch |e| {
-                    fatal("Failed to bind to zwlr_layer_shell_v1: {any}", .{@errorName(e)});
-                };
             }
         },
         .global_remove => |_| {
@@ -338,11 +321,11 @@ const mem = std.mem;
 const os = std.os;
 const posix = std.posix;
 const process = std.process;
+const time = std.time;
 
 const wayland = @import("wayland");
 const river = wayland.client.river;
 const wl = wayland.client.wl;
-const zwlr = wayland.client.zwlr;
 const fcft = @import("fcft");
 
 const flags = @import("flags.zig");

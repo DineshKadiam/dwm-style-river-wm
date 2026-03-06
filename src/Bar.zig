@@ -119,8 +119,6 @@ pub fn init(context: *Context, output: *Output, options: Options) !Bar {
 }
 
 pub fn deinit(bar: *Bar) void {
-    bar.output.bar = null;
-
     bar.timezone.deinit();
     bar.fcft_fonts.destroy();
 
@@ -128,6 +126,8 @@ pub fn deinit(bar: *Bar) void {
     bar.surfaces.river_shell_surface.destroy();
     bar.surfaces.wl_surface.destroy();
     bar.context.buffer_pool.surface_count -= 1;
+
+    bar.output.bar = null;
 }
 
 /// Update bar options in-place without destroying/recreating Wayland surfaces
