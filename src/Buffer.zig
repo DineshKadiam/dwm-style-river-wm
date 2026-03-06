@@ -76,6 +76,15 @@ pub fn init(shm: *wl.Shm, width: u31, height: u31) !Buffer {
     };
 }
 
+/// Re-initialize this buffer with new dimensions, preserving its position in
+/// any intrusive linked list. Equivalent to deinit + init but keeps node intact.
+pub fn reinit(buffer: *Buffer, shm: *wl.Shm, width: u31, height: u31) !void {
+    const saved_node = buffer.node;
+    buffer.deinit();
+    buffer.* = try Buffer.init(shm, width, height);
+    buffer.node = saved_node;
+}
+
 pub fn deinit(buffer: *Buffer) void {
     _ = buffer.pixman_image.unref();
     buffer.wl_buffer.destroy();

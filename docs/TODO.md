@@ -2,6 +2,7 @@
 
 These are in rough order of my priority, though no promises I do them in this order.
 
+- [ ] Fix mouse resizing
 - [ ] Add gap support
 - [ ] Support window tag/order caching between WM restarts (within a river session)
 - [ ] Add build-time options for including the wallpaper (and maybe bar)

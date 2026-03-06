@@ -37,7 +37,7 @@ pub fn deinit(buffer_pool: *BufferPool) void {
 /// Get a buffer with the specified dimensions. If possible, an idle buffer is
 /// reused, otherwise a new one is created.
 pub fn nextBuffer(buffer_pool: *BufferPool, wl_shm: *wl.Shm, width: u31, height: u31) !*Buffer {
-    log.debug("looking for buffer with dimensions {}x{}, total existing buffers: {}", .{ width, height, buffer_pool.len });
+    log.debug("Looking for buffer with dimensions {}x{}, total existing buffers: {}", .{ width, height, buffer_pool.len });
     defer {
         // Clear up extra buffers
         if (buffer_pool.len > max_buffer_multiplicity * buffer_pool.surface_count) {
@@ -71,8 +71,7 @@ fn findSuitableBuffer(buffer_pool: *BufferPool, wl_shm: *wl.Shm, width: u31, hei
     // No buffer has matching dimensions, however we do have an unbusy
     // buffer which we can just re-init.
     if (first_unbusy_buffer) |buffer| {
-        buffer.deinit();
-        buffer.* = try Buffer.init(wl_shm, width, height);
+        try buffer.reinit(wl_shm, width, height);
         buffer.setListener();
         return buffer;
     }
@@ -81,7 +80,7 @@ fn findSuitableBuffer(buffer_pool: *BufferPool, wl_shm: *wl.Shm, width: u31, hei
 }
 
 fn newBuffer(buffer_pool: *BufferPool, wl_shm: *wl.Shm, width: u31, height: u31) !*Buffer {
-    log.debug("creating new buffer {}x{}", .{ width, height });
+    log.debug("Creating new {}x{} buffer", .{ width, height });
     const buffer = try utils.gpa.create(Buffer);
     errdefer utils.gpa.destroy(buffer);
     buffer.* = try Buffer.init(wl_shm, width, height);
@@ -92,8 +91,8 @@ fn newBuffer(buffer_pool: *BufferPool, wl_shm: *wl.Shm, width: u31, height: u31)
 }
 
 fn cullBuffers(buffer_pool: *BufferPool) void {
-    log.debug("culling extra buffers", .{});
     var overhead = buffer_pool.len - max_buffer_multiplicity * buffer_pool.surface_count;
+    log.debug("Culling extra buffers {d}->{d}", .{ buffer_pool.len, buffer_pool.surface_count });
     var it = buffer_pool.buffers.first;
     while (it) |node| {
         if (overhead == 0) break;
