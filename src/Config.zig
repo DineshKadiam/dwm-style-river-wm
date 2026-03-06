@@ -127,7 +127,25 @@ pub fn create() !*Config {
         };
     }
 
+    if (config.keybinds.count() == 0) {
+        config.addFallbackKeybinds();
+    }
+
     return config;
+}
+
+fn addFallbackKeybinds(config: *Config) void {
+    const Entry = struct { keybind.Key, XkbBindings.Command };
+    const fallbacks = [_]Entry{
+        .{ .{ .modifiers = .{ .ctrl = true, .mod1 = true }, .keysym = .Delete }, @unionInit(XkbBindings.Command, "exit_river", {}) },
+        .{ .{ .modifiers = .{ .mod4 = true, .shift = true }, .keysym = .R }, @unionInit(XkbBindings.Command, "reload_config", {}) },
+        .{ .{ .modifiers = .{ .mod4 = true }, .keysym = .T }, .{ .spawn = utils.gpa.dupe([]const u8, &.{
+            utils.gpa.dupe(u8, "foot") catch @panic("Out of memory"),
+        }) catch @panic("Out of memory") } },
+    };
+    for (&fallbacks) |*entry| {
+        config.keybinds.put(utils.gpa, entry[0], entry[1]) catch @panic("Out of memory");
+    }
 }
 
 pub fn destroy(config: *Config) void {

@@ -35,8 +35,14 @@ You can either add *beansprout* to the river init file or directly run:
 
 	river -c beansprout
 
-If you need to exit river, for example if *beansprout* crashes, you can use
-river's hardcoded *Ctrl+Alt+Delete* keybind.
+If no keybinds are configured (e.g. missing or broken config), *beansprout*
+provides fallback keybinds: *Ctrl+Alt+Delete* to exit the River session,
+*Super+Shift+R* to reload config, and *Super+T* to spawn a terminal.
+
+If *beansprout* crashes, you can use River's hardcoded *Ctrl+Alt F1*–*F12*
+bindings to switch to another TTY. From there, you can kill River or restart
+*beansprout* (you will need to set *WAYLAND_DISPLAY* yourself, e.g.
+_WAYLAND_DISPLAY=wayland-1 beansprout_).
 
 # CONFIGURATION
 
@@ -46,9 +52,9 @@ this defaults to _~/.config/beansprout/config.kdl_.
 
 See *beansprout*(5) for a full configuration reference.
 
-If the config file is missing, *beansprout* falls back to built-in defaults
-(which will be missing keybinds). If an individual node or block is invalid,
-*beansprout* will try to ignore the error and continue.
+If the config file is missing or fails to load, *beansprout* falls back to
+built-in defaults. If an individual node or block is invalid, *beansprout*
+will try to ignore the error and continue.
 
 # AUTHORS
 

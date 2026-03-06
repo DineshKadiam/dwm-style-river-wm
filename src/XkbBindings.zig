@@ -22,6 +22,7 @@ pub const Command = union(enum) {
     reload_config,
     toggle_fullscreen,
     close_window,
+    exit_river,
     // Tag management
     set_output_tags: u32,
     set_window_tags: u32,
@@ -70,6 +71,7 @@ pub const Command = union(enum) {
             .reload_config,
             .toggle_fullscreen,
             .close_window,
+            .exit_river,
             .set_output_tags,
             .set_window_tags,
             .toggle_output_tags,
@@ -246,6 +248,7 @@ const XkbBinding = struct {
                     window.river_window_v1.close();
                 }
             },
+            .exit_river => context.wm.river_window_manager_v1.exitSession(),
             .set_output_tags => |tags| {
                 const seat = first_seat orelse return;
                 const output = seat.focused_output orelse return;

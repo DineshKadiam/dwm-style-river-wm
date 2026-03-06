@@ -83,6 +83,8 @@ keybinds {
     toggle_fullscreen Mod4 F
     // Close the currently-focused window
     close_window Mod4+Shift Q
+    // Exit the entire river session
+    exit_river Ctrl+Alt Delete
     // Move windows up or down the stack
     swap_next Mod4+Shift N
     swap_prev Mod4+Shift P

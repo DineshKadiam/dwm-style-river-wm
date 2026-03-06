@@ -269,6 +269,9 @@ can typically be found at _/usr/include/xkbcommon/xkbcommon-keysyms.h_.
 *close_window*
 	Close the focused window.
 
+*exit_river*
+	Exit the river session.
+
 *change_ratio* _modifiers_ _keysym_ _float_
 	Adjust the primary/stack ratio on the current output.
 

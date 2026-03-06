@@ -262,7 +262,8 @@ fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, globals: *
                     fatal("Failed to bind to river_layer_shell_v1: {any}", .{@errorName(e)});
                 };
             } else if (mem.orderZ(u8, ev.interface, river.WindowManagerV1.interface.name) == .eq) {
-                globals.river_window_manager_v1 = registry.bind(ev.name, river.WindowManagerV1, 3) catch |e| {
+                if (ev.version < 4) utils.versionNotSupported(river.WindowManagerV1, ev.version, 4);
+                globals.river_window_manager_v1 = registry.bind(ev.name, river.WindowManagerV1, 4) catch |e| {
                     fatal("Failed to bind to river_window_manager_v1: {any}", .{@errorName(e)});
                 };
             } else if (mem.orderZ(u8, ev.interface, river.XkbBindingsV1.interface.name) == .eq) {

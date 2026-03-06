@@ -140,6 +140,7 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
                         .reload_config,
                         .toggle_fullscreen,
                         .close_window,
+                        .exit_river,
                         .increment_primary_count,
                         .decrement_primary_count,
                         .swap_next,

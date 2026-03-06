@@ -10,8 +10,14 @@ If `$XDG_CONFIG_HOME` is not set, this defaults to `~/.config/beansprout/config.
 
 An example config can be found at [examples/config.kdl](../examples/config.kdl).
 
-If the config file is missing, beansprout falls back to its built-in defaults (which
-is missing keybinds!). Similarly, if an individual node or block is invalid, it will
+If the config file is missing or fails to load, beansprout falls back to its built-in
+defaults. If no keybinds are configured, the following fallback keybinds are added:
+
+- `Ctrl+Alt Delete` — exit the River session
+- `Super+Shift R` — reload config
+- `Super T` — spawn `foot`
+
+Similarly, if an individual node or block is invalid, it will
 try to ignore the error and continue on.
 
 All configuration is applied top down, so later options will overwrite earlier ones.
@@ -261,6 +267,7 @@ Full command reference:
 | `toggle_float`           |                  | Float/unfloat the focused window                  |
 | `toggle_fullscreen`      |                  | Toggle fullscreen on focused window               |
 | `close_window`           |                  | Close the focused window                          |
+| `exit_river`             |                  | Exit the river session                            |
 | `change_ratio`           | float            | Adjust primary/stack ratio on current output      |
 | `increment_primary_count`|                  | Add a window to the primary side                  |
 | `decrement_primary_count`|                  | Remove a window from the primary side             |

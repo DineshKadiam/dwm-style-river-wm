@@ -62,8 +62,13 @@ Run `zig build -h` to see a list of all options.
 
 You can either add `beansprout` to the river `init` file or directly run `river -c beansprout`.
 
-If you need to exit river, for example, if `beansprout` crashes, you can use river's hardcoded
-`Ctrl+Alt+Delete` keybind.
+If no keybinds are configured (e.g. missing or broken config), beansprout provides
+fallback keybinds including `Ctrl+Alt+Delete` to exit the River session, `Super+Shift+R`
+to reload config, and `Super+T` to spawn a terminal.
+
+If beansprout crashes, you can use River's hardcoded `Ctrl+Alt F1`–`F12` bindings to
+switch to another TTY. From there, you can kill River or restart beansprout (you will
+need to set `WAYLAND_DISPLAY` yourself, e.g. `WAYLAND_DISPLAY=wayland-1 beansprout`).
 
 ## Configuration
 
