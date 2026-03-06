@@ -642,7 +642,6 @@ const DoublyLinkedList = std.DoublyLinkedList;
 const wayland = @import("wayland");
 const wl = wayland.client.wl;
 const river = wayland.client.river;
-const zwlr = wayland.client.zwlr;
 
 const utils = @import("utils.zig");
 const Rect = utils.Rect;

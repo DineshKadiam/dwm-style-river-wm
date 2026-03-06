@@ -16,7 +16,6 @@ wl_registry: *wl.Registry,
 wl_shm: *wl.Shm,
 
 river_layer_shell_v1: *river.LayerShellV1,
-zwlr_layer_shell_v1: *zwlr.LayerShellV1,
 
 // Wayland globals that we have special structs for
 im: *InputManager,
@@ -54,7 +53,6 @@ pub const Options = struct {
     river_window_manager_v1: *river.WindowManagerV1,
     river_xkb_bindings_v1: *river.XkbBindingsV1,
 
-    zwlr_layer_shell_v1: *zwlr.LayerShellV1,
     config: *Config,
 };
 
@@ -83,7 +81,6 @@ pub fn create(options: Options) !*Context {
         .wl_registry = options.wl_registry,
         .wl_shm = options.wl_shm,
         .river_layer_shell_v1 = options.river_layer_shell_v1,
-        .zwlr_layer_shell_v1 = options.zwlr_layer_shell_v1,
         .wallpaper_image = loadWallpaperImage(options.config),
         .im = im,
         .wm = wm,
@@ -107,7 +104,6 @@ pub fn destroy(context: *Context) void {
 
     // Destroy Wayland globals
     context.river_layer_shell_v1.destroy();
-    context.zwlr_layer_shell_v1.destroy();
     context.wl_shm.destroy();
     context.wl_compositor.destroy();
     context.wl_registry.destroy();
@@ -262,7 +258,6 @@ const process = std.process;
 const wayland = @import("wayland");
 const river = wayland.client.river;
 const wl = wayland.client.wl;
-const zwlr = wayland.client.zwlr;
 
 const utils = @import("utils.zig");
 const Bar = @import("Bar.zig");

@@ -12,7 +12,6 @@ const Globals = struct {
 
     wl_compositor: ?*wl.Compositor = null,
     wl_shm: ?*wl.Shm = null,
-    zwlr_layer_shell_v1: ?*zwlr.LayerShellV1 = null,
 };
 
 const usage: []const u8 =
@@ -67,8 +66,6 @@ pub fn main() !void {
     const river_window_manager_v1 = globals.river_window_manager_v1 orelse utils.interfaceNotAdvertised(river.WindowManagerV1);
     const river_xkb_bindings_v1 = globals.river_xkb_bindings_v1 orelse utils.interfaceNotAdvertised(river.XkbBindingsV1);
 
-    const zwlr_layer_shell_v1 = globals.zwlr_layer_shell_v1 orelse utils.interfaceNotAdvertised(zwlr.LayerShellV1);
-
     const config = try Config.create();
     defer config.destroy();
     const context = try Context.create(.{
@@ -81,7 +78,6 @@ pub fn main() !void {
         .river_layer_shell_v1 = river_layer_shell_v1,
         .river_window_manager_v1 = river_window_manager_v1,
         .river_xkb_bindings_v1 = river_xkb_bindings_v1,
-        .zwlr_layer_shell_v1 = zwlr_layer_shell_v1,
         .config = config,
     });
     defer context.destroy();
@@ -273,11 +269,6 @@ fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, globals: *
                 globals.river_xkb_bindings_v1 = registry.bind(ev.name, river.XkbBindingsV1, 2) catch |e| {
                     fatal("Failed to bind to river_xkb_bindings_v1: {any}", .{@errorName(e)});
                 };
-            } else if (mem.orderZ(u8, ev.interface, zwlr.LayerShellV1.interface.name) == .eq) {
-                if (ev.version < 3) utils.versionNotSupported(zwlr.LayerShellV1, ev.version, 3);
-                globals.zwlr_layer_shell_v1 = registry.bind(ev.name, zwlr.LayerShellV1, 3) catch |e| {
-                    fatal("Failed to bind to zwlr_layer_shell_v1: {any}", .{@errorName(e)});
-                };
             }
         },
         .global_remove => |_| {
@@ -335,7 +326,6 @@ const time = std.time;
 const wayland = @import("wayland");
 const river = wayland.client.river;
 const wl = wayland.client.wl;
-const zwlr = wayland.client.zwlr;
 const fcft = @import("fcft");
 
 const flags = @import("flags.zig");
