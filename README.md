@@ -46,7 +46,6 @@ Optional (for building man pages):
 #### Note for Gentoo Users
 
 Beansprout is available in my personal [ebuild repo](https://codeberg.org/bwbuhse/buhserepo).
-Right now, it's just a live ebuild, but I will add versioned ebuilds once v0.1.0 is released.
 
 ### Build
 
