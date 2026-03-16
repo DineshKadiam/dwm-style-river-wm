@@ -216,6 +216,43 @@ default to 0.
 
 	*top*, *right*, *bottom*, *left*
 
+# KEYBOARD LAYOUT
+
+Keyboard layout settings are placed inside a *keyboard_layout* block. These
+configure the XKB keymap applied to all keyboard devices via the
+river-xkb-config protocol. All fields are optional and default to
+system/xkbcommon defaults.
+
+```
+keyboard_layout {
+	layout "us"
+	variant "dvorak"
+	options "compose:rctrl"
+}
+```
+
+*rules* _rules_
+	XKB rules file. Almost always "evdev". (Default: system default)
+
+*model* _model_
+	Keyboard model, e.g., "pc104", "pc105". (Default: system default)
+
+*layout* _layout_
+	Keyboard layout, e.g., "us", "de", "fr". (Default: system default)
+
+*variant* _variant_
+	Layout variant, e.g., "dvorak", "colemak", "intl".
+
+*options* _options_
+	XKB options, e.g., "compose:rctrl", "caps:escape". Multiple options
+	can be separated by commas.
+
+If the *keyboard_layout* block is removed from the config and reloaded,
+beansprout will revert to the system/xkbcommon default keymap.
+
+See *xkeyboard-config*(7) for a full list of available rules, models, layouts,
+variants, and options.
+
 # KEYBINDS
 
 Keyboard bindings are placed inside a *keybinds* block. Each binding has the
@@ -383,4 +420,4 @@ All libinput configuration options supported by river are also supported by
 
 # SEE ALSO
 
-*beansprout*(1), *river*(1), *strftime*(3)
+*beansprout*(1), *river*(1), *strftime*(3), *xkeyboard-config*(7)

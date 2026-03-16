@@ -9,6 +9,7 @@ const Globals = struct {
     river_layer_shell_v1: ?*river.LayerShellV1 = null,
     river_window_manager_v1: ?*river.WindowManagerV1 = null,
     river_xkb_bindings_v1: ?*river.XkbBindingsV1 = null,
+    river_xkb_config_v1: ?*river.XkbConfigV1 = null,
 
     wl_compositor: ?*wl.Compositor = null,
     wl_shm: ?*wl.Shm = null,
@@ -65,6 +66,7 @@ pub fn main() !void {
     const river_layer_shell_v1 = globals.river_layer_shell_v1 orelse utils.interfaceNotAdvertised(river.LayerShellV1);
     const river_window_manager_v1 = globals.river_window_manager_v1 orelse utils.interfaceNotAdvertised(river.WindowManagerV1);
     const river_xkb_bindings_v1 = globals.river_xkb_bindings_v1 orelse utils.interfaceNotAdvertised(river.XkbBindingsV1);
+    const river_xkb_config_v1 = globals.river_xkb_config_v1 orelse utils.interfaceNotAdvertised(river.XkbConfigV1);
 
     const config = try Config.create();
     defer config.destroy();
@@ -78,6 +80,7 @@ pub fn main() !void {
         .river_layer_shell_v1 = river_layer_shell_v1,
         .river_window_manager_v1 = river_window_manager_v1,
         .river_xkb_bindings_v1 = river_xkb_bindings_v1,
+        .river_xkb_config_v1 = river_xkb_config_v1,
         .config = config,
     });
     defer context.destroy();
@@ -243,7 +246,7 @@ fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, globals: *
                 };
             } else if (mem.orderZ(u8, ev.interface, wl.Output.interface.name) == .eq) {
                 if (ev.version < 4) utils.versionNotSupported(wl.Output, ev.version, 4);
-                // We don't bind wl_output until the river_output send its .wl_output event
+                // We don't bind wl_output until the river_output sends its .wl_output event
                 // This way, we don't miss the initial configuration events
             } else if (mem.orderZ(u8, ev.interface, wl.Shm.interface.name) == .eq) {
                 globals.wl_shm = registry.bind(ev.name, wl.Shm, 1) catch |e| {
@@ -269,6 +272,10 @@ fn registryListener(registry: *wl.Registry, event: wl.Registry.Event, globals: *
             } else if (mem.orderZ(u8, ev.interface, river.XkbBindingsV1.interface.name) == .eq) {
                 globals.river_xkb_bindings_v1 = registry.bind(ev.name, river.XkbBindingsV1, 2) catch |e| {
                     fatal("Failed to bind to river_xkb_bindings_v1: {any}", .{@errorName(e)});
+                };
+            } else if (mem.orderZ(u8, ev.interface, river.XkbConfigV1.interface.name) == .eq) {
+                globals.river_xkb_config_v1 = registry.bind(ev.name, river.XkbConfigV1, 1) catch |e| {
+                    fatal("Failed to bind to river_xkb_config_v1: {any}", .{@errorName(e)});
                 };
             }
         },

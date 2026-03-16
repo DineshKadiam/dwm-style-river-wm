@@ -46,6 +46,9 @@ tag_overlay_config: ?TagOverlayConfig = null,
 /// Bar configuration. If null, no bar is created.
 bar_config: ?BarConfig = null,
 
+/// Keyboard layout configuration
+keyboard_layout: KeyboardLayoutConfig = .{},
+
 /// Tag bind entries parsed from config (tag_bind nodes in keybinds block)
 tag_binds: std.ArrayList(Keybind) = .{},
 // We use a hash map so that duplicate keybinds can be easily de-duplicated
@@ -77,6 +80,7 @@ const NodeName = enum {
     bar,
     borders,
     input,
+    keyboard_layout,
     keybinds,
     pointer_binds,
     tag_overlay,
@@ -120,6 +124,11 @@ pub fn create() !*Config {
             if (config.bar_config) |bc| {
                 if (bc.fonts) |fonts| utils.gpa.free(fonts);
             }
+            if (config.keyboard_layout.rules) |s| utils.gpa.free(s);
+            if (config.keyboard_layout.model) |s| utils.gpa.free(s);
+            if (config.keyboard_layout.layout) |s| utils.gpa.free(s);
+            if (config.keyboard_layout.variant) |s| utils.gpa.free(s);
+            if (config.keyboard_layout.options) |s| utils.gpa.free(s);
             if (config.wallpaper_image_path) |path| {
                 utils.gpa.free(path);
             }
@@ -167,6 +176,11 @@ pub fn destroy(config: *Config) void {
     if (config.bar_config) |bc| {
         if (bc.fonts) |fonts| utils.gpa.free(fonts);
     }
+    if (config.keyboard_layout.rules) |s| utils.gpa.free(s);
+    if (config.keyboard_layout.model) |s| utils.gpa.free(s);
+    if (config.keyboard_layout.layout) |s| utils.gpa.free(s);
+    if (config.keyboard_layout.variant) |s| utils.gpa.free(s);
+    if (config.keyboard_layout.options) |s| utils.gpa.free(s);
     if (config.wallpaper_image_path) |path| {
         utils.gpa.free(path);
     }
@@ -305,6 +319,7 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                         },
                         inline .bar,
                         .borders,
+                        .keyboard_layout,
                         .keybinds,
                         .pointer_binds,
                         .tag_overlay,
@@ -320,6 +335,7 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                     switch (child_block) {
                         .bar => try BarConfig.load(config, &parser, hostname),
                         .borders => try border.load(config, &parser, hostname),
+                        .keyboard_layout => try KeyboardLayoutConfig.load(config, &parser, hostname),
                         .keybinds => try keybind.load(config, &parser, hostname),
                         .pointer_binds => try pointer_bind.load(config, &parser, hostname),
                         .input => {
@@ -375,6 +391,7 @@ const XkbBindings = @import("XkbBindings.zig");
 
 const border = @import("config/border.zig");
 const helpers = @import("config/helpers.zig");
+const KeyboardLayoutConfig = @import("config/KeyboardLayoutConfig.zig");
 const keybind = @import("config/keybind.zig");
 const pointer_bind = @import("config/pointer_bind.zig");
 const window_rule = @import("config/window_rule.zig");

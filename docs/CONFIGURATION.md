@@ -13,9 +13,9 @@ An example config can be found at [examples/config.kdl](../examples/config.kdl).
 If the config file is missing or fails to load, beansprout falls back to its built-in
 defaults. If no keybinds are configured, the following fallback keybinds are added:
 
-- `Ctrl+Alt Delete` — exit the River session
-- `Super+Shift R` — reload config
-- `Super T` — spawn `foot`
+- `Ctrl+Alt Delete`: exit the River session
+- `Super+Shift R`: reload config
+- `Super T`: spawn `foot`
 
 Similarly, if an individual node or block is invalid, it will
 try to ignore the error and continue on.
@@ -200,6 +200,37 @@ tag_overlay {
 | `square_inactive_background_color`  | color | `0x585b70`   | Inactive tag square background            |
 | `square_inactive_border_color`      | color | `0x6c7086`   | Inactive tag square border                |
 | `square_inactive_occupied_color`    | color | `0xcdd6f4`   | Inactive tag occupied indicator           |
+
+## Keyboard Layout
+
+Keyboard layout settings are placed inside a `keyboard_layout` block. These
+configure the XKB keymap applied to all keyboard devices via the
+`river-xkb-config` protocol. All fields are optional and default to
+system/xkbcommon defaults.
+
+```kdl
+keyboard_layout {
+    layout "us"
+    variant "dvorak"
+    options "compose:rctrl"
+}
+```
+
+| Setting   | Type   | Default        | Description                                      |
+|-----------|--------|----------------|--------------------------------------------------|
+| `rules`   | string | system default | XKB rules file (almost always `evdev`)           |
+| `model`   | string | system default | Keyboard model (e.g., `pc104`, `pc105`)          |
+| `layout`  | string | system default | Keyboard layout (e.g., `us`, `de`, `fr`)         |
+| `variant` | string | none           | Layout variant (e.g., `dvorak`, `colemak`, `intl`)|
+| `options` | string | none           | XKB options (e.g., `compose:rctrl`, `caps:escape`)|
+
+Multiple options can be separated by commas: `"compose:rctrl,caps:escape"`.
+
+If the `keyboard_layout` block is removed from the config and reloaded, beansprout
+will revert to the system/xkbcommon default keymap.
+
+See `xkeyboard-config(7)` for a full list of available rules, models, layouts,
+variants, and options.
 
 ## Keybinds
 

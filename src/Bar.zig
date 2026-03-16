@@ -282,7 +282,7 @@ fn draw(bar: *Bar) !void {
         }
     }.f;
 
-    // Measure center first — needed to constrain left and right widths
+    // Measure center first; needed to constrain left and right widths
     const center_codepoints = componentSlice(options.center, clock_codepoints, title_codepoints, wm_info_codepoints);
     const center_width = try bar.textWidth(center_codepoints);
     var center_x: i32 = @divFloor(buffer.width - center_width, 2);

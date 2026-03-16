@@ -21,6 +21,7 @@ river_layer_shell_v1: *river.LayerShellV1,
 im: *InputManager,
 wm: *WindowManager,
 xkb_bindings: *XkbBindings,
+xkb_config: ?*XkbConfig,
 
 /// Pool of Buffers used for rendering wallpapers
 buffer_pool: BufferPool = .{},
@@ -52,6 +53,7 @@ pub const Options = struct {
     river_layer_shell_v1: *river.LayerShellV1,
     river_window_manager_v1: *river.WindowManagerV1,
     river_xkb_bindings_v1: *river.XkbBindingsV1,
+    river_xkb_config_v1: *river.XkbConfigV1,
 
     config: *Config,
 };
@@ -66,6 +68,8 @@ pub fn create(options: Options) !*Context {
     errdefer wm.destroy();
     const xkb_bindings = try XkbBindings.create(context, options.river_xkb_bindings_v1);
     errdefer xkb_bindings.destroy();
+    const xkb_config = try XkbConfig.create(context, options.river_xkb_config_v1);
+    errdefer xkb_config.destroy();
 
     var env = try process.getEnvMap(utils.gpa);
     errdefer env.deinit();
@@ -85,6 +89,7 @@ pub fn create(options: Options) !*Context {
         .im = im,
         .wm = wm,
         .xkb_bindings = xkb_bindings,
+        .xkb_config = xkb_config,
         .config = options.config,
     };
 
@@ -96,6 +101,9 @@ pub fn destroy(context: *Context) void {
     context.im.destroy();
     context.wm.destroy();
     context.xkb_bindings.destroy();
+    if (context.xkb_config) |xkb_config| {
+        xkb_config.destroy();
+    }
 
     if (context.wallpaper_image) |wallpaper_image| {
         wallpaper_image.destroy();
@@ -269,5 +277,6 @@ const TagOverlay = @import("TagOverlay.zig");
 const Wallpaper = @import("Wallpaper.zig");
 const WindowManager = @import("WindowManager.zig");
 const XkbBindings = @import("XkbBindings.zig");
+const XkbConfig = @import("XkbConfig.zig");
 
 const log = std.log.scoped(.Context);

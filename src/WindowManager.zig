@@ -134,6 +134,11 @@ fn initialize(wm: *WindowManager) void {
         }
         binding.enable();
     }
+
+    // Apply keyboard layout from config
+    if (context.xkb_config) |xkb_config| {
+        xkb_config.applyKeyboardLayout();
+    }
 }
 
 fn manage(wm: *WindowManager) void {

@@ -123,6 +123,14 @@ pointer_binds {
     // tiled windows will automatically float if resized
     resize_window Mod4 BTN_RIGHT
 }
+
+// Keyboard layout configuration
+// All fields are optional and default to system/xkbcommon defaults
+keyboard_layout {
+    layout "us"
+    // variant "dvorak"
+    options "compose:rctrl"
+}
 // Default input config for all devices
 input {
     accel_profile "flat"
