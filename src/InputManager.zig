@@ -6,8 +6,8 @@ const InputManager = @This();
 
 context: *Context,
 
-river_input_manager_v1: *river.InputManagerV1,
-river_libinput_config_v1: *river.LibinputConfigV1,
+river_input_manager_v1: ?*river.InputManagerV1,
+river_libinput_config_v1: ?*river.LibinputConfigV1,
 
 /// All input devices that we've been advertised
 input_devices: wl.list.Head(InputDevice, .link),
@@ -31,58 +31,54 @@ pub fn create(context: *Context, river_input_manager_v1: *river.InputManagerV1, 
     im.input_devices.init();
     im.libinput_devices.init();
 
-    im.river_input_manager_v1.setListener(*InputManager, inputManagerV1Listener, im);
-    im.river_libinput_config_v1.setListener(*InputManager, libinputConfigV1Listener, im);
+    river_input_manager_v1.setListener(*InputManager, inputManagerV1Listener, im);
+    river_libinput_config_v1.setListener(*InputManager, libinputConfigV1Listener, im);
 
     return im;
 }
 
 pub fn destroy(im: *InputManager) void {
     {
-        var it = im.input_devices.iterator(.forward);
-        while (it.next()) |input_device| {
-            input_device.destroy();
-        }
+        var it = im.input_devices.safeIterator(.forward);
+        while (it.next()) |input_device| input_device.destroy();
     }
     {
-        var it = im.libinput_devices.iterator(.forward);
-        while (it.next()) |libinput_device| {
-            libinput_device.destroy();
-        }
+        var it = im.libinput_devices.safeIterator(.forward);
+        while (it.next()) |libinput_device| libinput_device.destroy();
     }
-
-    im.river_input_manager_v1.destroy();
-    im.river_libinput_config_v1.destroy();
+    if (im.river_input_manager_v1) |river_input_manager_v1| {
+        river_input_manager_v1.destroy();
+    }
+    if (im.river_libinput_config_v1) |river_libinput_config_v1| {
+        river_libinput_config_v1.destroy();
+    }
     utils.gpa.destroy(im);
 }
 
 pub fn inputManagerV1Listener(river_input_manager_v1: *river.InputManagerV1, event: river.InputManagerV1.Event, im: *InputManager) void {
-    assert(im.river_input_manager_v1 == river_input_manager_v1);
+    assert(im.river_input_manager_v1.? == river_input_manager_v1);
     switch (event) {
         .input_device => |ev| {
             const input_device = InputDevice.create(ev.id) catch @panic("Out of memory");
             im.input_devices.append(input_device);
         },
         .finished => {
-            // TODO: Should call destroy on the river_input_manager_v1 and on this device,
-            // but might need to make the globals optional so that we know when we can destroy this
-            // object.
-            log.debug("unhandled event: finished", .{});
+            river_input_manager_v1.destroy();
+            im.river_input_manager_v1 = null;
         },
     }
 }
+
 pub fn libinputConfigV1Listener(river_libinput_config_v1: *river.LibinputConfigV1, event: river.LibinputConfigV1.Event, im: *InputManager) void {
-    assert(im.river_libinput_config_v1 == river_libinput_config_v1);
+    assert(im.river_libinput_config_v1.? == river_libinput_config_v1);
     switch (event) {
         .libinput_device => |ev| {
             const libinput_device = LibinputDevice.create(im.context, ev.id) catch @panic("Out of memory");
             im.libinput_devices.append(libinput_device);
         },
         .finished => {
-            // TODO: Should call destroy on the river_libinput_config_v1 and on this device,
-            // but might need to make the globals optional so that we know when we can destroy this
-            // object.
-            log.debug("unhandled event: finished", .{});
+            river_libinput_config_v1.destroy();
+            im.river_libinput_config_v1 = null;
         },
     }
 }
