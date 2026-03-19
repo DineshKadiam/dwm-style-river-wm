@@ -91,6 +91,7 @@ pub fn main() !void {
 fn run(wl_display: *wl.Display, context: *Context) !void {
     var mask = posix.sigemptyset();
 
+    posix.sigaddset(&mask, posix.SIG.TERM);
     posix.sigaddset(&mask, posix.SIG.INT);
     posix.sigaddset(&mask, posix.SIG.QUIT);
 
@@ -136,9 +137,8 @@ fn run(wl_display: *wl.Display, context: *Context) !void {
         };
 
         // Check for expired tag overlays and find the soonest expiry
-        const now = time.Instant.now() catch
-            fatal("System does not support a monotonic or steady clock", .{});
         {
+            const now = time.Instant.now() catch fatal("System does not support a monotonic or steady clock", .{});
             var it = context.wm.outputs.iterator(.forward);
             while (it.next()) |output| {
                 const tag_overlay = output.tag_overlay orelse continue;
@@ -177,13 +177,15 @@ fn run(wl_display: *wl.Display, context: *Context) !void {
         if (pollfds[poll_wayland].revents & posix.POLL.IN != 0) {
             if (wl_display.dispatch() != .SUCCESS) {
                 @branchHint(.cold);
-                fatal("Wayland display dispatch failed", .{});
+                log.err("Wayland display dispatch failed", .{});
+                break;
             }
         }
 
         if (pollfds[poll_sig].revents & posix.POLL.HUP != 0) {
             @branchHint(.cold);
-            fatal("Signal fd hung up", .{});
+            log.err("Signal fd hung up", .{});
+            break;
         }
         if (pollfds[poll_sig].revents & posix.POLL.IN != 0) {
             @branchHint(.cold);
