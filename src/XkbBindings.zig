@@ -15,7 +15,9 @@ pub const Command = union(enum) {
     zoom,
     toggle_float,
     // Changes the ratio on the focused output only
-    change_ratio: f32,
+    change_primary_ratio: f32,
+    // Changes the ratio on the focused output only
+    change_single_window_ratio: f32,
     // Changes the primary count on the focus output only
     increment_primary_count,
     decrement_primary_count,
@@ -65,7 +67,8 @@ pub const Command = union(enum) {
             .send_to_prev_output,
             .zoom,
             .toggle_float,
-            .change_ratio,
+            .change_primary_ratio,
+            .change_single_window_ratio,
             .increment_primary_count,
             .decrement_primary_count,
             .reload_config,
@@ -202,10 +205,12 @@ const XkbBinding = struct {
                 window.pending_manage.floating = !window.floating;
                 context.wm.river_window_manager_v1.manageDirty();
             },
-            .change_ratio => |diff| {
+            inline .change_primary_ratio, .change_single_window_ratio => |diff, cmd| {
                 const seat = first_seat orelse return;
                 const output = seat.focused_output orelse return;
-                output.pending_manage.primary_ratio = output.primary_ratio + diff;
+                // Get rid of the "change_" from the start of the command name
+                const field_name = @tagName(cmd)[7..];
+                @field(output.pending_manage, field_name) = @field(output, field_name) + diff;
                 context.wm.river_window_manager_v1.manageDirty();
             },
             .increment_primary_count => {

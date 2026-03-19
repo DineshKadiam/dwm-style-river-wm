@@ -2,6 +2,7 @@
 
 These are in rough order of my priority, though no promises I do them in this order.
 
+- [ ] Allow single-window ratio config PER output name
 - [ ] Fix mouse resizing
 - [ ] Add gap support
 - [ ] Support window tag/order caching between WM restarts (within a river session)

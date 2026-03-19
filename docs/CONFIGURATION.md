@@ -299,7 +299,8 @@ Full command reference:
 | `toggle_fullscreen`      |                  | Toggle fullscreen on focused window               |
 | `close_window`           |                  | Close the focused window                          |
 | `exit_river`             |                  | Exit the river session                            |
-| `change_ratio`           | float            | Adjust primary/stack ratio on current output      |
+| `change_primary_ratio`   | float            | Adjust primary/stack ratio on current output      |
+| `change_single_window_ratio` | float        | Adjust single-window ratio on current output      |
 | `increment_primary_count`|                  | Add a window to the primary side                  |
 | `decrement_primary_count`|                  | Remove a window from the primary side             |
 | `move_up`                | pixels           | Move floating window up                           |

@@ -309,8 +309,11 @@ can typically be found at _/usr/include/xkbcommon/xkbcommon-keysyms.h_.
 *exit_river*
 	Exit the river session.
 
-*change_ratio* _modifiers_ _keysym_ _float_
+*change_primary_ratio* _modifiers_ _keysym_ _float_
 	Adjust the primary/stack ratio on the current output.
+
+*change_single_window_ratio* _modifiers_ _keysym_ _float_
+	Adjust the single-window ratio on the current output.
 
 *increment_primary_count*, *decrement_primary_count*
 	Add/remove a window from the primary side.

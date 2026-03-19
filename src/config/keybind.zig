@@ -118,7 +118,7 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
                             }
                             break :sw .{ .spawn = split_exec };
                         },
-                        .change_ratio => {
+                        inline .change_primary_ratio, .change_single_window_ratio => |cmd| {
                             const diff_str = utils.stripQuotes(node.arg(parser, 2) orelse {
                                 logWarnMissingNodeArg(name, "diff");
                                 continue;
@@ -127,7 +127,7 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
                                 logWarnInvalidNodeArg(name, diff_str);
                                 continue;
                             };
-                            break :sw .{ .change_ratio = diff };
+                            break :sw @unionInit(XkbBindings.Command, @tagName(cmd), diff);
                         },
                         inline .focus_next_window,
                         .focus_prev_window,

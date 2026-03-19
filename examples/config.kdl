@@ -72,8 +72,8 @@ keybinds {
     // Float/unfloat the currently-focused window
     toggle_float Mod4+Shift F
     // Change the primary ratio of the current output
-    change_ratio Mod4 H 0.05
-    change_ratio Mod4 L -0.05
+    change_primary_ratio Mod4 H 0.05
+    change_primary_ratio Mod4 L -0.05
     // Change the number of windows in the primary side
     increment_primary_count Mod4 I
     decrement_primary_count Mod4 D
