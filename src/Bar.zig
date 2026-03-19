@@ -260,13 +260,15 @@ fn draw(bar: *Bar) !void {
     const output = bar.output;
     var wm_info_buf: [255:0]u8 = undefined;
     var wm_info_writer = Io.Writer.fixed(&wm_info_buf);
-    const ratio_percent: u32 = @intFromFloat(@round(output.primary_ratio * 100));
-    try wm_info_writer.print("P:{d}/{d}% W:{d}({d})", .{
-        output.primary_count,
-        ratio_percent,
-        output.countVisible(),
-        output.windows.length(),
-    });
+    const primary_ratio_percent: u32 = @intFromFloat(@round(output.primary_ratio * 100));
+    try wm_info_writer.print("P:{d}/{d}%", .{ output.primary_count, primary_ratio_percent });
+    if (output.single_window_ratio != 1) {
+        const single_window_ratio_percent: u32 = @intFromFloat(@round(output.single_window_ratio * 100));
+        try wm_info_writer.print("({d}%)", .{single_window_ratio_percent});
+    }
+    try wm_info_writer.print(" W:{d}({d})", .{ output.countVisible(), output.windows.length() });
+    try wm_info_writer.flush();
+
     const wm_info_codepoints = try utils.utf8ToCodepoints(wm_info_writer.buffered());
     defer utils.gpa.free(wm_info_codepoints);
 

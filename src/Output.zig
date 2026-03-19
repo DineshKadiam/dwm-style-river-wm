@@ -340,6 +340,9 @@ pub fn manage(output: *Output) void {
             Config.min_primary_ratio,
             1.00,
         );
+        if (output.bar) |*bar| {
+            bar.pending_render.draw = true;
+        }
     }
 
     if (output.pending_manage.tags) |new_tags| {
