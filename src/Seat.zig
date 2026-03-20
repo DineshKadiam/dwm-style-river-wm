@@ -28,7 +28,7 @@ resize_pointer_binding: ?*river.PointerBindingV1 = null,
 // that's *not* for focus, we'll have to create our own enum and just keep it in sync.
 pub const LayerFocus = @typeInfo(river.LayerShellSeatV1.Event).@"union".tag_type.?;
 
-pub const PendingManage = struct {
+const PendingManage = struct {
     window: ?PendingWindow = null,
     output: ?PendingOutput = null,
     layer_focus: ?LayerFocus = null,
@@ -39,12 +39,12 @@ pub const PendingManage = struct {
     pointer_move_request: ?*Window = null,
     pointer_resize_request: ?struct { window: *Window, edges: river.WindowV1.Edges } = null,
 
-    pub const PendingWindow = union(enum) {
+    const PendingWindow = union(enum) {
         window: *Window,
         clear_focus,
     };
 
-    pub const PendingOutput = union(enum) {
+    const PendingOutput = union(enum) {
         output: *Output,
         clear_focus,
     };

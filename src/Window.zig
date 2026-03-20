@@ -55,7 +55,7 @@ pub const PendingManage = struct {
     };
 };
 
-pub const PendingRender = struct {
+const PendingRender = struct {
     position: ?struct { x: i32, y: i32 } = null,
 
     focused: ?bool = null,
@@ -66,7 +66,7 @@ pub const PendingRender = struct {
     place_top: bool = false,
 };
 
-pub const DimensionsHint = struct {
+const DimensionsHint = struct {
     min_width: u31 = 0,
     min_height: u31 = 0,
     max_width: u31 = 0,

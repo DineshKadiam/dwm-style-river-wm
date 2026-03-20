@@ -56,12 +56,12 @@ windows: wl.list.Head(Window, .link),
 link: wl.list.Link,
 
 /// Struct used for tagmask-specific count/ratio overrides
-pub const TagLayoutOverride = struct {
+const TagLayoutOverride = struct {
     primary_count: u8,
     primary_ratio: f32,
 };
 
-pub const PendingManage = struct {
+const PendingManage = struct {
     position: ?struct { x: i32, y: i32 } = null,
     dimensions: ?struct { width: u31, height: u31 } = null,
 

@@ -36,12 +36,11 @@ config: *Config,
 /// State consumed in manage() phase, reset at end of manage().
 pending_manage: PendingManage = .{},
 
-pub const PendingManage = struct {
+const PendingManage = struct {
     config: ?*Config = null,
 };
 
-// I use this because otherwise create() takes
-// a LOT of arguments.
+// I use this because otherwise create() takes a LOT of arguments.
 pub const Options = struct {
     wl_compositor: *wl.Compositor,
     wl_display: *wl.Display,

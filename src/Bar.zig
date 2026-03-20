@@ -34,11 +34,11 @@ surfaces: struct {
 pending_manage: PendingManage = .{},
 pending_render: PendingRender = .{},
 
-pub const PendingManage = struct {
+const PendingManage = struct {
     output_geometry: bool = false,
 };
 
-pub const PendingRender = struct {
+const PendingRender = struct {
     position: ?struct { x: i32, y: i32 } = null,
     draw: bool = false,
 };
