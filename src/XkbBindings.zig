@@ -519,10 +519,12 @@ pub fn manage(xkb_bindings: *XkbBindings) void {
         xkb_bindings.passthrough_active = !xkb_bindings.passthrough_active;
         var it = xkb_bindings.bindings.iterator(.forward);
         while (it.next()) |binding| {
-            if (xkb_bindings.passthrough_active) {
-                binding.xkb_binding_v1.disable();
-            } else {
-                binding.xkb_binding_v1.enable();
+            if (binding.command != .toggle_passthrough) {
+                if (xkb_bindings.passthrough_active) {
+                    binding.xkb_binding_v1.disable();
+                } else {
+                    binding.xkb_binding_v1.enable();
+                }
             }
         }
     }
