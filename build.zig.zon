@@ -4,7 +4,7 @@
 .{
     .name = .beansprout,
 
-    .version = "0.2.0-dev",
+    .version = "0.2.0",
 
     .fingerprint = 0x145dac71c283d187, // Changing this has security and trust implications.
 
