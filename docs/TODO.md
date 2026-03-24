@@ -2,7 +2,9 @@
 
 These are in rough order of my priority, though no promises I do them in this order.
 
-- [ ] Allow single-window ratio config PER output name
+- [ ] Add a config for how to focus when a window opens with a rule on another tag; should we switch tags, add tags, or just ignore it?
+- [ ] Support per-output single window ratio (in config; this already works at runtime)
+- [ ] Support per-output wallpapers
 - [ ] Fix mouse resizing
 - [ ] Add gap support
 - [ ] Support window tag/order caching between WM restarts (within a river session)
@@ -16,7 +18,6 @@ These are in rough order of my priority, though no promises I do them in this or
 - [ ] Support more window rule options (e.g. ssd/csd)
 - [ ] Support solid `background-color` fallback (no wallpaper)
 - [ ] Support keybind modes
-- [ ] Support per-output wallpapers
 - [ ] Support `focus-follows-cursor` granularity (`normal` vs `always`)
 - [ ] Save window positions between restarts
 - [ ] Support multiple seats
