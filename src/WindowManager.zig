@@ -162,28 +162,45 @@ fn manage(wm: *WindowManager) void {
         const seat = wm.seats.first();
         // We want the seat's focused output if one exists, but otherwise just
         // whatever output is hanging around is fine.
-        const output = if (seat) |s|
-            s.focused_output orelse if (s.pending_manage.output) |pending_output|
-                switch (pending_output) {
+        const output = if (seat) |s| blk: {
+            if (s.pending_manage.output) |pending_output| {
+                // We need to check the pending manage first because the seat doesn't get managed
+                // until later in this function.
+                break :blk switch (pending_output) {
                     .output => |output| output,
                     .clear_focus => null,
-                }
-            else
-                null
-        else
-            wm.outputs.first();
+                };
+            } else {
+                // If there's not a pending change for output focus, we can use the currently
+                // focused output. This still works if it's null, because null is handled in the
+                // next block.
+                break :blk s.focused_output;
+            }
+        } else blk: {
+            // If there's no seat, we just try get the first output in the wm's output list. This
+            // is null if there are no outputs, which is handled correctly in the next block.
+            break :blk wm.outputs.first();
+        };
 
         if (output) |o| {
             var it = wm.orphan_windows.iterator(.forward);
             while (it.next()) |window| {
                 window.pending_manage.pending_output = .{ .output = o };
             }
-            if (seat) |s| {
+            if (seat) |s| blk: {
+                // If we don't have a focused window, iterate through the orphans and try see if any
+                // have matching tags. For now, that's always only 0x8000, but maybe I'll had output
+                // caching later so it can keep track of focused tags when the last output is destroyed.
+                // We set focus to the first window we find on the matching tagmask.
                 if (s.focused_window == null) {
-                    if (wm.orphan_windows.first()) |first| {
-                        s.pending_manage.window = .{ .window = first };
-                        s.pending_manage.should_warp_pointer = true;
-                    } else unreachable;
+                    var window_it = wm.orphan_windows.iterator(.forward);
+                    while (window_it.next()) |window| {
+                        if (o.tags & window.tags != 0) {
+                            s.pending_manage.window = .{ .window = window };
+                            s.pending_manage.should_warp_pointer = true;
+                            break :blk;
+                        }
+                    }
                 }
             }
             o.windows.appendList(&wm.orphan_windows);
