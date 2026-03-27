@@ -145,26 +145,8 @@ fn windowListener(river_window_v1: *river.WindowV1, event: river.WindowV1.Event,
                         seat.pending_manage.pointer_resize_request = null;
                 }
             }
-            if (window.output) |output| {
-                // Get a new window for the wm to focus
-                var it = window.context.wm.seats.iterator(.forward);
-                while (it.next()) |seat| {
-                    if (seat.focused_window == window) {
-                        // Find another window to focus and warp pointer there
-                        if (output.nextWindow(window)) |next_focus| {
-                            if (next_focus != window) {
-                                seat.pending_manage.window = .{ .window = next_focus };
-                                seat.pending_manage.should_warp_pointer = true;
-                            } else {
-                                // Only window in list - clear focus
-                                seat.pending_manage.window = .clear_focus;
-                            }
-                        } else {
-                            seat.pending_manage.window = .clear_focus;
-                        }
-                    }
-                }
-            }
+            window.nextFocus();
+
             window.link.remove();
             window.destroy();
         },
@@ -349,6 +331,12 @@ pub fn manage(window: *Window) void {
     // New tags
     if (pending_manage.tags) |tags| {
         window.tags = tags;
+        if (window.output) |o| {
+            if (o.tags & window.tags == 0) {
+                // This window isn't visible anymore, we need to move focus off it
+                window.nextFocus();
+            }
+        }
     }
     // New output
     if (pending_manage.pending_output) |pending_output| {
@@ -430,6 +418,34 @@ fn applyRules(window: *Window) struct {
         .float = float,
         .tags = tags,
     };
+}
+
+/// Check if this window is focused on an output, if it is, then we move the
+/// output's focus to the next window in its list.
+fn nextFocus(window: *Window) void {
+    if (window.output) |output| {
+        // Get a new window for the wm to focus
+        var it = window.context.wm.seats.iterator(.forward);
+        while (it.next()) |seat| {
+            if (seat.focused_window == window) {
+                // Find another window to focus and warp pointer there
+                if (output.nextWindow(window)) |next_focus| {
+                    if (next_focus != window) {
+                        seat.pending_manage.window = .{ .window = next_focus };
+                        seat.pending_manage.should_warp_pointer = true;
+                    } else {
+                        // This was the only visible window, so nothing to change focus to
+                        seat.pending_manage.window = .clear_focus;
+                    }
+                } else {
+                    // TODO: I believe this should be unreachable, needs further testing.
+                    //       Regardless, it probably doesn't make sense to clear focus if this
+                    //       window wasn't focused.
+                    seat.pending_manage.window = .clear_focus;
+                }
+            }
+        }
+    }
 }
 
 const std = @import("std");
