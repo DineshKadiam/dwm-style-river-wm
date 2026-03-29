@@ -322,8 +322,6 @@ pub fn manage(seat: *Seat) void {
                 while (it.next()) |output| {
                     if (utils.isPosInRect(seat.pointer_pos, output.geometry)) {
                         window.pending_manage.pending_output = .{ .output = output };
-                        std.log.debug("{}\n\n", .{output.geometry});
-
                         // We have to remove window from current output's windows list first
                         window.link.remove();
                         output.windows.append(window);
