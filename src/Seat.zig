@@ -15,6 +15,7 @@ layer_focus: LayerFocus = .focus_none,
 
 pointer_op: PointerOp = .none,
 
+pointer_pos: utils.Pos = .{},
 /// State consumed in manage phase, reset at end of manage().
 pending_manage: PendingManage = .{},
 
@@ -107,6 +108,11 @@ fn seatListener(river_seat_v1: *river.SeatV1, event: river.SeatV1.Event, seat: *
         .op_release => {
             seat.pending_manage.op_released = true;
         },
+        .pointer_position => |ev| {
+            seat.pointer_pos.x = ev.x;
+            seat.pointer_pos.y = ev.y;
+        },
+
         else => |ev| {
             log.debug("unhandled event: {s}", .{@tagName(ev)});
         },
@@ -308,8 +314,24 @@ pub fn manage(seat: *Seat) void {
         switch (seat.pointer_op) {
             .none => {},
             .move => {
+                const window = seat.focused_window orelse return;
                 seat.river_seat_v1.opEnd();
                 seat.pointer_op = .none;
+                // Iterate over every display and check if the curser is inside it
+                var it = seat.context.wm.outputs.iterator(.forward);
+                while (it.next()) |output| {
+                    if (utils.isPosInRect(seat.pointer_pos, output.geometry)) {
+                        window.pending_manage.pending_output = .{ .output = output };
+                        std.log.debug("{}\n\n", .{output.geometry});
+
+                        // We have to remove window from current output's windows list first
+                        window.link.remove();
+                        output.windows.append(window);
+
+                        seat.pending_manage.output = .{ .output = output };
+                        window.pending_manage.pending_output = .{ .output = output };
+                    }
+                }
             },
             .resize => |op| {
                 op.window.river_window_v1.informResizeEnd();

@@ -19,6 +19,15 @@ pub const Rect = struct {
     y: i32 = 0,
 };
 
+pub const Pos = struct {
+    x: i32 = 0,
+    y: i32 = 0,
+};
+
+pub fn isPosInRect(pos: Pos, rect: Rect) bool {
+    return (pos.x > rect.x and pos.x < rect.x + rect.width) and (pos.y > rect.y and pos.y < rect.y + rect.height);
+}
+
 /// Parse a color in the format 0xRRGGBB or 0xRRGGBBAA and convert it to
 /// 32-bit color values (used by Window.set_borders in rwm).
 pub fn parseRgba(s: []const u8) !RiverColor {
