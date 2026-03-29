@@ -328,6 +328,7 @@ pub fn manage(seat: *Seat) void {
 
                         seat.pending_manage.output = .{ .output = output };
                         window.pending_manage.pending_output = .{ .output = output };
+                        break;
                     }
                 }
             },
