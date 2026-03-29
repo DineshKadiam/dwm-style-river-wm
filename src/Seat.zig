@@ -111,6 +111,13 @@ fn seatListener(river_seat_v1: *river.SeatV1, event: river.SeatV1.Event, seat: *
         .pointer_position => |ev| {
             seat.pointer_pos.x = ev.x;
             seat.pointer_pos.y = ev.y;
+            // Iterate over every display and check if the curser is inside it
+            var it = seat.context.wm.outputs.iterator(.forward);
+            while (it.next()) |output| {
+                if (utils.isPosInRect(seat.pointer_pos, output.geometry)) {
+                    seat.focused_output = output;
+                }
+            }
         },
 
         else => |ev| {
