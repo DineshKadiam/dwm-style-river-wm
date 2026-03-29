@@ -35,6 +35,8 @@ primary_side: PrimarySide = .left,
 attach_mode: AttachMode = .top,
 /// Should focus change when the cursor moves onto a new window
 focus_follows_pointer: bool = true,
+/// Should the output that windows spawn on change to follow the pointer
+output_focus_follows_pointer: bool = true,
 /// Should the pointer warp to the center of newly-focused windows
 pointer_warp_on_focus_change: bool = true,
 
@@ -74,6 +76,7 @@ const NodeName = enum {
     single_window_ratio,
     primary_side,
     focus_follows_pointer,
+    output_focus_follows_pointer,
     pointer_warp_on_focus_change,
     wallpaper_image_path,
     // Sections with child blocks
@@ -284,6 +287,16 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                                 logDebugSettingNode(name, focus_follows_pointer_str);
                             } else |_| {
                                 logWarnInvalidNodeArg(name, focus_follows_pointer_str);
+                                continue;
+                            }
+                        },
+                        .output_focus_follows_pointer => {
+                            const output_focus_follows_pointer_str = utils.stripQuotes(node.arg(&parser, 0) orelse "");
+                            if (helpers.boolFromKdlStr(output_focus_follows_pointer_str)) |output_focus_follows_pointer| {
+                                config.output_focus_follows_pointer = output_focus_follows_pointer;
+                                logDebugSettingNode(name, output_focus_follows_pointer_str);
+                            } else |_| {
+                                logWarnInvalidNodeArg(name, output_focus_follows_pointer_str);
                                 continue;
                             }
                         },

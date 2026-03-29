@@ -41,6 +41,10 @@ This is useful for sharing a config file across machines. Nodes without a
 	Whether mousing over a new window should move focus.
 	(Default: *true*)
 
+*output_focus_follows_pointer* _bool_
+	Whether mousing over a new output should move output focus (i.e. the output new windows spawn on)
+	(Default: *true*)
+
 *pointer_warp_on_focus_change* _bool_
 	Whether the pointer should warp to the center of newly-focused windows.
 	(Default: *true*)
