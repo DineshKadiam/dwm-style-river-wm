@@ -53,3 +53,4 @@ These are in rough order of my priority, though no promises I do them in this or
 - [x] Add bar padding to config
 - [x] Support 12-hour clock format (maybe take any time format string?)
 - [x] Support configuring bar item positions (left/center/right)
+- [x] Skip proposing dimensions for floating windows altogether?

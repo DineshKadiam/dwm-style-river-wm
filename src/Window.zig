@@ -25,6 +25,15 @@ floating: bool = false,
 floating_rect: utils.Rect = .{},
 dimensions_hint: DimensionsHint = .{},
 
+/// Whether or not the window needs its position set
+///
+/// Right now, this is only used when windows are made floating by a rule but don't have their
+/// dimensions set yet. We need their dimensions to be able to center them properly, so we have
+/// to wait for that event.
+///
+/// This can't be part of PendingManage because it lasts between manage cycles.
+needs_position: bool = true,
+
 initialized: bool = false,
 
 /// State consumed in manage() phase, reset at end of manage().
@@ -151,9 +160,18 @@ fn windowListener(river_window_v1: *river.WindowV1, event: river.WindowV1.Event,
             window.destroy();
         },
         .dimensions => |ev| {
-            // Protocol guarantees that width and height are strictly greater than zero
-            assert(ev.width > 0 and ev.height > 0);
             window.pending_manage.dimensions = .{ .width = @intCast(ev.width), .height = @intCast(ev.height) };
+            if (window.needs_position) {
+                @branchHint(.unlikely);
+                if (window.output) |output| {
+                    window.needs_position = false;
+
+                    window.pending_render.position = .{
+                        .x = (output.geometry.width / 2) - (window.pending_manage.dimensions.?.width / 2),
+                        .y = (output.geometry.height / 2) - (window.pending_manage.dimensions.?.height / 2),
+                    };
+                }
+            }
         },
         .dimensions_hint => |ev| {
             window.dimensions_hint = .{
@@ -231,7 +249,9 @@ fn windowListener(river_window_v1: *river.WindowV1, event: river.WindowV1.Event,
 /// rules are reflected in the first frame's layout.
 pub fn initialize(window: *Window) void {
     if (window.initialized) {
-        @branchHint(.unlikely);
+        // This branch should only reach once per window,
+        // but the method is called on every layout calculation.
+        @branchHint(.likely);
         return;
     }
     window.initialized = true;
@@ -246,9 +266,12 @@ pub fn initialize(window: *Window) void {
     river_window_v1.setTiled(.{ .top = true, .bottom = true, .left = true, .right = true });
 
     const res = window.applyRules();
-    if (res.tags) |tags| window.tags = tags;
-    if (res.float) |should_float|
+    if (res.tags) |tags| {
+        window.tags = tags;
+    }
+    if (res.float) |should_float| {
         window.pending_manage.floating = should_float;
+    }
 }
 
 pub fn manage(window: *Window) void {
@@ -273,6 +296,23 @@ pub fn manage(window: *Window) void {
                 // This window has never floated before, let's give it floating dimensions.
                 // Use 75% of the output's usable size, clamped to the window's dimension hints.
                 if (window.output) |output| {
+                    if (window.rect.width == 0) {
+                        // The window didn't even *exist* before, i.e. we only got here via a floating window rule.
+                        // Don't propose dimensions, let it start how it wants.
+                        if (window.pending_manage.dimensions) |dimensions| {
+                            // TODO: Is it even possible to make it in here? I need to ask ifreund, probably
+                            // We want to center the output; this works even if the proposed dimensions
+                            // are 0 since the dimensions are the numerator, the window just wouldn't
+                            // be centered.
+                            window.pending_render.position = .{
+                                .x = (output.geometry.width / 2) - (dimensions.width / 2),
+                                .y = (output.geometry.height / 2) - (dimensions.height / 2),
+                            };
+                        } else {
+                            window.needs_position = true;
+                        }
+                        break :blk;
+                    }
                     window.floating_rect.width = window.dimensions_hint.clampWidth(@divFloor(output.usable_geometry.width * 3, 4));
                     window.floating_rect.height = window.dimensions_hint.clampHeight(@divFloor(output.usable_geometry.height * 3, 4));
                     window.floating_rect.x = output.usable_geometry.x + @divFloor(output.usable_geometry.width, 2) - @divFloor(window.floating_rect.width, 2);
