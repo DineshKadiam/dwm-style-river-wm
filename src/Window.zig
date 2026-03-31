@@ -249,7 +249,7 @@ fn windowListener(river_window_v1: *river.WindowV1, event: river.WindowV1.Event,
 /// rules are reflected in the first frame's layout.
 pub fn initialize(window: *Window) void {
     if (window.initialized) {
-        // This branch should only reach once per window,
+        // We only need to initialize once per window,
         // but the method is called on every layout calculation.
         @branchHint(.likely);
         return;
