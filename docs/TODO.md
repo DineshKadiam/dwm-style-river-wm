@@ -1,7 +1,8 @@
 # TODOs
 
-These are in rough order of my priority, though no promises I do them in this order.
+These are in no particular order anymore.
 
+- [ ] Save focused window when switching back and forth between outputs via keybind
 - [ ] Add a config for how to focus when a window opens with a rule on another tag; should we switch tags, add tags, or just ignore it?
 - [ ] Support per-output single window ratio (in config; this already works at runtime)
 - [ ] Support per-output wallpapers

@@ -101,6 +101,13 @@ fn seatListener(river_seat_v1: *river.SeatV1, event: river.SeatV1.Event, seat: *
         .pointer_enter => |ev| if (seat.context.config.focus_follows_pointer) {
             seat.setWindowFocus(ev.window);
         },
+        .pointer_leave => if (seat.context.config.focus_follows_pointer) {
+            if (seat.pending_manage.window == null) {
+                // We only want to clear the pending focus if there's not already one set,
+                // e.g. from a .pointer_enter event.
+                seat.pending_manage.window = .clear_focus;
+            }
+        },
         .window_interaction => |ev| seat.setWindowFocus(ev.window),
         .op_delta => |ev| {
             seat.pending_manage.op_delta = .{ .dx = ev.dx, .dy = ev.dy };
@@ -111,21 +118,27 @@ fn seatListener(river_seat_v1: *river.SeatV1, event: river.SeatV1.Event, seat: *
         .pointer_position => |ev| {
             seat.pointer_pos.x = ev.x;
             seat.pointer_pos.y = ev.y;
-            if (seat.context.config.output_focus_follows_pointer) {
-                // Iterate over every display and check if the curser is inside it
+
+            // We use this to track if the cursor is moving to a new output
+            if (seat.context.config.output_focus_follows_pointer) blk: {
+                const focused_output = seat.focused_output orelse break :blk;
+                if (utils.isPosInRect(seat.pointer_pos, focused_output.geometry)) {
+                    // Same output, skip
+                    break :blk;
+                }
+
+                // New output, find which one the pointer is in
                 var it = seat.context.wm.outputs.iterator(.forward);
                 while (it.next()) |output| {
-                    if (utils.isPosInRect(seat.pointer_pos, output.geometry)) {
+                    if (output != focused_output and
+                        utils.isPosInRect(seat.pointer_pos, output.geometry))
+                    {
                         seat.focused_output = output;
-                        break;
                     }
                 }
             }
         },
-
-        else => |ev| {
-            log.debug("unhandled event: {s}", .{@tagName(ev)});
-        },
+        else => {},
     }
 }
 
@@ -156,12 +169,6 @@ pub fn manage(seat: *Seat) void {
                         if (focused != window) {
                             // Tell the previously focused Window that it's no longer focused
                             focused.pending_render.focused = false;
-                            // Update the Bar to have the newly-focused window's title
-                            if (focused.output) |output| {
-                                if (output.bar) |*bar| {
-                                    bar.pending_render.draw = true;
-                                }
-                            }
                         }
                     }
                     seat.focused_window = window;
@@ -176,6 +183,13 @@ pub fn manage(seat: *Seat) void {
                     seat.focused_window = null;
                     seat.river_seat_v1.clearFocus();
                 },
+            }
+            // Bars should redraw because the title (may) have changed
+            var it = seat.context.wm.outputs.iterator(.forward);
+            while (it.next()) |output| {
+                if (output.bar) |*bar| {
+                    bar.pending_render.draw = true;
+                }
             }
         }
     }
