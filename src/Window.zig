@@ -297,8 +297,9 @@ pub fn manage(window: *Window) void {
                 // Use 75% of the output's usable size, clamped to the window's dimension hints.
                 if (window.output) |output| {
                     if (window.rect.width == 0) {
-                        // The window didn't even *exist* before, i.e. we only got here via a floating window rule.
-                        // Don't propose dimensions, let it start how it wants.
+                        // The window didn't even *exist* before, i.e. we only got here via a floating window rule,
+                        // so just let it choose its own dimensions.
+                        river_window_v1.proposeDimensions(0, 0);
                         if (window.pending_manage.dimensions) |dimensions| {
                             // TODO: Is it even possible to make it in here? I need to ask ifreund, probably
                             // We want to center the output; this works even if the proposed dimensions
