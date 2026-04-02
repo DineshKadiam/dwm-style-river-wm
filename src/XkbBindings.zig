@@ -347,6 +347,7 @@ const XkbBinding = struct {
         if (pending_focus) |output| blk: {
             // This should be a noop if there's only one output
             if (output == seat.focused_output) {
+                log.debug("focusOutput(): trying to focus current output", .{});
                 break :blk;
             }
 
@@ -367,6 +368,9 @@ const XkbBinding = struct {
                 seat.pending_manage.window = .clear_focus;
             }
         } else {
+            log.warn("focusOutput(): no outputs", .{});
+            // This should only ever be reached if there were no outputs and then the user
+            // tries to change the focused output again.
             seat.pending_manage.output = .clear_focus;
         }
     }
