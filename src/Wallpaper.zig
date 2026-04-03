@@ -46,7 +46,7 @@ pub const Image = struct {
             try image.zigimg_image.convert(utils.gpa, .rgba32);
         }
 
-        log.debug("image loaded ({}x{})", .{ image.zigimg_image.width, image.zigimg_image.height });
+        log.debug("Image loaded ({}x{})", .{ image.zigimg_image.width, image.zigimg_image.height });
 
         const pixels = image.zigimg_image.pixels.rgba32;
         const width: c_int = @intCast(image.zigimg_image.width);
@@ -165,6 +165,10 @@ pub fn render(wallpaper: *Wallpaper) void {
         opaque_region.add(0, 0, width, height);
 
         wallpaper.surfaces.node.placeBottom();
+        wallpaper.surfaces.node.setPosition(
+            wallpaper.output.geometry.x,
+            wallpaper.output.geometry.y,
+        );
 
         wallpaper.surfaces.wl_surface.setOpaqueRegion(opaque_region);
         wallpaper.draw(width, height, scale) catch |err| {
@@ -191,14 +195,14 @@ fn calculateTransform(image_dimension: c_int, output_dimension: u31, dimension_s
     return numerator2 / 2 / dimension_scale;
 }
 
-/// Render the wallpaper image onto the layer surface
-fn draw(wallpaper: *Wallpaper, width: u31, height: u31, scale: u31) !void {
+/// Draw the shared Wallpaper.Image onto the specific layer surface for this Wallpaper
+fn draw(wallpaper: *Wallpaper, output_width: u31, output_height: u31, output_scale: u31) !void {
     const context = wallpaper.context;
 
-    // Don't have anything to render
-    if (width == 0 or height == 0 or scale == 0) {
+    if (output_width == 0 or output_height == 0 or output_scale == 0) {
         return;
     }
+
     // Scale our loaded image and then copy it into the Buffer's pixman.Image
     const wp_image = context.wallpaper_image orelse return error.MissingWallpaperImage;
     const image = wp_image.pix_image;
@@ -208,26 +212,37 @@ fn draw(wallpaper: *Wallpaper, width: u31, height: u31, scale: u31) !void {
     const image_stride = image.getStride();
     const image_format = image.getFormat();
 
-    const buffer = try context.buffer_pool.nextBuffer(context.wl_shm, width * scale, height * scale);
+    const buffer = try context.buffer_pool.nextBuffer(
+        context.wl_shm,
+        output_width * output_scale,
+        output_height * output_scale,
+    );
 
-    const pix = pixman.Image.createBitsNoClear(image_format, image_width, image_height, image_data, image_stride) orelse {
+    const pix = pixman.Image.createBitsNoClear(
+        image_format,
+        image_width,
+        image_height,
+        image_data,
+        image_stride,
+    ) orelse {
         log.err("Failed to copy the wallpaper image for rendering", .{});
         return error.FailedToCreatePixmanImage;
     };
     defer _ = pix.unref();
 
-    // Calculate image scale
-    var sx: f64 = @as(f64, @floatFromInt(image_width)) / @as(f64, @floatFromInt(width * scale));
-    var sy: f64 = calculateScale(image_height, height, scale);
+    // Calculate image scale in both dimensions. We choose the larger of the two scales to use
+    // (they're not equal when image aspect ratio != the output's aspect ratio).
+    const s = blk: {
+        const sx: f64 = calculateScale(image_width, output_width, output_scale);
+        const sy: f64 = calculateScale(image_height, output_height, output_scale);
 
-    const s = if (sx > sy) sy else sx;
-    sx = s;
-    sy = s;
+        break :blk if (sx > sy) sy else sx;
+    };
 
     // Calculate translation offsets to center the image on the output.
     // If the scaled image is larger than the output, the offset crops equally from both sides.
-    const tx: f64 = calculateTransform(image_width, width * scale, sx);
-    const ty: f64 = calculateTransform(image_height, height * scale, sy);
+    const tx: f64 = calculateTransform(image_width, output_width * output_scale, s);
+    const ty: f64 = calculateTransform(image_height, output_height * output_scale, s);
 
     // Build a combined source-to-destination transform matrix.
     // Pixman transforms map destination pixels back to source pixels, so:
@@ -240,23 +255,23 @@ fn draw(wallpaper: *Wallpaper, width: u31, height: u31, scale: u31) !void {
     // t2 is the fixed-point version of t, which is what pixman actually uses internally
     var t2: pixman.Transform = undefined;
 
-    pixman.FTransform.initScale(&t_scale, sx, sy);
+    pixman.FTransform.initScale(&t_scale, s, s);
     pixman.FTransform.initTranslate(&t_trans, tx, ty);
-    pixman.FTransform.multiply(&t, &t_trans, &t_scale);
+    pixman.FTransform.multiply(&t, &t_scale, &t_trans);
     _ = pixman.Transform.fromFTransform(&t2, &t);
     _ = pix.setTransform(&t2);
     _ = pix.setFilter(.best, &[_]pixman.Fixed{}, 0);
 
     // Combine the transformed source image into the buffer.
-    pixman.Image.composite32(.src, pix, null, buffer.pixman_image, 0, 0, 0, 0, 0, 0, width * scale, height * scale);
+    pixman.Image.composite32(.src, pix, null, buffer.pixman_image, 0, 0, 0, 0, 0, 0, output_width * output_scale, output_height * output_scale);
 
-    log.info("render: {}x{} (scaled from {}x{})", .{ width * scale, height * scale, image_width, image_height });
+    log.info("draw: {}x{} (scaled from {}x{})", .{ output_width * output_scale, output_height * output_scale, image_width, image_height });
 
     // Attach the buffer to the surface
     const wl_surface = wallpaper.surfaces.wl_surface;
-    wl_surface.setBufferScale(scale);
+    wl_surface.setBufferScale(output_scale);
     wl_surface.attach(buffer.wl_buffer, 0, 0);
-    wl_surface.damageBuffer(0, 0, width * scale, height * scale);
+    wl_surface.damageBuffer(0, 0, output_width * output_scale, output_height * output_scale);
     wl_surface.commit();
 }
 
