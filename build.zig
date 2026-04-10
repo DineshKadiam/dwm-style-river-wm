@@ -3,6 +3,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 
 const std = @import("std");
+const assert = std.debug.assert;
+const mem = std.mem;
+
 const Scanner = @import("wayland").Scanner;
 
 pub fn build(b: *std.Build) !void {
@@ -56,8 +59,34 @@ pub fn build(b: *std.Build) !void {
     scanner.generate("river_xkb_config_v1", 1);
     scanner.generate("zwlr_layer_shell_v1", 3);
 
+    const full_version = blk: {
+        if (b.option([]const u8, "version-string", "Override `river -version` output.")) |version_override| {
+            break :blk version_override;
+        } else if (mem.endsWith(u8, version, "-dev")) {
+            var ret: u8 = undefined;
+
+            const git_describe_long = b.runAllowFail(
+                &.{ "git", "-C", b.build_root.path orelse ".", "describe", "--long" },
+                &ret,
+                .Ignore,
+            ) catch break :blk version;
+
+            var it = mem.splitSequence(u8, mem.trim(u8, git_describe_long, &std.ascii.whitespace), "-");
+            _ = it.next().?; // previous tag
+            const commit_count = it.next().?;
+            const commit_hash = it.next().?;
+            assert(it.next() == null);
+            assert(commit_hash[0] == 'g');
+
+            // Follow semantic versioning, e.g. 0.2.0-dev.42+d1cf95b
+            break :blk b.fmt(version ++ ".{s}+{s}", .{ commit_count, commit_hash[1..] });
+        } else {
+            break :blk version;
+        }
+    };
+
     const options = b.addOptions();
-    options.addOption([]const u8, "version", version);
+    options.addOption([]const u8, "version", full_version);
 
     const beansprout = b.addExecutable(.{
         .name = "beansprout",
