@@ -9,21 +9,21 @@ context: *Context,
 river_output_v1: *river.OutputV1,
 river_layer_shell_output_v1: *river.LayerShellOutputV1,
 
-// We have to wait for the rwm.wl_output event to get this
+/// We have to wait for the rwm.wl_output event to get this
 wl_output: ?*wl.Output = null,
 
-// Friendly name of this output
+/// Friendly name of this output
 name: ?[]const u8 = null,
 
-// Output geometry
+/// Output geometry
 scale: u31 = 1,
 geometry: Rect = .{},
 
-// Area available for window layout (output geometry minus bar space)
-// Maybe I'll re-add support for layer shell exclusive areas later,
-// but adding that makes it more work for me and I don't personally
-// know of anything that makes me want them since external bars won't
-// work with beansprout.
+/// Area available for window layout (output geometry minus bar space)
+/// Maybe I'll re-add support for layer shell exclusive areas later,
+/// but adding that makes it more work for me and I don't personally
+/// know of anything that makes me want them since external bars won't
+/// work with beansprout.
 usable_geometry: Rect = .{},
 
 wallpaper: ?Wallpaper = null,
@@ -111,18 +111,13 @@ pub fn create(context: *Context, river_output_v1: *river.OutputV1) !*Output {
 }
 
 pub fn destroy(output: *Output) void {
-    // Destroy any windows left on the Output
-    // This *should* be empty
-    var it = output.windows.safeIterator(.forward);
-    while (it.next()) |window| {
-        window.link.remove();
-        window.destroy();
-    }
+    // All of windows should've been removed from this output when handling the .removed event
+    assert(output.windows.first() == null);
 
     // Deinit optional surfaces
     if (output.bar) |*bar| bar.deinit();
     if (output.tag_overlay) |*tag_overlay| tag_overlay.deinit();
-    if (output.wallpaper) |*wp| wp.deinit();
+    if (output.wallpaper) |*wallpaper| wallpaper.deinit();
 
     // Destroy/deinit other Output fields
     output.tag_layout_overrides.deinit(utils.gpa);
@@ -140,7 +135,6 @@ pub fn destroy(output: *Output) void {
 /// with the output, wrapping to first if at end.
 pub fn nextWindow(output: *Output, current: *Window) ?*Window {
     var link = current.link.next.?;
-    // Walk forward, wrapping at sentinel, until we find a visible window or return to current
     while (true) {
         // If this is the sentinel, wrap to the beginning
         if (link == &output.windows.link) {
@@ -223,14 +217,10 @@ fn riverOutputListener(river_output_v1: *river.OutputV1, event: river.OutputV1.E
             output.destroy();
         },
         .wl_output => |ev| {
-            // Bind the wl_output here so that our listener is set before the server sends the
-            // initial events (.scale, .mode, .name, .done, etc.). The .done handler will init
+            // We wait to bind the wl_output here so that our listener is set before the server sends
+            // the initial events (.scale, .mode, .name, .done, etc.). The .done handler will init
             // bar/wallpaper surfaces.
-            const wl_output = output.context.wl_registry.bind(
-                ev.name,
-                wl.Output,
-                4,
-            ) catch |err| {
+            const wl_output = output.context.wl_registry.bind(ev.name, wl.Output, 4) catch |err| {
                 log.err("Failed to bind wl_output: {}", .{err});
                 return;
             };
@@ -238,8 +228,6 @@ fn riverOutputListener(river_output_v1: *river.OutputV1, event: river.OutputV1.E
             output.wl_output = wl_output;
         },
         .dimensions => |ev| {
-            // Protocol guarantees that width and height are strictly greater than zero
-            assert(ev.width > 0 and ev.height > 0);
             output.pending_manage.dimensions = .{
                 .width = @intCast(ev.width),
                 .height = @intCast(ev.height),
@@ -261,7 +249,7 @@ fn wlOutputListener(_: *wl.Output, event: wl.Output.Event, output: *Output) void
             if (output.context.wallpaper_image != null and output.wallpaper == null) {
                 output.wallpaper = Wallpaper.init(output.context, output) catch |err| {
                     const output_name = output.name orelse "some output";
-                    log.err("failed to add a wallpaper surface to {s}: {}", .{ output_name, err });
+                    log.err("Failed to add a wallpaper surface to {s}: {}", .{ output_name, err });
                     return;
                 };
             }
@@ -436,6 +424,7 @@ pub fn manage(output: *Output) void {
 
     // Calculate layout before managing windows, but only if output dimensions are initialized
     if (output.usable_geometry.width > 0 and output.usable_geometry.height > 0) {
+        @branchHint(.likely);
         output.calculateLayout();
     }
 
@@ -454,6 +443,10 @@ pub fn render(output: *Output) void {
         bar.render();
     }
 
+    if (output.tag_overlay) |*tag_overlay| {
+        tag_overlay.render();
+    }
+
     const seat = output.context.wm.seats.first();
     const focused = if (seat) |s| s.focused_window else null;
 
@@ -468,33 +461,40 @@ pub fn render(output: *Output) void {
     }
 
     // Make sure that the *focused* floating window goes above any other floating windows
-    if (focused) |f| {
-        if (f.floating and f.output == output and output.tags & f.tags != 0) {
-            f.river_node_v1.placeTop();
-        }
-    }
+    if (focused) |focused_window| {
+        if (focused_window.floating and focused_window.output == output) {
+            // If the window is focused, it must be visible. Not being visible is a bug.
+            assert(output.tags & focused_window.tags != 0);
 
-    if (output.tag_overlay) |*tag_overlay| {
-        tag_overlay.render();
+            focused_window.river_node_v1.placeTop();
+        }
     }
 }
 
-/// Calculate primary/stack layout positions for all windows.
+/// Calculate primary/stack layout positions for all windows
 /// - Single window: window is told it's maximized and takes up usable_width * single_window_ratio width
-/// - Multiple windows: two stacks, primary and secondary. By default, the stack is on the right and takes
-///     up 55% of the output width, but this can be configured. Each tagmask has its own primary ratio and count.
+/// - Multiple windows: two stacks, primary and secondary. By default, the stack is on the left and takes
+///     up 55% of the output width, but this can be configured. Each tagmask has its own primary ratio and count
+///
+/// Must not be called until the output has dimensions
 fn calculateLayout(output: *Output) void {
     // Shouldn't be called if height/width are not positive
     assert(output.geometry.width > 0 and output.geometry.height > 0);
+
     // Get a list of active tiled windows
-    // i.e. any windows that are on this output with at least one active tag and aren't fullscreen or floating
+    // i.e. any windows that are:
+    // - on this output
+    // - have at least one active tag
+    // - are not fullscreen or floating
     var active_list: DoublyLinkedList = .{};
     var active_count: u31 = 0;
     var it = output.windows.iterator(.forward);
     while (it.next()) |window| {
-        // Initialize new windows before checking tags/float so that
-        // window rules are reflected in the first frame's layout.
-        window.initialize();
+        // Initialize new windows early so that window rules are applied to the layout
+        if (!window.initialized) {
+            @branchHint(.unlikely);
+            window.initialize();
+        }
         if (output.tags & window.tags != 0x0000) {
             // Fullscreen and floating windows should be shown but not included in layout generation
             const will_be_fullscreen = window.pending_manage.fullscreen orelse window.fullscreen;
@@ -553,7 +553,7 @@ fn calculateLayout(output: *Output) void {
     else
         0;
 
-    // Determine the stack x coordinates based on whether primary is set to the left or right
+    // Determine the x coordinates based on whether primary is set to the left or right
     const primary_x, const stack_x = switch (output.context.config.primary_side) {
         .right => .{ output_x + @as(i32, stack_width), output_x },
         .left => .{ output_x, output_x + @as(i32, primary_width) },

@@ -247,13 +247,10 @@ fn windowListener(river_window_v1: *river.WindowV1, event: river.WindowV1.Event,
 /// Apply one-time initialization for newly created windows.
 /// Called before calculatePrimaryStackLayout() so that tag and float
 /// rules are reflected in the first frame's layout.
+///
+/// Must only be called once per Window.
 pub fn initialize(window: *Window) void {
-    if (window.initialized) {
-        // We only need to initialize once per window,
-        // but the method is called on every layout calculation.
-        @branchHint(.likely);
-        return;
-    }
+    assert(!window.initialized);
     window.initialized = true;
 
     const river_window_v1 = window.river_window_v1;
