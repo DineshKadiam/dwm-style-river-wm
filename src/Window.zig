@@ -297,11 +297,8 @@ pub fn manage(window: *Window) void {
                 // Use 75% of the output's usable size, clamped to the window's dimension hints.
                 if (window.output) |output| {
                     if (window.rect.width == 0) {
-                        // The window didn't even *exist* before, i.e. we only got here via a floating window rule,
-                        // so just let it choose its own dimensions.
-                        river_window_v1.proposeDimensions(0, 0);
                         if (window.pending_manage.dimensions) |dimensions| {
-                            // TODO: Is it even possible to make it in here? I need to ask ifreund, probably
+                            // TODO: Is it even possible to make it in here?
                             // We want to center the output; this works even if the proposed dimensions
                             // are 0 since the dimensions are the numerator, the window just wouldn't
                             // be centered.
@@ -310,6 +307,9 @@ pub fn manage(window: *Window) void {
                                 .y = (output.geometry.height / 2) - (dimensions.height / 2),
                             };
                         } else {
+                            // The window didn't even *exist* before, i.e. we only got here via a floating window rule,
+                            // so just let it choose its own dimensions.
+                            river_window_v1.proposeDimensions(0, 0);
                             window.needs_position = true;
                         }
                         break :blk;
@@ -319,8 +319,8 @@ pub fn manage(window: *Window) void {
                     window.floating_rect.x = output.usable_geometry.x + @divFloor(output.usable_geometry.width, 2) - @divFloor(window.floating_rect.width, 2);
                     window.floating_rect.y = output.usable_geometry.y + @divFloor(output.usable_geometry.height, 2) - @divFloor(window.floating_rect.height, 2);
                 } else {
-                    window.floating_rect.width = window.rect.width;
-                    window.floating_rect.height = window.rect.height;
+                    // This should not be reachable because focus is unset if there are no outputs
+                    unreachable;
                 }
             }
             river_window_v1.proposeDimensions(window.floating_rect.width, window.floating_rect.height);
@@ -337,7 +337,6 @@ pub fn manage(window: *Window) void {
             window.floating_rect.y = window.rect.y;
         }
     }
-    // Layout (pre-computed by WindowManager
     if (pending_manage.dimensions) |dimensions| {
         window.rect.width = dimensions.width;
         window.rect.height = dimensions.height;
@@ -369,7 +368,6 @@ pub fn manage(window: *Window) void {
             window.river_window_v1.informUnmaximized();
         }
     }
-    // New tags
     if (pending_manage.tags) |tags| {
         window.tags = tags;
         if (window.output) |o| {
@@ -379,7 +377,6 @@ pub fn manage(window: *Window) void {
             }
         }
     }
-    // New output
     if (pending_manage.pending_output) |pending_output| {
         switch (pending_output) {
             .output => |output| {
