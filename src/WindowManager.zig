@@ -41,21 +41,18 @@ pub fn destroy(wm: *WindowManager) void {
     {
         var it = wm.outputs.safeIterator(.forward);
         while (it.next()) |output| {
-            output.link.remove();
             output.destroy();
         }
     }
     {
         var it = wm.seats.safeIterator(.forward);
         while (it.next()) |seat| {
-            seat.link.remove();
             seat.destroy();
         }
     }
     {
         var it = wm.orphan_windows.safeIterator(.forward);
         while (it.next()) |window| {
-            window.link.remove();
             window.destroy();
         }
     }

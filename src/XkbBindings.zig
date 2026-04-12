@@ -120,19 +120,15 @@ const XkbBinding = struct {
 
     pub fn destroy(xkb_binding: *XkbBinding) void {
         xkb_binding.xkb_binding_v1.destroy();
+        xkb_binding.link.remove();
         utils.gpa.destroy(xkb_binding);
     }
 
     fn xkbBindingListener(river_xkb_binding_v1: *river.XkbBindingV1, event: river.XkbBindingV1.Event, xkb_binding: *XkbBinding) void {
         assert(xkb_binding.xkb_binding_v1 == river_xkb_binding_v1);
         switch (event) {
-            .pressed => {
-                xkb_binding.executeCommand();
-            },
-            .released => {},
-            else => |ev| {
-                log.debug("unhandled event: {s}", .{@tagName(ev)});
-            },
+            .pressed => xkb_binding.executeCommand(),
+            else => {},
         }
     }
 
@@ -375,20 +371,20 @@ const XkbBinding = struct {
         }
     }
 
+    /// This function requires that the window is currently on an output
+    /// AND that the output is the currently focused output on the first seat.
     fn sendWindowToOutput(context: *Context, direction: FocusDirection) void {
         const wm = context.wm;
         const seat = wm.seats.first() orelse return;
         const window = seat.focused_window orelse return;
-        assert(window.output == seat.focused_output);
 
-        const pending_output = if (seat.focused_output) |current|
-            switch (direction) {
-                .next => wm.nextOutput(current),
-                .prev => wm.prevOutput(current),
-            }
-        else switch (direction) {
-            .next => wm.outputs.first(),
-            .prev => wm.outputs.last(),
+        assert(window.output == seat.focused_output);
+        assert(seat.focused_output != null);
+
+        const current_output = seat.focused_output.?;
+        const pending_output = switch (direction) {
+            .next => wm.nextOutput(current_output),
+            .prev => wm.prevOutput(current_output),
         };
 
         if (pending_output) |output| blk: {

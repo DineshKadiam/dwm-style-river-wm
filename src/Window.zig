@@ -126,6 +126,7 @@ pub fn destroy(window: *Window) void {
     window.river_node_v1.destroy();
     window.river_window_v1.destroy();
 
+    window.link.remove();
     utils.gpa.destroy(window);
 }
 
@@ -156,7 +157,6 @@ fn windowListener(river_window_v1: *river.WindowV1, event: river.WindowV1.Event,
             }
             window.nextFocus();
 
-            window.link.remove();
             window.destroy();
         },
         .dimensions => |ev| {

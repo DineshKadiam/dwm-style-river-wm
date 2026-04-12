@@ -111,8 +111,46 @@ pub fn create(context: *Context, river_output_v1: *river.OutputV1) !*Output {
 }
 
 pub fn destroy(output: *Output) void {
-    // All of windows should've been removed from this output when handling the .removed event
-    assert(output.windows.first() == null);
+    const context = output.context;
+    const wm = context.wm;
+
+    // Before we destroy the output, we wnant to take care of any window that are on it
+    // We chooe to move windows to the previous output in the WM's output list
+    // If this was the only output, windows go to the WM's orphan window list instead
+    const prev_output: ?*Output = if (wm.prevOutput(output)) |prev| blk: {
+        if (prev == output) break :blk null; // Only output; wrapped to itself
+        break :blk prev;
+    } else unreachable;
+
+    const window_pending_output: Window.PendingManage.PendingOutput =
+        if (prev_output) |prev|
+            .{ .output = prev }
+        else
+            .clear_output;
+
+    // Update each window's output before moving the list
+    var it = output.windows.iterator(.forward);
+    while (it.next()) |window| {
+        window.pending_manage.pending_output = window_pending_output;
+    }
+
+    // Finally, move the windows to their new output (or the orphan list)
+    const dest_list = if (prev_output) |prev| &prev.windows else &wm.orphan_windows;
+    dest_list.appendList(&output.windows);
+
+    seat_blk: {
+        // If the output was focused, move focus to the output that took this one's windows
+        // (and its first window, if any).
+        const seat = wm.seats.first() orelse break :seat_blk;
+        if (seat.focused_output != output) break :seat_blk;
+
+        seat.pending_manage.output = if (prev_output) |prev| prev_blk: {
+            if (prev.windows.first()) |window| {
+                seat.pending_manage.window = .{ .window = window };
+            }
+            break :prev_blk .{ .output = prev };
+        } else .clear_focus;
+    }
 
     // Deinit optional surfaces
     if (output.bar) |*bar| bar.deinit();
@@ -128,6 +166,7 @@ pub fn destroy(output: *Output) void {
     output.river_output_v1.destroy();
     if (output.wl_output) |wl_output| wl_output.release();
 
+    output.link.remove();
     utils.gpa.destroy(output);
 }
 
@@ -166,54 +205,6 @@ fn riverOutputListener(river_output_v1: *river.OutputV1, event: river.OutputV1.E
     assert(output.river_output_v1 == river_output_v1);
     switch (event) {
         .removed => {
-            const context = output.context;
-            const wm = context.wm;
-
-            // Move windows to the previous output in the list.
-            // If this was the only output, windows become orphans.
-            const prev_output: ?*Output = if (wm.prevOutput(output)) |prev| blk: {
-                if (prev == output) break :blk null; // Only output; wrapped to itself
-                break :blk prev; // We got the previous list
-            } else unreachable;
-
-            const window_pending_output: Window.PendingManage.PendingOutput =
-                if (prev_output) |prev|
-                    .{ .output = prev }
-                else
-                    .clear_output;
-
-            // Update each window's output before moving the list
-            var it = output.windows.iterator(.forward);
-            while (it.next()) |window| {
-                window.pending_manage.pending_output = window_pending_output;
-            }
-
-            // Move windows to new destination
-            const dest_list = if (prev_output) |prev| &prev.windows else &wm.orphan_windows;
-            dest_list.appendList(&output.windows);
-
-            blk: {
-                // If the removed output was focused, move focus to the next
-                // available output (and its first window, if any).
-                const seat = wm.seats.first() orelse break :blk;
-                if (seat.focused_output != output) break :blk;
-
-                const next_output = wm.nextOutput(output);
-                if (next_output == output or next_output == null) {
-                    // This was the last output; clear focus
-                    seat.pending_manage.output = .clear_focus;
-                    seat.pending_manage.window = .clear_focus;
-                    break :blk;
-                }
-                const o = next_output.?;
-
-                seat.pending_manage.output = .{ .output = o };
-                if (o.windows.first()) |window| {
-                    seat.pending_manage.window = .{ .window = window };
-                }
-            }
-
-            output.link.remove();
             output.destroy();
         },
         .wl_output => |ev| {

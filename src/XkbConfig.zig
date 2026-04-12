@@ -42,8 +42,8 @@ const Keyboard = struct {
     }
 
     fn destroy(keyboard: *Keyboard) void {
-        keyboard.link.remove();
         keyboard.xkb_keyboard_v1.destroy();
+        keyboard.link.remove();
         utils.gpa.destroy(keyboard);
     }
 

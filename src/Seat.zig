@@ -88,6 +88,7 @@ pub fn destroy(seat: *Seat) void {
     if (seat.resize_pointer_binding) |binding| binding.destroy();
     seat.river_seat_v1.destroy();
     seat.river_layer_shell_seat_v1.destroy();
+    seat.link.remove();
     utils.gpa.destroy(seat);
 }
 

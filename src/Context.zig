@@ -125,7 +125,6 @@ pub fn manage(context: *Context) void {
         // Destroy all existing bindings
         var it = context.xkb_bindings.bindings.safeIterator(.forward);
         while (it.next()) |binding| {
-            binding.link.remove();
             binding.destroy();
         }
 
