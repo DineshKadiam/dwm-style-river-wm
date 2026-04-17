@@ -37,7 +37,7 @@ pub const Image = struct {
         errdefer utils.gpa.destroy(image);
 
         var read_buf: [zigimg.io.DEFAULT_BUFFER_SIZE]u8 = undefined;
-        image.zigimg_image = try zigimg.Image.fromFilePath(utils.gpa, image_path, &read_buf);
+        image.zigimg_image = try zigimg.Image.fromFilePath(utils.gpa, io, image_path, &read_buf);
         errdefer image.zigimg_image.deinit(utils.gpa);
 
         // We don't want to deal with all the possible formats,
@@ -278,6 +278,8 @@ fn draw(wallpaper: *Wallpaper, output_width: u31, output_height: u31, output_sca
 const std = @import("std");
 const builtin = @import("builtin");
 const native_endian = builtin.cpu.arch.endian();
+const Io = std.Io;
+const io = Io.Threaded.global_single_threaded.io();
 
 const wayland = @import("wayland");
 const wl = wayland.client.wl;

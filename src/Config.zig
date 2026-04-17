@@ -61,12 +61,12 @@ bar_config: ?BarConfig = null,
 keyboard_layout: KeyboardLayoutConfig = .{},
 
 /// Tag bind entries parsed from config (tag_bind nodes in keybinds block)
-tag_binds: std.ArrayList(Keybind) = .{},
+tag_binds: std.ArrayList(Keybind) = .empty,
 // We use a hash map so that duplicate keybinds can be easily de-duplicated
 keybinds: keybind.Map = .{},
-pointer_binds: std.ArrayList(PointerBind) = .{},
-input_configs: std.ArrayList(InputConfig) = .{},
-window_rules: std.ArrayList(WindowRule) = .{},
+pointer_binds: std.ArrayList(PointerBind) = .empty,
+input_configs: std.ArrayList(InputConfig) = .empty,
+window_rules: std.ArrayList(WindowRule) = .empty,
 
 // Re-exports
 pub const Keybind = keybind.Keybind;
@@ -92,11 +92,11 @@ pub const FocusOnSend = enum {
 };
 
 const NodeName = enum {
-    attach_mode,
     primary_count,
     primary_ratio,
-    single_window_ratio,
     primary_side,
+    single_window_ratio,
+    attach_mode,
     focus_follows_pointer,
     output_focus_follows_pointer,
     focus_on_send,
@@ -114,23 +114,168 @@ const NodeName = enum {
     window_rules,
 };
 
-pub fn create() !*Config {
-    var config: *Config = try utils.gpa.create(Config);
-    errdefer config.destroy();
-    config.* = .{}; // create() gives us undefined memory
+/// State accumulated while parsing a KDL node
+/// Each node gets its own parse state, i.e. state is reset between nodes
+const ParseState = struct {
+    /// Enum version of the current node
+    cur_node: ?NodeName = null,
 
-    if (try known_folders.getPath(utils.gpa, .local_configuration)) |config_dir| blk: {
-        defer utils.gpa.free(config_dir);
+    /// The hostname that this node should apply to
+    host: ?[]const u8 = null,
 
-        var path_buf: [std.fs.max_path_bytes]u8 = undefined;
-        const config_path = std.fmt.bufPrint(&path_buf, "{s}/{s}", .{ config_dir, config_file }) catch return config;
+    /// The name of the input that this block should apply to
+    /// This property is only valid on `input` nodes
+    name: ?[]const u8 = null,
 
-        const file = fs.openFileAbsolute(config_path, .{}) catch break :blk;
+    /// Arguments to the current node
+    /// This can be expanded if any node ends up needing more arguments.
+    args: [2][]const u8 = .{ "", "" },
+    /// The number of arguments parsed so far on this node
+    arg_count: usize = 0,
+};
 
-        var read_buffer: [1024]u8 = undefined;
-        var file_reader = file.reader(&read_buffer);
+pub fn init(environ: process.Environ.Map) !Config {
+    var config: Config = .{};
+    errdefer config.deinit();
 
-        try config.load(&file_reader.interface);
+    init: {
+        var path_buf: [fs.max_path_bytes]u8 = undefined;
+        const config_path = if (try known_folders.getPath(io, utils.gpa, environ, .local_configuration)) |config_dir| blk: {
+            defer utils.gpa.free(config_dir);
+            break :blk std.fmt.bufPrint(&path_buf, "{s}/{s}", .{ config_dir, config_file }) catch break :init;
+        } else break :init;
+
+        const hostname = blk: {
+            var uname = posix.uname();
+            const hostname = mem.sliceTo(&uname.nodename, 0);
+            if (hostname.len == 0) break :blk null;
+            break :blk hostname;
+        };
+
+        const file = Io.Dir.openFileAbsolute(io, config_path, .{ .mode = .read_only }) catch break :init;
+        defer file.close(io);
+
+        const file_len = try file.length(io);
+
+        // file_len+1 zero-fills the last byte so that; kdl.Parser.init
+        // gets its [:0]const u8. The :0 below asserts that sentinel exists.
+        var file_mmap = try file.createMemoryMap(io, .{ .len = file_len + 1, .protection = .{ .read = true } });
+        defer file_mmap.destroy(io);
+
+        var parser = kdl.Parser.init(file_mmap.memory[0..file_len :0]);
+
+        var state: ParseState = .{};
+
+        var event = try parser.next();
+        while (event != .eof) : (event = try parser.next()) {
+            switch (event) {
+                .node => |node| {
+                    if (state.cur_node) |cur_node| {
+                        switch (cur_node) {
+                            .primary_count,
+                            .primary_ratio,
+                            .primary_side,
+                            .single_window_ratio,
+                            .attach_mode,
+                            .focus_follows_pointer,
+                            .output_focus_follows_pointer,
+                            .focus_on_send,
+                            .pointer_warp_on_focus_change,
+                            .wallpaper_image_path,
+                            .cursor_theme,
+                            => try config.flushTopLevelNode(environ, hostname, state),
+                            else => {
+                                log.err("Expected child block for \"{s}\"", .{@tagName(cur_node)});
+                                return error.InvalidConfig;
+                            },
+                        }
+                    }
+                    state = .{};
+                    state.cur_node = std.meta.stringToEnum(NodeName, node.val) orelse
+                        return helpers.invalidNode(node.val);
+                },
+                .arg => |arg| {
+                    if (state.arg_count >= state.args.len) {
+                        log.err("Too many arguments to node \"{s}\"", .{@tagName(state.cur_node.?)});
+                        return error.KdlTooManyArgs;
+                    }
+                    state.args[state.arg_count] = arg.val;
+                    state.arg_count += 1;
+                },
+                .prop => |prop| {
+                    if (mem.eql(u8, prop.key, "host")) {
+                        state.host = prop.val;
+                    } else if (state.cur_node == .input and mem.eql(u8, prop.key, "name")) {
+                        state.name = prop.val;
+                    } else {
+                        log.warn("Unknown property \"{s}=\" for node \"{s}\"", .{
+                            prop.key,
+                            @tagName(state.cur_node.?),
+                        });
+                    }
+                },
+                .child_block_begin => {
+                    const cur_node = state.cur_node orelse {
+                        log.err("Unexpected child block", .{});
+                        return error.InvalidConfig;
+                    };
+                    if (!helpers.hostMatches(state.host, hostname)) {
+                        log.debug("Skipping \"{s}\" block (host mismatch)", .{@tagName(cur_node)});
+                        try helpers.skipChildBlock(&parser);
+                    } else {
+                        switch (cur_node) {
+                            .bar => try BarConfig.load(&config, &parser, hostname),
+                            .borders => try border.load(&config, &parser, hostname),
+                            .keyboard_layout => try KeyboardLayoutConfig.load(&config, &parser, hostname),
+                            .keybinds => try keybind.load(&config, &parser, hostname),
+                            .pointer_binds => try pointer_bind.load(&config, &parser, hostname),
+                            .input => {
+                                const input_name = if (state.name) |name|
+                                    try utils.gpa.dupe(u8, utils.stripQuotes(name))
+                                else
+                                    null;
+                                try InputConfig.load(&config, &parser, input_name, hostname);
+                            },
+                            .tag_overlay => try TagOverlayConfig.load(&config, &parser, hostname),
+                            .window_rules => try window_rule.load(&config, &parser, hostname),
+                            else => {
+                                log.err("\"{s}\" does not take a child block", .{@tagName(cur_node)});
+                                return error.InvalidConfig;
+                            },
+                        }
+                    }
+                    state = .{};
+                },
+                .child_block_end => {
+                    log.err("Unexpected closing brace", .{});
+                    return error.InvalidConfig;
+                },
+                .invalid => return error.KdlInvalidConfig,
+                .eof => break,
+            }
+        }
+
+        // Flush the last top-level node
+        if (state.cur_node) |cur_node| {
+            switch (cur_node) {
+                .primary_count,
+                .primary_ratio,
+                .primary_side,
+                .single_window_ratio,
+                .attach_mode,
+                .focus_follows_pointer,
+                .output_focus_follows_pointer,
+                .focus_on_send,
+                .pointer_warp_on_focus_change,
+                .wallpaper_image_path,
+                .cursor_theme,
+                => try config.flushTopLevelNode(environ, hostname, state),
+                else => {
+                    log.err("Expected child block for \"{s}\", got EOF", .{@tagName(cur_node)});
+                    return error.InvalidConfig;
+                },
+            }
+        }
     }
 
     if (config.keybinds.count() == 0) {
@@ -146,21 +291,7 @@ pub fn create() !*Config {
     return config;
 }
 
-fn addFallbackKeybinds(config: *Config) void {
-    const Entry = struct { keybind.Key, XkbBindings.Command };
-    const fallbacks = [_]Entry{
-        .{ .{ .modifiers = .{ .ctrl = true, .mod1 = true }, .keysym = .Delete }, @unionInit(XkbBindings.Command, "exit_river", {}) },
-        .{ .{ .modifiers = .{ .mod4 = true, .shift = true }, .keysym = .r }, @unionInit(XkbBindings.Command, "reload_config", {}) },
-        .{ .{ .modifiers = .{ .mod4 = true }, .keysym = .t }, .{ .spawn = utils.gpa.dupe([:0]const u8, &.{
-            utils.gpa.dupeZ(u8, "foot") catch @panic("Out of memory"),
-        }) catch @panic("Out of memory") } },
-    };
-    for (&fallbacks) |*entry| {
-        config.keybinds.put(utils.gpa, entry[0], entry[1]) catch @panic("Out of memory");
-    }
-}
-
-pub fn destroy(config: *Config) void {
+pub fn deinit(config: *Config) void {
     for (config.keybinds.values()) |cmd| {
         cmd.deinit();
     }
@@ -168,246 +299,196 @@ pub fn destroy(config: *Config) void {
     config.tag_binds.deinit(utils.gpa);
     config.pointer_binds.deinit(utils.gpa);
     for (config.input_configs.items) |ic| {
-        if (ic.name) |name| utils.gpa.free(name);
+        if (ic.name) |name| {
+            utils.gpa.free(name);
+        }
     }
     config.input_configs.deinit(utils.gpa);
     for (config.window_rules.items) |rule| {
-        if (rule.app_id_glob) |app_id_glob| utils.gpa.free(app_id_glob);
-        if (rule.title_glob) |title_glob| utils.gpa.free(title_glob);
+        if (rule.app_id_glob) |app_id_glob| {
+            utils.gpa.free(app_id_glob);
+        }
+        if (rule.title_glob) |title_glob| {
+            utils.gpa.free(title_glob);
+        }
     }
     config.window_rules.deinit(utils.gpa);
-    if (config.bar_config) |bc| {
-        if (bc.fonts) |fonts| utils.gpa.free(fonts);
+    if (config.bar_config) |bar_config| {
+        if (bar_config.fonts) |fonts| {
+            utils.gpa.free(fonts);
+        }
+        if (bar_config.time_format) |time_format| {
+            utils.gpa.free(time_format);
+        }
     }
-    if (config.keyboard_layout.rules) |s| utils.gpa.free(s);
-    if (config.keyboard_layout.model) |s| utils.gpa.free(s);
-    if (config.keyboard_layout.layout) |s| utils.gpa.free(s);
-    if (config.keyboard_layout.variant) |s| utils.gpa.free(s);
-    if (config.keyboard_layout.options) |s| utils.gpa.free(s);
-    if (config.wallpaper_image_path) |path| {
-        utils.gpa.free(path);
+    if (config.keyboard_layout.rules) |rules| {
+        utils.gpa.free(rules);
+    }
+    if (config.keyboard_layout.model) |model| {
+        utils.gpa.free(model);
+    }
+    if (config.keyboard_layout.layout) |layout| {
+        utils.gpa.free(layout);
+    }
+    if (config.keyboard_layout.variant) |variant| {
+        utils.gpa.free(variant);
+    }
+    if (config.keyboard_layout.options) |options| {
+        utils.gpa.free(options);
+    }
+    if (config.wallpaper_image_path) |wallpaper_image_path| {
+        utils.gpa.free(wallpaper_image_path);
     }
     if (config.cursor) |cursor| {
         utils.gpa.free(cursor.theme);
     }
-    utils.gpa.destroy(config);
 }
 
-fn load(config: *Config, reader: *Io.Reader) !void {
-    var parser = try kdl.Parser.init(utils.gpa, reader, .{});
-    defer parser.deinit(utils.gpa);
-
-    const hostname = blk: {
-        var uname = std.posix.uname();
-        const hostname = mem.sliceTo(&uname.nodename, 0);
-        if (hostname.len == 0) break :blk null;
-        break :blk hostname;
-    };
-
-    var next_child_block: ?NodeName = null;
-    var pending_input_name: ?[]const u8 = null;
-    defer if (pending_input_name) |n| utils.gpa.free(n);
-
-    // Parse the KDL config
-    while (try parser.next()) |event| {
-        // First, we switch on the type of event
-        switch (event) {
-            .node => |node| {
-                if (next_child_block) |child_block| {
-                    log.err("Expected child block for {s}, but got another node instead", .{@tagName(child_block)});
-                    return error.InvalidConfig;
-                }
-                // If it's a node, we check if it's a valid NodeName
-                const node_name = std.meta.stringToEnum(NodeName, node.name);
-                if (node_name) |name| {
-                    if (!helpers.hostMatches(node, &parser, hostname)) {
-                        log.debug("Skipping \"{s}\" (host mismatch)", .{@tagName(name)});
-                        continue;
-                    }
-                    // Next, we have to check the specifics for the NodeName
-                    switch (name) {
-                        .primary_count => {
-                            const count_str = utils.stripQuotes(node.arg(&parser, 0) orelse "");
-                            // Use @max to ensure a minimum of 1
-                            config.primary_count = @max(1, fmt.parseInt(u8, count_str, 10) catch {
-                                return errInvalidArg(name, count_str);
-                            });
-                            logDebugSettingNode(name, count_str);
-                        },
-                        .primary_ratio => {
-                            const ratio_str = utils.stripQuotes(node.arg(&parser, 0) orelse "");
-                            const ratio = fmt.parseFloat(f32, ratio_str) catch {
-                                return errInvalidArg(name, ratio_str);
-                            };
-                            config.primary_ratio = std.math.clamp(ratio, min_primary_ratio, max_primary_ratio);
-                            if (ratio != config.primary_ratio) {
-                                log.warn("primary_ratio outside of valid range ({d} to {d}); clamping it", .{ min_primary_ratio, max_primary_ratio });
-                            }
-                            logDebugSettingNode(name, ratio_str);
-                        },
-                        .primary_side => {
-                            const primary_side_str = utils.stripQuotes(node.arg(&parser, 0) orelse "");
-                            if (std.meta.stringToEnum(PrimarySide, primary_side_str)) |mode| {
-                                config.primary_side = mode;
-                                logDebugSettingNode(name, primary_side_str);
-                            } else {
-                                return errInvalidArg(name, primary_side_str);
-                            }
-                        },
-                        .single_window_ratio => {
-                            const ratio_str = utils.stripQuotes(node.arg(&parser, 0) orelse "");
-                            const ratio = fmt.parseFloat(f32, ratio_str) catch {
-                                return errInvalidArg(name, ratio_str);
-                            };
-                            // We use 1.00 here because it doesn't make sense for a window to have a ratio > 1,
-                            // i.e. for it to be wider than the output
-                            config.single_window_ratio = std.math.clamp(ratio, min_primary_ratio, 1.00);
-                            if (ratio != config.single_window_ratio) {
-                                log.warn("single_window_ratio outside of valid range ({d} to {d}); clamping it", .{ min_primary_ratio, 1.00 });
-                            }
-                            logDebugSettingNode(name, ratio_str);
-                        },
-                        .attach_mode => {
-                            const attach_mode_str = utils.stripQuotes(node.arg(&parser, 0) orelse "");
-                            if (std.meta.stringToEnum(AttachMode, attach_mode_str)) |mode| {
-                                config.attach_mode = mode;
-                                logDebugSettingNode(name, attach_mode_str);
-                            } else {
-                                return errInvalidArg(name, attach_mode_str);
-                            }
-                        },
-                        .focus_follows_pointer => {
-                            const focus_follows_pointer_str = utils.stripQuotes(node.arg(&parser, 0) orelse "");
-                            if (helpers.boolFromKdlStr(focus_follows_pointer_str)) |focus_follows_pointer| {
-                                config.focus_follows_pointer = focus_follows_pointer;
-                                logDebugSettingNode(name, focus_follows_pointer_str);
-                            } else |_| {
-                                return errInvalidArg(name, focus_follows_pointer_str);
-                            }
-                        },
-                        .output_focus_follows_pointer => {
-                            const output_focus_follows_pointer_str = utils.stripQuotes(node.arg(&parser, 0) orelse "");
-                            if (helpers.boolFromKdlStr(output_focus_follows_pointer_str)) |output_focus_follows_pointer| {
-                                config.output_focus_follows_pointer = output_focus_follows_pointer;
-                                logDebugSettingNode(name, output_focus_follows_pointer_str);
-                            } else |_| {
-                                return errInvalidArg(name, output_focus_follows_pointer_str);
-                            }
-                        },
-                        .focus_on_send => {
-                            const focus_on_send_str = utils.stripQuotes(node.arg(&parser, 0) orelse "");
-                            if (std.meta.stringToEnum(FocusOnSend, focus_on_send_str)) |focus_on_send| {
-                                config.focus_on_send = focus_on_send;
-                                logDebugSettingNode(name, focus_on_send_str);
-                            } else {
-                                return errInvalidArg(name, focus_on_send_str);
-                            }
-                        },
-                        .pointer_warp_on_focus_change => {
-                            const pointer_warp_on_focus_change_str = utils.stripQuotes(node.arg(&parser, 0) orelse "");
-                            if (helpers.boolFromKdlStr(pointer_warp_on_focus_change_str)) |pointer_warp_on_focus_change| {
-                                config.pointer_warp_on_focus_change = pointer_warp_on_focus_change;
-                                logDebugSettingNode(name, pointer_warp_on_focus_change_str);
-                            } else |_| {
-                                return errInvalidArg(name, pointer_warp_on_focus_change_str);
-                            }
-                        },
-                        .wallpaper_image_path => {
-                            if (node.argcount() < 1) {
-                                return errMissingArg(name, "image path");
-                            }
-
-                            const path_str = utils.stripQuotes(node.arg(&parser, 0).?);
-                            const new_path = helpers.expandTilde(path_str) catch {
-                                return errInvalidArg(name, path_str);
-                            };
-                            if (config.wallpaper_image_path) |old| utils.gpa.free(old);
-                            config.wallpaper_image_path = new_path;
-                            logDebugSettingNode(name, path_str);
-                        },
-                        .cursor_theme => {
-                            if (config.cursor) |old| utils.gpa.free(old.theme);
-                            if (node.argcount() < 1) {
-                                log.err("\"cursor_theme\" missing theme name argument", .{});
-                                return error.InvalidConfig;
-                            }
-                            const theme_str = utils.stripQuotes(node.arg(&parser, 0).?);
-                            const theme = try utils.gpa.dupeZ(u8, theme_str);
-                            const size: u32 = if (node.argcount() >= 2) blk: {
-                                const size_str = utils.stripQuotes(node.arg(&parser, 1).?);
-                                break :blk fmt.parseInt(u32, size_str, 10) catch {
-                                    utils.gpa.free(theme);
-                                    log.err("Invalid \"cursor_theme\" size ({s})", .{size_str});
-                                    return error.InvalidConfig;
-                                };
-                            } else 24;
-                            logDebugSettingNode(name, theme_str);
-                            config.cursor = .{ .theme = theme, .size = size };
-                        },
-                        .input => {
-                            pending_input_name = if (node.prop(&parser, "name")) |n|
-                                try utils.gpa.dupe(u8, utils.stripQuotes(n))
-                            else
-                                null;
-                            next_child_block = .input;
-                        },
-                        inline .bar,
-                        .borders,
-                        .keyboard_layout,
-                        .keybinds,
-                        .pointer_binds,
-                        .tag_overlay,
-                        .window_rules,
-                        => |n| next_child_block = n,
-                    }
-                } else {
-                    return helpers.invalidNode(node.name);
-                }
-            },
-            .child_block_begin => {
-                if (next_child_block) |child_block| {
-                    switch (child_block) {
-                        .bar => try BarConfig.load(config, &parser, hostname),
-                        .borders => try border.load(config, &parser, hostname),
-                        .keyboard_layout => try KeyboardLayoutConfig.load(config, &parser, hostname),
-                        .keybinds => try keybind.load(config, &parser, hostname),
-                        .pointer_binds => try pointer_bind.load(config, &parser, hostname),
-                        .input => {
-                            try InputConfig.load(config, &parser, pending_input_name, hostname);
-                            pending_input_name = null; // ownership transferred
-                        },
-                        .tag_overlay => try TagOverlayConfig.load(config, &parser, hostname),
-                        .window_rules => try window_rule.load(config, &parser, hostname),
-                        else => {
-                            // Nothing else should ever be marked as a next_child_block
-                            unreachable;
-                        },
-                    }
-                    next_child_block = null;
-                } else {
-                    try helpers.unexpectedChildBlock(&parser);
-                }
-            },
-            .child_block_end => {
-                log.err("Unexpected closing brace", .{});
-                return error.InvalidConfig;
-            },
-        }
+/// Set up a top-level config value based on the accumulated state in `state`
+/// This method only parses nodes with a single argument
+pub fn flushTopLevelNode(
+    config: *Config,
+    environ: process.Environ.Map,
+    hostname: ?[:0]u8,
+    state: ParseState,
+) !void {
+    if (state.cur_node == null) {
+        return error.UnfinishedState;
     }
+    const cur_node = state.cur_node.?;
+    if (!helpers.hostMatches(state.host, hostname)) {
+        log.info("Skipping config \"{s}\" (host mismatch)", .{@tagName(cur_node)});
+        return;
+    }
+    // Every top-level config needs at least 1 argument
+    if (state.arg_count < 1) {
+        log.err("Config \"{s}\" has an invalid number of arguments (got {d})", .{
+            @tagName(cur_node),
+            state.arg_count,
+        });
+        return error.InvalidNumberOfArguments;
+    }
+    const arg_str = utils.stripQuotes(state.args[0]);
+    switch (cur_node) {
+        .primary_count => |tag| {
+            const count_str = utils.stripQuotes(arg_str);
+            config.primary_count = @max(1, fmt.parseInt(u8, count_str, 10) catch {
+                return errInvalidArg(tag, count_str);
+            });
+            logDebugSettingNode(tag, count_str);
+        },
+        .primary_ratio => |tag| {
+            const ratio = fmt.parseFloat(f32, arg_str) catch {
+                return errInvalidArg(tag, arg_str);
+            };
+            config.primary_ratio = std.math.clamp(ratio, min_primary_ratio, max_primary_ratio);
+            if (ratio != config.primary_ratio) {
+                log.warn("primary_ratio outside of valid range ({d} to {d}); clamping it", .{ min_primary_ratio, max_primary_ratio });
+            }
+            logDebugSettingNode(tag, arg_str);
+        },
+        .primary_side => |tag| {
+            if (std.meta.stringToEnum(PrimarySide, arg_str)) |mode| {
+                config.primary_side = mode;
+                logDebugSettingNode(tag, arg_str);
+            } else {
+                return errInvalidArg(tag, arg_str);
+            }
+        },
+        .single_window_ratio => |tag| {
+            const ratio = fmt.parseFloat(f32, arg_str) catch {
+                return errInvalidArg(tag, arg_str);
+            };
+            // We use 1.00 here because it doesn't make sense for a window to have a ratio > 1,
+            // i.e. for it to be wider than the output
+            config.single_window_ratio = std.math.clamp(ratio, min_primary_ratio, 1.00);
+            if (ratio != config.single_window_ratio) {
+                log.info("single_window_ratio outside of valid range ({d} to {d}); clamping it", .{ min_primary_ratio, 1.00 });
+            }
+            logDebugSettingNode(tag, arg_str);
+        },
+        .attach_mode => |tag| {
+            if (std.meta.stringToEnum(AttachMode, arg_str)) |mode| {
+                config.attach_mode = mode;
+                logDebugSettingNode(tag, arg_str);
+            } else {
+                return errInvalidArg(tag, arg_str);
+            }
+        },
+        .focus_follows_pointer => |tag| {
+            if (helpers.boolFromKdlStr(arg_str)) |focus_follows_pointer| {
+                config.focus_follows_pointer = focus_follows_pointer;
+                logDebugSettingNode(tag, arg_str);
+            } else |_| {
+                return errInvalidArg(tag, arg_str);
+            }
+        },
+        .output_focus_follows_pointer => |tag| {
+            if (helpers.boolFromKdlStr(arg_str)) |output_focus_follows_pointer| {
+                config.output_focus_follows_pointer = output_focus_follows_pointer;
+                logDebugSettingNode(tag, arg_str);
+            } else |_| {
+                return errInvalidArg(tag, arg_str);
+            }
+        },
+        .focus_on_send => |tag| {
+            if (std.meta.stringToEnum(FocusOnSend, arg_str)) |focus_on_send| {
+                config.focus_on_send = focus_on_send;
+                logDebugSettingNode(tag, arg_str);
+            } else {
+                return errInvalidArg(tag, arg_str);
+            }
+        },
+        .pointer_warp_on_focus_change => |tag| {
+            if (helpers.boolFromKdlStr(arg_str)) |pointer_warp_on_focus_change| {
+                config.pointer_warp_on_focus_change = pointer_warp_on_focus_change;
+                logDebugSettingNode(tag, arg_str);
+            } else |_| {
+                return errInvalidArg(tag, arg_str);
+            }
+        },
+        .wallpaper_image_path => |tag| {
+            const new_path = helpers.expandTilde(environ, arg_str) catch {
+                return errInvalidArg(tag, arg_str);
+            };
+            if (config.wallpaper_image_path) |old| utils.gpa.free(old);
+            config.wallpaper_image_path = new_path;
+            logDebugSettingNode(tag, arg_str);
+        },
+        .cursor_theme => |tag| {
+            const theme = try utils.gpa.dupeZ(u8, arg_str);
+            const size: u32 = if (state.arg_count > 1) blk: {
+                const size_str = utils.stripQuotes(state.args[1]);
+                break :blk fmt.parseInt(u32, size_str, 10) catch {
+                    utils.gpa.free(theme);
+                    log.err("Invalid \"cursor_theme\" size ({s})", .{size_str});
+                    return error.InvalidConfig;
+                };
+            } else 24;
+            logDebugSettingNode(tag, arg_str);
+            if (config.cursor) |old| {
+                utils.gpa.free(old.theme);
+            }
+            config.cursor = .{ .theme = theme, .size = size };
+        },
+        else => unreachable,
+    }
+}
 
-    if (parser.depth != 0) {
-        log.err("Unclosed block in config (missing closing brace)", .{});
-        return error.UnclosedBlock;
+fn addFallbackKeybinds(config: *Config) void {
+    const Entry = struct { keybind.Key, XkbBindings.Command };
+    const fallbacks = [_]Entry{
+        .{ .{ .modifiers = .{ .ctrl = true, .mod1 = true }, .keysym = .Delete }, @unionInit(XkbBindings.Command, "exit_river", {}) },
+        .{ .{ .modifiers = .{ .mod4 = true, .shift = true }, .keysym = .r }, @unionInit(XkbBindings.Command, "reload_config", {}) },
+        .{ .{ .modifiers = .{ .mod4 = true }, .keysym = .t }, .{ .spawn = utils.gpa.dupeZ(u8, "foot") catch @panic("Out of memory") } },
+    };
+    for (&fallbacks) |*entry| {
+        config.keybinds.put(utils.gpa, entry[0], entry[1]) catch @panic("Out of memory");
     }
 }
 
 fn errInvalidArg(node_name: NodeName, node_value: []const u8) error{InvalidConfig} {
     log.err("Invalid \"{s}\" ({s})", .{ @tagName(node_name), node_value });
-    return error.InvalidConfig;
-}
-
-fn errMissingArg(node_name: NodeName, comptime arg: []const u8) error{InvalidConfig} {
-    log.err("\"{s}\" missing " ++ arg ++ " argument", .{@tagName(node_name)});
     return error.InvalidConfig;
 }
 
@@ -418,8 +499,12 @@ inline fn logDebugSettingNode(node_name: NodeName, node_value: []const u8) void 
 const std = @import("std");
 const fmt = std.fmt;
 const fs = std.fs;
+const math = std.math;
 const mem = std.mem;
+const posix = std.posix;
+const process = std.process;
 const Io = std.Io;
+const io = Io.Threaded.global_single_threaded.io();
 
 const kdl = @import("kdl");
 const known_folders = @import("known_folders");

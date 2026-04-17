@@ -23,6 +23,21 @@ const NodeName = enum {
     timeout,
 };
 
+/// State accumulated while parsing a KDL node
+/// Each node gets its own parse state, i.e. state is reset between nodes
+const ParseState = struct {
+    /// Enum version of the current node
+    cur_node: ?NodeName = null,
+
+    /// The hostname that this node should apply to
+    host: ?[]const u8 = null,
+
+    /// Argument to the current node
+    arg: []const u8 = "",
+    /// The number of arguments parsed so far on this node
+    arg_count: usize = 0,
+};
+
 border_width: u8 = 2,
 tag_amount: u8 = 9,
 tags_per_row: u8 = 32,
@@ -64,60 +79,85 @@ pub fn toTagOverlayOptions(config: TagOverlayConfig) TagOverlay.Options {
 pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
     config.tag_overlay_config = .{}; // Presence of block = enabled; initialize with defaults
 
-    while (try parser.next()) |event| {
+    var state: ParseState = .{};
+
+    var event = try parser.next();
+    while (true) : (event = try parser.next()) {
         switch (event) {
             .node => |node| {
-                const node_name = std.meta.stringToEnum(NodeName, node.name);
-                if (node_name) |name| {
-                    if (!helpers.hostMatches(node, parser, hostname)) {
-                        logDebugHostMismatch(name);
-                        continue;
-                    }
-                    const val_str = utils.stripQuotes(node.arg(parser, 0) orelse "");
-                    switch (name) {
-                        // These are all u8s, so we can inline the branch
-                        inline .border_width,
-                        .tag_amount,
-                        .tags_per_row,
-                        .square_size,
-                        .square_inner_padding,
-                        .square_padding,
-                        .square_border_width,
-                        => |tag| {
-                            const val = fmt.parseInt(u8, val_str, 10) catch {
-                                return errInvalidArg(name, val_str);
-                            };
-                            @field(config.tag_overlay_config.?, @tagName(tag)) = val;
-                            logDebugSettingNode(name, val_str);
-                        },
-                        .timeout => {
-                            config.tag_overlay_config.?.timeout = fmt.parseInt(u32, val_str, 10) catch {
-                                return errInvalidArg(name, val_str);
-                            };
-                            logDebugSettingNode(name, val_str);
-                        },
-                        inline .background_color,
-                        .border_color,
-                        .square_active_background_color,
-                        .square_active_border_color,
-                        .square_active_occupied_color,
-                        .square_inactive_background_color,
-                        .square_inactive_border_color,
-                        .square_inactive_occupied_color,
-                        => |tag| {
-                            @field(config.tag_overlay_config.?, @tagName(tag)) = utils.parseRgbaPixman(val_str) catch {
-                                return errInvalidArg(name, val_str);
-                            };
-                            logDebugSettingNode(name, val_str);
-                        },
-                    }
-                } else {
-                    return helpers.invalidNode(node.name);
+                try flushNode(config, hostname, state);
+                state = .{
+                    .cur_node = std.meta.stringToEnum(NodeName, node.val) orelse {
+                        return helpers.invalidNode(node.val);
+                    },
+                };
+            },
+            .arg => |arg| {
+                state.arg = arg.val;
+                state.arg_count += 1;
+            },
+            .prop => |prop| {
+                if (mem.eql(u8, prop.key, "host")) {
+                    state.host = prop.val;
                 }
             },
-            .child_block_begin => try helpers.unexpectedChildBlock(parser),
-            .child_block_end => return,
+            .child_block_begin => return helpers.unexpectedChildBlock(),
+            .child_block_end => {
+                try flushNode(config, hostname, state);
+                return;
+            },
+            .invalid => return error.KdlInvalidConfig,
+            .eof => return error.UnclosedBlock,
         }
+    }
+}
+
+fn flushNode(config: *Config, hostname: ?[]const u8, state: ParseState) !void {
+    const name = state.cur_node orelse return;
+    if (!helpers.hostMatches(state.host, hostname)) {
+        logDebugHostMismatch(name);
+        return;
+    }
+    if (state.arg_count < 1) {
+        return errMissingArg(name);
+    }
+    const val_str = utils.stripQuotes(state.arg);
+    switch (name) {
+        // These are all u8s, so we can inline the branch
+        inline .border_width,
+        .tag_amount,
+        .tags_per_row,
+        .square_size,
+        .square_inner_padding,
+        .square_padding,
+        .square_border_width,
+        => |tag| {
+            const val = fmt.parseInt(u8, val_str, 10) catch {
+                return errInvalidArg(name, val_str);
+            };
+            @field(config.tag_overlay_config.?, @tagName(tag)) = val;
+            logDebugSettingNode(name, val_str);
+        },
+        .timeout => {
+            config.tag_overlay_config.?.timeout = fmt.parseInt(u32, val_str, 10) catch {
+                return errInvalidArg(name, val_str);
+            };
+            logDebugSettingNode(name, val_str);
+        },
+        inline .background_color,
+        .border_color,
+        .square_active_background_color,
+        .square_active_border_color,
+        .square_active_occupied_color,
+        .square_inactive_background_color,
+        .square_inactive_border_color,
+        .square_inactive_occupied_color,
+        => |tag| {
+            @field(config.tag_overlay_config.?, @tagName(tag)) = utils.parseRgbaPixman(val_str) catch {
+                return errInvalidArg(name, val_str);
+            };
+            logDebugSettingNode(name, val_str);
+        },
     }
 }
 
@@ -142,8 +182,14 @@ fn errInvalidArg(node_name: NodeName, node_value: []const u8) error{InvalidConfi
     return error.InvalidConfig;
 }
 
+fn errMissingArg(node_name: NodeName) error{InvalidConfig} {
+    log.err("\"tag_overlay.{s}\" missing argument", .{@tagName(node_name)});
+    return error.InvalidConfig;
+}
+
 const std = @import("std");
 const fmt = std.fmt;
+const mem = std.mem;
 
 const kdl = @import("kdl");
 const pixman = @import("pixman");

@@ -8,53 +8,84 @@ const NodeName = enum {
     color_unfocused,
 };
 
+/// State accumulated while parsing a KDL node
+/// Each node gets its own parse state, i.e. state is reset between nodes
+const ParseState = struct {
+    /// Enum version of the current node
+    cur_node: ?NodeName = null,
+
+    /// The hostname that this node should apply to
+    host: ?[]const u8 = null,
+
+    /// Argument to the current node
+    arg: []const u8 = "",
+    /// The number of arguments parsed so far on this node
+    arg_count: usize = 0,
+};
+
 pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
-    while (try parser.next()) |event| {
+    var state: ParseState = .{};
+
+    var event = try parser.next();
+    while (true) : (event = try parser.next()) {
         switch (event) {
             .node => |node| {
-                // If it's a node, we check if it's a valid NodeName
-                const node_name = std.meta.stringToEnum(NodeName, node.name);
-                if (node_name) |name| {
-                    if (!helpers.hostMatches(node, parser, hostname)) {
-                        log.debug("Skipping \"border.{s}\" (host mismatch)", .{@tagName(name)});
-                        continue;
-                    }
-                    switch (name) {
-                        .width => {
-                            const width_str = utils.stripQuotes(node.arg(parser, 0) orelse "");
-                            config.border_width = fmt.parseInt(u8, width_str, 10) catch {
-                                return errInvalidArg(name, width_str);
-                            };
-                            logDebugSettingNode(name, width_str);
-                        },
-                        .color_focused => {
-                            const color_str = utils.stripQuotes(node.arg(parser, 0) orelse "");
-                            config.border_color_focused = utils.parseRgba(color_str) catch {
-                                return errInvalidArg(name, color_str);
-                            };
-                            logDebugSettingNode(name, color_str);
-                        },
-                        .color_unfocused => {
-                            const color_str = utils.stripQuotes(node.arg(parser, 0) orelse "");
-                            config.border_color_unfocused = utils.parseRgba(color_str) catch {
-                                return errInvalidArg(name, color_str);
-                            };
-                            logDebugSettingNode(name, color_str);
-                        },
-                    }
-                } else {
-                    return helpers.invalidNode(node.name);
+                try flushNode(config, hostname, state);
+                state = .{
+                    .cur_node = std.meta.stringToEnum(NodeName, node.val) orelse {
+                        return helpers.invalidNode(node.val);
+                    },
+                };
+            },
+            .arg => |arg| {
+                state.arg = arg.val;
+                state.arg_count += 1;
+            },
+            .prop => |prop| {
+                if (mem.eql(u8, prop.key, "host")) {
+                    state.host = prop.val;
                 }
             },
-            .child_block_begin => {
-                // borders should never have a nested child block
-                try helpers.unexpectedChildBlock(parser);
-            },
+            .child_block_begin => return helpers.unexpectedChildBlock(),
             .child_block_end => {
-                // Done parsing the borders block; return
+                try flushNode(config, hostname, state);
                 return;
             },
+            .invalid => return error.KdlInvalidConfig,
+            .eof => return error.UnclosedBlock,
         }
+    }
+}
+
+fn flushNode(config: *Config, hostname: ?[]const u8, state: ParseState) !void {
+    const name = state.cur_node orelse return;
+    if (!helpers.hostMatches(state.host, hostname)) {
+        log.debug("Skipping \"border.{s}\" (host mismatch)", .{@tagName(name)});
+        return;
+    }
+    if (state.arg_count < 1) {
+        return errMissingArg(name);
+    }
+    const val_str = utils.stripQuotes(state.arg);
+    switch (name) {
+        .width => {
+            config.border_width = fmt.parseInt(u8, val_str, 10) catch {
+                return errInvalidArg(name, val_str);
+            };
+            logDebugSettingNode(name, val_str);
+        },
+        .color_focused => {
+            config.border_color_focused = utils.parseRgba(val_str) catch {
+                return errInvalidArg(name, val_str);
+            };
+            logDebugSettingNode(name, val_str);
+        },
+        .color_unfocused => {
+            config.border_color_unfocused = utils.parseRgba(val_str) catch {
+                return errInvalidArg(name, val_str);
+            };
+            logDebugSettingNode(name, val_str);
+        },
     }
 }
 
@@ -67,8 +98,14 @@ fn errInvalidArg(node_name: NodeName, node_value: []const u8) error{InvalidConfi
     return error.InvalidConfig;
 }
 
+fn errMissingArg(node_name: NodeName) error{InvalidConfig} {
+    log.err("\"border.{s}\" missing argument", .{@tagName(node_name)});
+    return error.InvalidConfig;
+}
+
 const std = @import("std");
 const fmt = std.fmt;
+const mem = std.mem;
 
 const kdl = @import("kdl");
 

@@ -39,9 +39,10 @@ pub fn parseButton(s: []const u8) ?u32 {
 }
 
 /// Expand a tilde in a string to the user's $HOME directory
-pub fn expandTilde(path: []const u8) ![:0]const u8 {
+/// Caller is responsible for freeing the returned pointer
+pub fn expandTilde(environ: std.process.Environ.Map, path: []const u8) ![:0]const u8 {
     if (path.len > 0 and path[0] == '~') {
-        const home = posix.getenv("HOME") orelse return error.HomeNotSet;
+        const home = environ.get("HOME") orelse return error.HomeNotSet;
         return mem.concatWithSentinel(utils.gpa, u8, &.{ home, path[1..] }, 0);
     }
     return utils.gpa.dupeZ(u8, path);
@@ -50,15 +51,29 @@ pub fn expandTilde(path: []const u8) ![:0]const u8 {
 /// Check whether this machine's hostname matches the hostname property
 /// Always returns true if the "host" property is missing (no host = config applies to
 /// all hosts). Returns false if the hostname argument is null or does not match.
-pub fn hostMatches(node: kdl.Parser.Node, parser: *kdl.Parser, hostname: ?[]const u8) bool {
-    const host_property = utils.stripQuotes(node.prop(parser, "host") orelse return true);
+pub fn hostMatches(host_prop: ?[]const u8, hostname: ?[]const u8) bool {
+    const host_property = utils.stripQuotes(host_prop orelse return true);
     const hostname_str = hostname orelse return false;
     return mem.eql(u8, host_property, hostname_str);
 }
 
+/// Skips all events until the matching child_block_end, consuming it.
+/// Call after receiving child_block_begin for a block that should be ignored.
+pub fn skipChildBlock(parser: *kdl.Parser) !void {
+    var depth: usize = 1;
+    while (depth > 0) {
+        const event = try parser.next();
+        switch (event) {
+            .child_block_begin => depth += 1,
+            .child_block_end => depth -= 1,
+            .eof => return error.UnclosedBlock,
+            else => {},
+        }
+    }
+}
+
 /// Returns error.InvalidConfig for an unexpected child block
-pub fn unexpectedChildBlock(parser: *kdl.Parser) error{ InvalidConfig, OutOfMemory, KdlParseError }!void {
-    _ = parser;
+pub fn unexpectedChildBlock() error{InvalidConfig} {
     log.err("Unexpected child block", .{});
     return error.InvalidConfig;
 }
@@ -125,15 +140,20 @@ test "parseButton invalid" {
 }
 
 test "expandTilde with tilde" {
-    const result = try expandTilde("~/foo/bar");
-    defer utils.gpa.free(result);
     const home = std.posix.getenv("HOME") orelse return;
+    var env = std.process.Environ.Map.init(testing.allocator);
+    defer env.deinit();
+    try env.put("HOME", home);
+    const result = try expandTilde(env, "~/foo/bar");
+    defer utils.gpa.free(result);
     try testing.expect(mem.startsWith(u8, result, home));
     try testing.expect(mem.endsWith(u8, result, "/foo/bar"));
 }
 
 test "expandTilde without tilde" {
-    const result = try expandTilde("/absolute/path");
+    var env = std.process.Environ.Map.init(testing.allocator);
+    defer env.deinit();
+    const result = try expandTilde(env, "/absolute/path");
     defer utils.gpa.free(result);
     try testing.expectEqualStrings("/absolute/path", result);
 }

@@ -23,7 +23,7 @@ surfaces: ?struct {
 
 /// Monotonic timestamp of the last time the overlay was shown/refreshed.
 /// Used by the event loop to hide the overlay after `options.timeout` ms.
-last_shown: ?time.Instant = null,
+last_shown: ?Io.Timestamp = null,
 
 pending_render: PendingRender = .{},
 
@@ -119,8 +119,7 @@ pub fn initSurfaces(tag_overlay: *TagOverlay) !void {
     defer empty_region.destroy();
     wl_surface.setInputRegion(empty_region);
 
-    const now = time.Instant.now() catch
-        std.process.fatal("System does not support a monotonic or steady clock", .{});
+    const now = Io.Timestamp.now(io, .awake);
 
     context.buffer_pool.surface_count += 1;
 
@@ -229,6 +228,8 @@ const std = @import("std");
 const assert = std.debug.assert;
 const math = std.math;
 const time = std.time;
+const Io = std.Io;
+const io = Io.Threaded.global_single_threaded.io();
 
 const wayland = @import("wayland");
 const wl = wayland.client.wl;

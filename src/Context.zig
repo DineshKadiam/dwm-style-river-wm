@@ -7,7 +7,7 @@ const Context = @This();
 
 initialized: bool,
 
-env: process.EnvMap,
+environ: *process.Environ.Map,
 
 // Wayland globals
 wl_compositor: *wl.Compositor,
@@ -31,13 +31,13 @@ buffer_pool: BufferPool = .{},
 wallpaper_image: ?*Wallpaper.Image,
 
 // WM Configuration
-config: *Config,
+config: Config,
 
 /// State consumed in manage() phase, reset at end of manage().
 pending_manage: PendingManage = .{},
 
 const PendingManage = struct {
-    config: ?*Config = null,
+    config: ?Config = null,
 };
 
 // I use this because otherwise create() takes a LOT of arguments.
@@ -54,10 +54,10 @@ pub const Options = struct {
     river_xkb_bindings_v1: *river.XkbBindingsV1,
     river_xkb_config_v1: *river.XkbConfigV1,
 
-    config: *Config,
+    config: Config,
 };
 
-pub fn create(options: Options) !*Context {
+pub fn create(environ: *process.Environ.Map, options: Options) !*Context {
     const context = try utils.gpa.create(Context);
     errdefer utils.gpa.destroy(context);
 
@@ -70,23 +70,20 @@ pub fn create(options: Options) !*Context {
     const xkb_config = try XkbConfig.create(context, options.river_xkb_config_v1);
     errdefer xkb_config.destroy();
 
-    var env = try process.getEnvMap(utils.gpa);
-    errdefer env.deinit();
-
     // Don't force children to have WAYLAND_DEBUG
-    env.remove("WAYLAND_DEBUG");
+    _ = environ.swapRemove("WAYLAND_DEBUG");
 
     // *Force* children to have Xcursor theme/size
     if (options.config.cursor) |c| {
-        try env.put("XCURSOR_THEME", c.theme);
+        try environ.put("XCURSOR_THEME", c.theme);
         var buf: [11]u8 = undefined; // u32 max (4294967295) is 10 digits + null terminator
         const size_str = try std.fmt.bufPrint(&buf, "{d}", .{c.size});
-        try env.put("XCURSOR_SIZE", size_str);
+        try environ.put("XCURSOR_SIZE", size_str);
     }
 
     context.* = .{
         .initialized = false,
-        .env = env,
+        .environ = environ,
         .wl_compositor = options.wl_compositor,
         .wl_display = options.wl_display,
         .wl_registry = options.wl_registry,
@@ -104,8 +101,8 @@ pub fn create(options: Options) !*Context {
 }
 
 pub fn destroy(context: *Context) void {
-    context.config.destroy();
-    context.env.deinit();
+    context.config.deinit();
+    context.environ.deinit();
     context.im.destroy();
     context.wm.destroy();
     context.xkb_bindings.destroy();
@@ -147,7 +144,7 @@ pub fn manage(context: *Context) void {
             new_config.wallpaper_image_path,
         );
 
-        context.config.destroy();
+        context.config.deinit();
         context.config = new_config;
         context.initialized = false;
 
@@ -258,23 +255,23 @@ pub fn manage(context: *Context) void {
 
 /// Updates XCURSOR_THEME and XCURSOR_SIZE in the child process environment
 /// so that spawned children inherit the configured cursor theme.
-fn updateCursorInEnv(context: *Context, config: *const Config) void {
+fn updateCursorInEnv(context: *Context, config: Config) void {
     if (config.cursor) |c| {
-        context.env.put("XCURSOR_THEME", c.theme) catch {
+        context.environ.put("XCURSOR_THEME", c.theme) catch {
             log.err("Failed to set XCURSOR_THEME in env", .{});
         };
         var buf: [11]u8 = undefined; // u32 max (4294967295) is 10 digits + null terminator
         const size_str = std.fmt.bufPrint(&buf, "{d}", .{c.size}) catch return;
-        context.env.put("XCURSOR_SIZE", size_str) catch {
+        context.environ.put("XCURSOR_SIZE", size_str) catch {
             log.err("Failed to set XCURSOR_SIZE in env", .{});
         };
     } else {
-        context.env.remove("XCURSOR_THEME");
-        context.env.remove("XCURSOR_SIZE");
+        _ = context.environ.swapRemove("XCURSOR_THEME");
+        _ = context.environ.swapRemove("XCURSOR_SIZE");
     }
 }
 
-fn loadWallpaperImage(config: *Config) ?*Wallpaper.Image {
+fn loadWallpaperImage(config: Config) ?*Wallpaper.Image {
     const image_path = config.wallpaper_image_path orelse return null;
     if (image_path.len == 0) return null;
     return Wallpaper.Image.create(image_path) catch |e| {

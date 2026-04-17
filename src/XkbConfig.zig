@@ -169,12 +169,12 @@ pub fn applyKeyboardLayout(xkb_config: *XkbConfig) void {
         log.err("Failed to create memfd: {}", .{err});
         return;
     };
-    defer posix.close(fd);
+    defer _ = c.close(fd);
 
-    _ = posix.write(fd, keymap_buf) catch |err| {
-        log.err("Failed to write keymap to fd: {}", .{err});
+    if (c.write(fd, keymap_buf.ptr, keymap_buf.len) < 0) {
+        log.err("Failed to write keymap to fd", .{});
         return;
-    };
+    }
 
     // Send to compositor
     const keymap_v1 = xkb_config.xkb_config_v1.createKeymap(fd, .text_v1) catch |err| {
@@ -224,6 +224,7 @@ fn dupeZOrNull(opt: ?[]const u8) ?[:0]u8 {
 
 const builtin = @import("builtin");
 const std = @import("std");
+const c = std.c;
 const mem = std.mem;
 const os = std.os;
 const posix = std.posix;

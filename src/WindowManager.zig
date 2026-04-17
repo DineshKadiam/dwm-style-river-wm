@@ -63,18 +63,24 @@ pub fn destroy(wm: *WindowManager) void {
 
 /// Get the next output in the list, wrapping to first if at end
 pub fn nextOutput(wm: *WindowManager, current: *Output) ?*Output {
-    const next_link = current.link.next orelse return wm.outputs.first();
-    // If we've reached the sentinel (head's link), wrap to first
-    if (next_link == &wm.outputs.link) return wm.outputs.first();
-    return @fieldParentPtr("link", next_link);
+    var it = wm.outputs.iterator(.forward);
+    while (it.next()) |output| {
+        if (output == current) {
+            return it.next() orelse wm.outputs.first();
+        }
+    }
+    return null;
 }
 
 /// Get the previous output in the list, wrapping to last if at beginning
 pub fn prevOutput(wm: *WindowManager, current: *Output) ?*Output {
-    const prev_link = current.link.prev orelse return wm.outputs.last();
-    // If we've reached the sentinel (head's link), wrap to last
-    if (prev_link == &wm.outputs.link) return wm.outputs.last();
-    return @fieldParentPtr("link", prev_link);
+    var it = wm.outputs.iterator(.reverse);
+    while (it.next()) |output| {
+        if (output == current) {
+            return it.next() orelse wm.outputs.last();
+        }
+    }
+    return null;
 }
 
 fn initialize(wm: *WindowManager) void {
@@ -87,6 +93,7 @@ fn initialize(wm: *WindowManager) void {
 
     const context = wm.context;
     context.initialized = true;
+    log.debug("initialize: registering {} keybinds, {} tag_binds", .{ context.config.keybinds.count(), context.config.tag_binds.items.len });
 
     // Tag bindings
     for (context.config.tag_binds.items) |tag_bind| {

@@ -412,8 +412,7 @@ pub fn manage(output: *Output) void {
                 log.err("Failed to show TagOverlay: {}", .{e});
                 break :blk;
             };
-            tag_overlay.last_shown = time.Instant.now() catch
-                std.process.fatal("System does not support a monotonic or steady clock", .{});
+            tag_overlay.last_shown = Io.Timestamp.now(io, .awake);
             tag_overlay.pending_render.draw = true;
         }
 
@@ -694,6 +693,8 @@ const mem = std.mem;
 const posix = std.posix;
 const time = std.time;
 const DoublyLinkedList = std.DoublyLinkedList;
+const Io = std.Io;
+const io = Io.Threaded.global_single_threaded.io();
 
 const wayland = @import("wayland");
 const wl = wayland.client.wl;

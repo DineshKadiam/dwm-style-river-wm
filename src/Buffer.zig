@@ -26,26 +26,29 @@ pub fn init(shm: *wl.Shm, width: u31, height: u31) !Buffer {
     log.debug("initializing a new buffer with size {d}", .{size});
 
     // Open a memory-backed file with sealing enabled
-    const fd = switch (builtin.target.os.tag) {
-        .linux => try posix.memfd_createZ("beansprout-shm-buffer", os.linux.MFD.CLOEXEC | os.linux.MFD.ALLOW_SEALING),
-        .freebsd => try posix.memfd_createZ("beansprout-shm-buffer", std.c.MFD.CLOEXEC | std.c.MFD.ALLOW_SEALING),
-        else => @compileError("target OS not supported"),
-    };
-    defer posix.close(fd);
+    const fd = c.memfd_create("beansprout-shm-buffer", c.MFD.CLOEXEC | c.MFD.ALLOW_SEALING);
+    if (fd < 0) {
+        return error.MemfdCreate;
+    }
+    defer _ = c.close(fd);
 
     // Try to allocate it to the desired size
-    try posix.ftruncate(fd, size);
+    if (c.ftruncate(fd, size) != 0) {
+        return error.FtruncateError;
+    }
 
     // mmap the memory file for the pixman image
     const data = mem.bytesAsSlice(
         u8,
-        try posix.mmap(null, size, posix.PROT.READ | posix.PROT.WRITE, .{ .TYPE = .SHARED }, fd, 0),
+        try posix.mmap(null, size, .{ .READ = true, .WRITE = true }, .{ .TYPE = .SHARED }, fd, 0),
     );
     errdefer posix.munmap(data);
 
     // Seal the fd to prevent size changes. The compositor maps the same fd,
     // so without sealing it could access invalid memory if the client resized it.
-    _ = try posix.fcntl(fd, seal.F_ADD_SEALS, seal.SEAL_GROW | seal.SEAL_SHRINK | seal.SEAL_SEAL);
+    if (c.fcntl(fd, seal.F_ADD_SEALS, seal.SEAL_GROW | seal.SEAL_SHRINK | seal.SEAL_SEAL) < 0) {
+        return error.FcntlError;
+    }
 
     // Create a Wayland shm buffer for the same memory file.
     const pool = try shm.createPool(fd, size);
@@ -141,6 +144,7 @@ pub fn borderedRectangle(
 
 const std = @import("std");
 const builtin = @import("builtin");
+const c = std.c;
 const mem = std.mem;
 const os = std.os;
 const posix = std.posix;

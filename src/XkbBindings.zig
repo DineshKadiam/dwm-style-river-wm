@@ -5,7 +5,7 @@
 const XkbBindings = @This();
 
 pub const Command = union(enum) {
-    spawn: []const [:0]const u8,
+    spawn: [:0]const u8,
     focus_next_window,
     focus_prev_window,
     focus_next_output,
@@ -55,10 +55,7 @@ pub const Command = union(enum) {
     /// swallowed by an `else =>`)
     pub fn deinit(self: Command) void {
         switch (self) {
-            .spawn => |argv| {
-                for (argv) |arg| utils.gpa.free(arg);
-                utils.gpa.free(argv);
-            },
+            .spawn => |cmd| utils.gpa.free(cmd),
             .focus_next_window,
             .focus_prev_window,
             .focus_next_output,
@@ -139,7 +136,7 @@ const XkbBinding = struct {
 
         // TODO: Should I log.warn when commands return early?
         switch (xkb_binding.command) {
-            .spawn => |cmd| spawnProcess(cmd, &context.env),
+            .spawn => |cmd| spawnProcess(context.environ, cmd),
             .focus_next_window => focusWindow(context, .next),
             .focus_prev_window => focusWindow(context, .prev),
             .focus_next_output => focusOutput(context, .next),
@@ -217,15 +214,15 @@ const XkbBinding = struct {
             },
             .reload_config => {
                 // Try create new config
-                const new_config = Config.create() catch |e| {
+                const new_config = Config.init(xkb_binding.context.environ.*) catch |e| {
                     // We do this so that, if the Config fails to reload, the
                     // user still has *some* config.
                     log.err("Failed to reload Config: {}. Not deleting old one", .{e});
                     return;
                 };
-                if (context.pending_manage.config) |old_pending| {
+                if (context.pending_manage.config) |*old_pending| {
                     // Need to prevent memory leaks in case multiple reloads are sent before a manage
-                    old_pending.destroy();
+                    old_pending.deinit();
                 }
                 // Send the config to the WM to handle during next manage
                 context.pending_manage.config = new_config;
@@ -450,43 +447,47 @@ const XkbBinding = struct {
     }
 
     // Borrowed and modified from river-classic
-    // https://codeberg.org/river/river-classic/src/commit/d72408df18310d5945147d485fe4bb66eef043d3/river/process.zig
-    fn spawnProcess(cmd: []const [:0]const u8, env: *const process.EnvMap) void {
-        const pid = posix.fork() catch |err| {
-            return log.err("Failed to fork \"{s}\": {}", .{ cmd[0], err });
-        };
+    // https://codeberg.org/river/river-classic/src/commit/273f31016a8d212ea320568dbcc7eaebb1d5588e/river/process.zig
+    fn spawnProcess(env: *process.Environ.Map, cmd: [:0]const u8) void {
+        const env_block = env.createPosixBlock(utils.gpa, .{}) catch @panic("Out of memory");
+        defer env_block.deinit(utils.gpa);
 
+        const child_args = [_:null]?[*:0]const u8{ "/bin/sh", "-c", cmd.ptr, null };
+
+        const pid = c.fork();
+        if (pid < 0) {
+            log.err("Failed to fork \"{s}\"", .{cmd});
+            return;
+        }
         if (pid == 0) {
             cleanupChild();
-
-            const c_argv = utils.gpa.allocSentinel(?[*:0]const u8, cmd.len, null) catch posix.exit(1);
-            for (cmd, 0..) |arg, i| c_argv[i] = arg.ptr;
-
-            const envp = process.createNullDelimitedEnvMap(utils.gpa, env) catch posix.exit(1);
-
-            const pid2 = posix.fork() catch posix.exit(1);
-            if (pid2 == 0) {
-                posix.execvpeZ(c_argv[0].?, c_argv, envp) catch posix.exit(1);
+            const pid2 = c.fork();
+            if (pid2 != 0) {
+                // Exit child 1
+                c._exit(0);
             }
-
-            posix.exit(0);
+            // Exec in child 2
+            _ = c.execve("/bin/sh", &child_args, env_block.slice.ptr);
+            c._exit(1);
         }
-
-        _ = posix.waitpid(pid, 0);
+        while (true) {
+            var status: c_int = 0;
+            switch (posix.errno(c.waitpid(pid, &status, 0))) {
+                .SUCCESS => break,
+                .INTR => continue,
+                else => break,
+            }
+        }
     }
 
-    // Borrowed and modified from river-classic
-    // https://codeberg.org/river/river-classic/src/commit/d72408df18310d5945147d485fe4bb66eef043d3/river/process.zig
     fn cleanupChild() void {
-        _ = posix.setsid() catch unreachable;
-        if (posix.system.sigprocmask(posix.SIG.SETMASK, &posix.sigemptyset(), null) < 0) unreachable;
-
-        const sig_dfl = posix.Sigaction{
+        _ = c.setsid();
+        posix.sigprocmask(posix.SIG.SETMASK, &posix.sigemptyset(), null);
+        posix.sigaction(.PIPE, &.{
             .handler = .{ .handler = posix.SIG.DFL },
             .mask = posix.sigemptyset(),
             .flags = 0,
-        };
-        posix.sigaction(posix.SIG.PIPE, &sig_dfl, null);
+        }, null);
     }
 
     fn moveFloatingWindow(context: *Context, dx: i32, dy: i32) void {
@@ -618,6 +619,7 @@ pub fn manage(xkb_bindings: *XkbBindings) void {
 
 const std = @import("std");
 const assert = std.debug.assert;
+const c = std.c;
 const posix = std.posix;
 const process = std.process;
 

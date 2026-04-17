@@ -13,6 +13,7 @@ pub fn build(b: *std.Build) !void {
     const optimize = b.standardOptimizeOption(.{});
 
     const strip = b.option(bool, "strip", "Omit debug information") orelse false;
+    const llvm = b.option(bool, "llvm", "Use LLVM backend") orelse false;
     const pie = b.option(bool, "pie", "Build a Position Independent Executable") orelse false;
     const man_pages = b.option(
         bool,
@@ -22,7 +23,6 @@ pub fn build(b: *std.Build) !void {
         // Default to true if scdoc is available; else false.
         _ = b.findProgram(&.{"scdoc"}, &.{}) catch |err| switch (err) {
             error.FileNotFound => break :scdoc_found false,
-            else => return err,
         };
         break :scdoc_found true;
     };
@@ -68,7 +68,7 @@ pub fn build(b: *std.Build) !void {
             const git_describe_long = b.runAllowFail(
                 &.{ "git", "-C", b.build_root.path orelse ".", "describe", "--long" },
                 &ret,
-                .Ignore,
+                .ignore,
             ) catch break :blk version;
 
             var it = mem.splitSequence(u8, mem.trim(u8, git_describe_long, &std.ascii.whitespace), "-");
@@ -97,6 +97,7 @@ pub fn build(b: *std.Build) !void {
             .strip = strip,
         }),
     });
+    beansprout.use_llvm = llvm;
     beansprout.pie = pie;
 
     beansprout.root_module.addOptions("build_options", options);
@@ -110,11 +111,11 @@ pub fn build(b: *std.Build) !void {
     beansprout.root_module.addImport("zigimg", zigimg);
     beansprout.root_module.addImport("zeit", zeit);
 
-    beansprout.linkLibC();
-    beansprout.linkSystemLibrary("wayland-client");
-    beansprout.linkSystemLibrary("fcft");
-    beansprout.linkSystemLibrary("pixman-1");
-    beansprout.linkSystemLibrary("xkbcommon");
+    beansprout.root_module.link_libc = true;
+    beansprout.root_module.linkSystemLibrary("wayland-client", .{});
+    beansprout.root_module.linkSystemLibrary("fcft", .{});
+    beansprout.root_module.linkSystemLibrary("pixman-1", .{});
+    beansprout.root_module.linkSystemLibrary("xkbcommon", .{});
 
     b.installArtifact(beansprout);
 
@@ -125,7 +126,7 @@ pub fn build(b: *std.Build) !void {
             scdoc.setCwd(b.path("."));
             scdoc.addFileArg(b.path("man/" ++ page[0] ++ "." ++ page[1] ++ ".scd"));
 
-            const stdout = scdoc.captureStdOut();
+            const stdout = scdoc.captureStdOut(.{});
             const install = b.addInstallFile(stdout, "share/man/man" ++ page[1] ++ "/" ++ page[0] ++ "." ++ page[1]);
             b.getInstallStep().dependOn(&install.step);
             man_step.dependOn(&install.step);

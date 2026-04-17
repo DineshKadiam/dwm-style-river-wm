@@ -19,6 +19,35 @@ const NodeName = enum {
 };
 const MarginsNodeName = enum { top, right, bottom, left };
 
+/// State accumulated while parsing a KDL node
+/// Each node gets its own parse state, i.e. state is reset between nodes
+const ParseState = struct {
+    /// Enum version of the current node
+    cur_node: ?NodeName = null,
+
+    /// The hostname that this node should apply to
+    host: ?[]const u8 = null,
+
+    /// Argument to the current node
+    arg: []const u8 = "",
+    /// The number of arguments parsed so far on this node
+    arg_count: usize = 0,
+};
+
+/// State accumulated while parsing a KDL node inside the margins block
+const MarginsParseState = struct {
+    /// Enum version of the current node
+    cur_node: ?MarginsNodeName = null,
+
+    /// The hostname that this node should apply to
+    host: ?[]const u8 = null,
+
+    /// Argument to the current node
+    arg: []const u8 = "",
+    /// The number of arguments parsed so far on this node
+    arg_count: usize = 0,
+};
+
 // Comma separated list of FontConfig formatted font specifications.
 // null means use the default ("monospace:size=14").
 fonts: ?[]const u8 = null,
@@ -77,126 +106,187 @@ pub fn toBarOptions(config: BarConfig) Bar.Options {
 pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
     config.bar_config = .{}; // Presence of block = enabled; initialize with defaults
 
-    const BarChild = enum { margins };
-    var next_child_block: ?BarChild = null;
+    var state: ParseState = .{};
 
-    while (try parser.next()) |event| {
+    var event = try parser.next();
+    while (true) : (event = try parser.next()) {
         switch (event) {
             .node => |node| {
-                if (next_child_block) |child| {
-                    log.err("Expected child block for bar.{s}, got node instead", .{@tagName(child)});
-                    return error.InvalidConfig;
-                }
-                const node_name = std.meta.stringToEnum(NodeName, node.name);
-                if (node_name) |name| {
-                    if (!helpers.hostMatches(node, parser, hostname)) {
-                        logDebugHostMismatch(name);
-                        continue;
-                    }
-                    const val_str = utils.stripQuotes(node.arg(parser, 0) orelse "");
-                    switch (name) {
-                        .fonts => {
-                            if (node.argcount() < 1) {
-                                return errMissingArg(name, "font specification");
-                            }
-                            config.bar_config.?.fonts = utils.gpa.dupe(u8, val_str) catch @panic("Out of memory");
-                            logDebugSettingNode(name, val_str);
-                        },
-                        .position => {
-                            if (std.meta.stringToEnum(Bar.Position, val_str)) |pos| {
-                                config.bar_config.?.position = pos;
-                                logDebugSettingNode(name, val_str);
-                            } else {
-                                return errInvalidArg(name, val_str);
-                            }
-                        },
-                        .time_format => {
-                            if (node.argcount() < 1) {
-                                return errMissingArg(name, "format string");
-                            }
-                            if (validateTimeFormat(val_str)) {
-                                config.bar_config.?.time_format = utils.gpa.dupe(u8, val_str) catch @panic("Out of memory");
-                                logDebugSettingNode(name, val_str);
-                            } else {
-                                return errInvalidArg(name, val_str);
-                            }
-                        },
-                        .margins => next_child_block = .margins,
-                        inline .background_color,
-                        .text_color,
-                        => |tag| {
-                            @field(config.bar_config.?, @tagName(tag)) = utils.parseRgbaPixman(val_str) catch {
-                                return errInvalidArg(name, val_str);
-                            };
-                            logDebugSettingNode(name, val_str);
-                        },
-                        inline .vertical_padding,
-                        .horizontal_padding,
-                        => |tag| {
-                            const padding_str = utils.stripQuotes(node.arg(parser, 0) orelse "");
-                            const padding = fmt.parseInt(u8, padding_str, 10) catch {
-                                return errInvalidArg(name, padding_str);
-                            };
-                            @field(config.bar_config.?, @tagName(tag)) = padding;
-                            logDebugSettingNode(name, padding_str);
-                        },
-                        inline .left, .center, .right => |tag| {
-                            if (std.meta.stringToEnum(Bar.Component, val_str)) |component| {
-                                @field(config.bar_config.?, @tagName(tag)) = component;
-                                logDebugSettingNode(name, val_str);
-                            } else {
-                                return errInvalidArg(name, val_str);
-                            }
-                        },
-                    }
-                } else {
-                    return helpers.invalidNode(node.name);
+                try flushNode(config, hostname, state);
+                state = .{
+                    .cur_node = std.meta.stringToEnum(NodeName, node.val) orelse {
+                        return helpers.invalidNode(node.val);
+                    },
+                };
+            },
+            .arg => |arg| {
+                state.arg = arg.val;
+                state.arg_count += 1;
+            },
+            .prop => |prop| {
+                if (mem.eql(u8, prop.key, "host")) {
+                    state.host = prop.val;
                 }
             },
             .child_block_begin => {
-                if (next_child_block) |child| {
-                    switch (child) {
-                        .margins => try loadMarginsBlock(config, parser, hostname),
-                    }
-                    next_child_block = null;
-                } else {
-                    try helpers.unexpectedChildBlock(parser);
+                const cur_node = state.cur_node orelse {
+                    return helpers.unexpectedChildBlock();
+                };
+                switch (cur_node) {
+                    .margins => {
+                        if (!helpers.hostMatches(state.host, hostname)) {
+                            log.debug("Skipping \"bar.margins\" block (host mismatch)", .{});
+                            try helpers.skipChildBlock(parser);
+                        } else {
+                            try loadMarginsBlock(config, parser, hostname);
+                        }
+                    },
+                    else => {
+                        log.err("\"bar.{s}\" does not take a child block", .{@tagName(cur_node)});
+                        return error.InvalidConfig;
+                    },
                 }
+                state = .{};
             },
-            .child_block_end => return,
+            .child_block_end => {
+                try flushNode(config, hostname, state);
+                return;
+            },
+            .invalid => return error.KdlInvalidConfig,
+            .eof => return error.UnclosedBlock,
         }
     }
 }
 
+fn flushNode(config: *Config, hostname: ?[]const u8, state: ParseState) !void {
+    const name = state.cur_node orelse return;
+    if (!helpers.hostMatches(state.host, hostname)) {
+        logDebugHostMismatch(name);
+        return;
+    }
+    switch (name) {
+        .margins => {
+            // margins requires a child block; if we reach flushNode it means
+            // no child block followed the node
+            log.err("\"bar.margins\" requires a child block", .{});
+            return error.InvalidConfig;
+        },
+        .fonts => {
+            if (state.arg_count < 1) {
+                return errMissingArg(name);
+            }
+            const val_str = utils.stripQuotes(state.arg);
+            config.bar_config.?.fonts = try utils.gpa.dupe(u8, val_str);
+            logDebugSettingNode(name, val_str);
+        },
+        .time_format => {
+            if (state.arg_count < 1) {
+                return errMissingArg(name);
+            }
+            const val_str = utils.stripQuotes(state.arg);
+            if (!validateTimeFormat(val_str)) {
+                return errInvalidArg(name, val_str);
+            }
+            config.bar_config.?.time_format = try utils.gpa.dupe(u8, val_str);
+            logDebugSettingNode(name, val_str);
+        },
+        .position => {
+            if (state.arg_count < 1) {
+                return errMissingArg(name);
+            }
+            const val_str = utils.stripQuotes(state.arg);
+            config.bar_config.?.position = std.meta.stringToEnum(Bar.Position, val_str) orelse {
+                return errInvalidArg(name, val_str);
+            };
+            logDebugSettingNode(name, val_str);
+        },
+        inline .background_color, .text_color => |tag| {
+            if (state.arg_count < 1) {
+                return errMissingArg(name);
+            }
+            const val_str = utils.stripQuotes(state.arg);
+            @field(config.bar_config.?, @tagName(tag)) = utils.parseRgbaPixman(val_str) catch {
+                return errInvalidArg(name, val_str);
+            };
+            logDebugSettingNode(name, val_str);
+        },
+        inline .vertical_padding, .horizontal_padding => |tag| {
+            if (state.arg_count < 1) {
+                return errMissingArg(name);
+            }
+            const val_str = utils.stripQuotes(state.arg);
+            @field(config.bar_config.?, @tagName(tag)) = fmt.parseInt(u8, val_str, 10) catch {
+                return errInvalidArg(name, val_str);
+            };
+            logDebugSettingNode(name, val_str);
+        },
+        inline .left, .center, .right => |tag| {
+            if (state.arg_count < 1) {
+                return errMissingArg(name);
+            }
+            const val_str = utils.stripQuotes(state.arg);
+            @field(config.bar_config.?, @tagName(tag)) = std.meta.stringToEnum(Bar.Component, val_str) orelse {
+                return errInvalidArg(name, val_str);
+            };
+            logDebugSettingNode(name, val_str);
+        },
+    }
+}
+
 fn loadMarginsBlock(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
-    while (try parser.next()) |event| {
+    var state: MarginsParseState = .{};
+
+    var event = try parser.next();
+    while (true) : (event = try parser.next()) {
         switch (event) {
             .node => |node| {
-                const node_name = std.meta.stringToEnum(MarginsNodeName, node.name);
-                if (node_name) |name| {
-                    if (!helpers.hostMatches(node, parser, hostname)) {
-                        logDebugHostMismatch(name);
-                        continue;
-                    }
-                    const val_str = utils.stripQuotes(node.arg(parser, 0) orelse "");
-                    const val = fmt.parseInt(u8, val_str, 10) catch {
-                        return errInvalidArg(name, val_str);
-                    };
-                    switch (name) {
-                        .top => config.bar_config.?.margin_top = val,
-                        .right => config.bar_config.?.margin_right = val,
-                        .bottom => config.bar_config.?.margin_bottom = val,
-                        .left => config.bar_config.?.margin_left = val,
-                    }
-                    logDebugSettingNode(name, val_str);
-                } else {
-                    return helpers.invalidNode(node.name);
+                try flushMarginsNode(config, hostname, state);
+                state = .{
+                    .cur_node = std.meta.stringToEnum(MarginsNodeName, node.val) orelse {
+                        return helpers.invalidNode(node.val);
+                    },
+                };
+            },
+            .arg => |arg| {
+                state.arg = arg.val;
+                state.arg_count += 1;
+            },
+            .prop => |prop| {
+                if (mem.eql(u8, prop.key, "host")) {
+                    state.host = prop.val;
                 }
             },
-            .child_block_begin => try helpers.unexpectedChildBlock(parser),
-            .child_block_end => return,
+            .child_block_begin => return helpers.unexpectedChildBlock(),
+            .child_block_end => {
+                try flushMarginsNode(config, hostname, state);
+                return;
+            },
+            .invalid => return error.KdlInvalidConfig,
+            .eof => return error.UnclosedBlock,
         }
     }
+}
+
+fn flushMarginsNode(config: *Config, hostname: ?[]const u8, state: MarginsParseState) !void {
+    const name = state.cur_node orelse return;
+    if (!helpers.hostMatches(state.host, hostname)) {
+        logDebugHostMismatch(name);
+        return;
+    }
+    if (state.arg_count < 1) {
+        return errMissingMarginArg(name);
+    }
+    const val_str = utils.stripQuotes(state.arg);
+    const val = fmt.parseInt(u8, val_str, 10) catch {
+        return errInvalidMarginArg(name, val_str);
+    };
+    switch (name) {
+        .top => config.bar_config.?.margin_top = val,
+        .right => config.bar_config.?.margin_right = val,
+        .bottom => config.bar_config.?.margin_bottom = val,
+        .left => config.bar_config.?.margin_left = val,
+    }
+    logDebugSettingNode(name, val_str);
 }
 
 inline fn logDebugSettingNode(node_name: anytype, node_value: []const u8) void {
@@ -217,13 +307,23 @@ inline fn logDebugHostMismatch(node_name: anytype) void {
     }
 }
 
-fn errInvalidArg(node_name: anytype, node_value: []const u8) error{InvalidConfig} {
-    const node_name_type = @TypeOf(node_name);
-    switch (node_name_type) {
-        NodeName => log.err("Invalid \"bar.{s}\" ({s})", .{ @tagName(node_name), node_value }),
-        MarginsNodeName => log.err("Invalid \"bar.margins.{s}\" ({s})", .{ @tagName(node_name), node_value }),
-        else => @compileError("This function does not (yet) support type \"" ++ @typeName(node_name_type) ++ "\""),
-    }
+fn errInvalidArg(node_name: NodeName, node_value: []const u8) error{InvalidConfig} {
+    log.err("Invalid \"bar.{s}\" ({s})", .{ @tagName(node_name), node_value });
+    return error.InvalidConfig;
+}
+
+fn errMissingArg(node_name: NodeName) error{InvalidConfig} {
+    log.err("\"bar.{s}\" missing argument", .{@tagName(node_name)});
+    return error.InvalidConfig;
+}
+
+fn errInvalidMarginArg(node_name: MarginsNodeName, node_value: []const u8) error{InvalidConfig} {
+    log.err("Invalid \"bar.margins.{s}\" ({s})", .{ @tagName(node_name), node_value });
+    return error.InvalidConfig;
+}
+
+fn errMissingMarginArg(node_name: MarginsNodeName) error{InvalidConfig} {
+    log.err("\"bar.margins.{s}\" missing argument", .{@tagName(node_name)});
     return error.InvalidConfig;
 }
 
@@ -236,13 +336,9 @@ fn validateTimeFormat(format: []const u8) bool {
     return true;
 }
 
-fn errMissingArg(node_name: NodeName, comptime arg: []const u8) error{InvalidConfig} {
-    log.err("\"bar.{s}\" missing " ++ arg ++ " argument", .{@tagName(node_name)});
-    return error.InvalidConfig;
-}
-
 const std = @import("std");
 const fmt = std.fmt;
+const mem = std.mem;
 const Io = std.Io;
 
 const kdl = @import("kdl");

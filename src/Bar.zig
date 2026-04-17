@@ -78,7 +78,7 @@ pub const Options = struct {
 };
 
 pub fn init(context: *Context, output: *Output, options: Options) !Bar {
-    const timezone = try zeit.local(utils.gpa, &context.env);
+    const timezone = try zeit.local(utils.gpa, io, .{});
     errdefer timezone.deinit();
 
     const scale = output.scale;
@@ -247,7 +247,7 @@ fn draw(bar: *Bar) !void {
     // Clock
     var time_buf: [255:0]u8 = undefined;
     var time_writer = Io.Writer.fixed(&time_buf);
-    const now = try zeit.instant(.{});
+    const now = try zeit.instant(io, .{});
     const now_local = now.in(&bar.timezone);
     try now_local.time().strftime(&time_writer, options.time_format);
     const clock_codepoints = try utils.utf8ToCodepoints(time_writer.buffered());
@@ -486,6 +486,7 @@ const fmt = std.fmt;
 const mem = std.mem;
 const process = std.process;
 const Io = std.Io;
+const io = Io.Threaded.global_single_threaded.io();
 
 const wayland = @import("wayland");
 const wl = wayland.client.wl;
