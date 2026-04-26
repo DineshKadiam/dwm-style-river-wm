@@ -21,6 +21,11 @@ maximized: bool = false,
 tags: u32 = 0x0001,
 output: ?*Output,
 
+/// Preferred presentation mode for this window
+///
+/// If any visible Window on an output has `presentation_mode == .async`, that Output will be async.
+presentation_mode: PresentationMode = .vsync,
+
 floating: bool = false,
 floating_rect: utils.Rect = .{},
 dimensions_hint: DimensionsHint = .{},
@@ -269,6 +274,9 @@ pub fn initialize(window: *Window) void {
     if (res.float) |should_float| {
         window.pending_manage.floating = should_float;
     }
+    if (res.presentation_mode) |presentation_mode| {
+        window.presentation_mode = presentation_mode;
+    }
 }
 
 pub fn manage(window: *Window) void {
@@ -427,11 +435,13 @@ fn applyBorders(window: *Window, color: utils.RiverColor) void {
 // Iterate over all window rules and apply any that match.
 // Later rules in the list overwrite earlier ones.
 fn applyRules(window: *Window) struct {
-    float: ?bool = null,
-    tags: ?u32 = null,
+    float: ?bool,
+    tags: ?u32,
+    presentation_mode: ?PresentationMode,
 } {
     var float: ?bool = null;
     var tags: ?u32 = null;
+    var presentation_mode: ?PresentationMode = null;
     for (window.context.config.window_rules.items) |rule| {
         const app_id_matches = if (rule.app_id_glob) |glob|
             if (window.app_id) |app_id| globber.match(app_id, glob) else false
@@ -445,6 +455,7 @@ fn applyRules(window: *Window) struct {
             switch (rule.action) {
                 .float => |should_float| float = should_float,
                 .tags => |tagmask| tags = tagmask,
+                .presentation_mode => |mode| presentation_mode = mode,
             }
         }
     }
@@ -452,6 +463,7 @@ fn applyRules(window: *Window) struct {
     return .{
         .float = float,
         .tags = tags,
+        .presentation_mode = presentation_mode,
     };
 }
 
@@ -491,6 +503,7 @@ const DoublyLinkedList = std.DoublyLinkedList;
 const wayland = @import("wayland");
 const wl = wayland.client.wl;
 const river = wayland.client.river;
+const PresentationMode = river.OutputV1.PresentationMode;
 
 const globber = @import("globber.zig");
 const utils = @import("utils.zig");

@@ -6,7 +6,8 @@ const NodeName = enum {
     float,
     no_float,
     tags,
-
+    vsync,
+    async,
 };
 
 pub const Rule = struct {
@@ -19,6 +20,7 @@ pub const Rule = struct {
 pub const Action = union(enum) {
     float: bool,
     tags: u32,
+    presentation_mode: PresentationMode,
 };
 
 pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
@@ -62,6 +64,9 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
                             };
                             break :sw .{ .tags = tags };
                         },
+                        inline .vsync, .async => |mode_name| .{
+                            .presentation_mode = @field(PresentationMode, @tagName(mode_name)),
+                        },
                     };
                     try config.window_rules.append(utils.gpa, .{
                         .app_id_glob = app_id_glob,
@@ -93,6 +98,7 @@ const fmt = std.fmt;
 const mem = std.mem;
 
 const kdl = @import("kdl");
+const PresentationMode = @import("wayland").client.river.OutputV1.PresentationMode;
 
 const globber = @import("../globber.zig");
 const utils = @import("../utils.zig");

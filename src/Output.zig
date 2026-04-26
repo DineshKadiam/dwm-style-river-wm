@@ -48,8 +48,14 @@ tag_layout_overrides: std.AutoHashMapUnmanaged(u32, TagLayoutOverride) = .{},
 /// Tags are 32-bit bitfield. A window can be active on one(?) or more tags.
 tags: u32 = 0x0001,
 
+/// When this is `.async`, the compositor will allow the output to tear
+presentation_mode: PresentationMode = .vsync,
+
 /// State consumed in manage() phase, reset at end of manage().
 pending_manage: PendingManage = .{},
+
+/// State consumed in render() phase, reset at end of render().
+pending_render: PendingRender = .{},
 
 windows: wl.list.Head(Window, .link),
 
@@ -71,6 +77,8 @@ const PendingManage = struct {
     primary_count: ?u8 = null,
     single_window_ratio: ?f32 = null,
 };
+
+const PendingRender = struct { presentation_mode: ?PresentationMode = null };
 
 pub fn create(context: *Context, river_output_v1: *river.OutputV1) !*Output {
     var output = try utils.gpa.create(Output);
@@ -454,6 +462,8 @@ pub fn manage(output: *Output) void {
 }
 
 pub fn render(output: *Output) void {
+    defer output.pending_render = .{};
+
     if (output.wallpaper) |*wallpaper| {
         wallpaper.render();
     }
@@ -474,7 +484,7 @@ pub fn render(output: *Output) void {
         window.render();
 
         // Make sure floating windows are above tiled windows
-        if (window.floating and output.tags & window.tags != 0 and window != focused) {
+        if (window.floating and output.tags & window.tags != 0) {
             window.river_node_v1.placeTop();
         }
     }
@@ -487,6 +497,11 @@ pub fn render(output: *Output) void {
 
             focused_window.river_node_v1.placeTop();
         }
+    }
+
+    if (output.pending_render.presentation_mode) |mode| {
+        output.river_output_v1.setPresentationMode(mode);
+        output.presentation_mode = mode;
     }
 }
 
@@ -507,6 +522,7 @@ fn calculateLayout(output: *Output) void {
     // - are not fullscreen or floating
     var active_list: DoublyLinkedList = .{};
     var active_count: u31 = 0;
+    var async_count: usize = 0;
     var it = output.windows.iterator(.forward);
     while (it.next()) |window| {
         // Initialize new windows early so that window rules are applied to the layout
@@ -522,9 +538,27 @@ fn calculateLayout(output: *Output) void {
                 active_count += 1;
                 active_list.append(&window.active_list_node);
             }
+
+            switch (window.presentation_mode) {
+                .vsync => {}, // Nothing to do
+                .async => async_count +|= 1,
+                else => unreachable,
+            }
+
             window.pending_render.show = true;
         } else {
             window.pending_render.show = false;
+        }
+    }
+
+    // Only set presentation mode if it's changing
+    if (async_count > 0) {
+        if (output.presentation_mode == .vsync) {
+            output.pending_render.presentation_mode = .async;
+        }
+    } else {
+        if (output.presentation_mode == .async) {
+            output.pending_render.presentation_mode = .vsync;
         }
     }
 
@@ -664,6 +698,7 @@ const DoublyLinkedList = std.DoublyLinkedList;
 const wayland = @import("wayland");
 const wl = wayland.client.wl;
 const river = wayland.client.river;
+const PresentationMode = river.OutputV1.PresentationMode;
 
 const utils = @import("utils.zig");
 const Rect = utils.Rect;

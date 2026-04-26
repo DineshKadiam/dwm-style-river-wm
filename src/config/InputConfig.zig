@@ -109,9 +109,9 @@ pub fn load(config: *Config, parser: *kdl.Parser, name: ?[]const u8, hostname: ?
                         .dwt,
                         .dwtp,
                         => |cmd| {
-                            // These all have arguments, but we can use compile time constructs to reduce
-                            // code reuse here.
-                            // Because all the fields are optional, we have to use @typeInfo and get the optional's child type.
+                            // These all have arguments, but we can use compile time constructs to
+                            // reduce code reuse here. Because all the fields are optional, we have
+                            // to use @typeInfo and get the optional's child type.
                             const field_name = @tagName(cmd);
                             const FieldType = @typeInfo(@TypeOf(@field(input_config, field_name))).optional.child;
                             if (std.meta.stringToEnum(FieldType, val_str)) |val| {
