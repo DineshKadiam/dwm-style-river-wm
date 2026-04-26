@@ -162,8 +162,8 @@ pub fn parseModifiers(s: []const u8) !?river.SeatV1.Modifiers {
 /// Split a string into tokens, respecting single and double quotes.
 /// Quoted sections have their quotes stripped. Returns an error if
 /// a quote is opened but never closed.
-pub fn tokenizeShell(input: []const u8) ![][]const u8 {
-    var list: std.ArrayList([]const u8) = .empty;
+pub fn tokenizeShell(input: []const u8) ![][:0]const u8 {
+    var list: std.ArrayList([:0]const u8) = .empty;
     errdefer {
         for (list.items) |item| gpa.free(item);
         list.deinit(gpa);
@@ -190,7 +190,7 @@ pub fn tokenizeShell(input: []const u8) ![][]const u8 {
                 i += 1;
             }
         }
-        try list.append(gpa, try token.toOwnedSlice(gpa));
+        try list.append(gpa, try token.toOwnedSliceSentinel(gpa, 0));
     }
     return list.toOwnedSlice(gpa);
 }

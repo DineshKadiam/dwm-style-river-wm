@@ -38,12 +38,13 @@ pub fn parseButton(s: []const u8) ?u32 {
     return fmt.parseInt(u32, s, 0) catch null;
 }
 
-pub fn expandTilde(path: []const u8) ![]const u8 {
+/// Expand a tilde in a string to the user's $HOME directory
+pub fn expandTilde(path: []const u8) ![:0]const u8 {
     if (path.len > 0 and path[0] == '~') {
-        const home = std.posix.getenv("HOME") orelse return error.HomeNotSet;
-        return std.fmt.allocPrint(utils.gpa, "{s}{s}", .{ home, path[1..] });
+        const home = posix.getenv("HOME") orelse return error.HomeNotSet;
+        return mem.concatWithSentinel(utils.gpa, u8, &.{ home, path[1..] }, 0);
     }
-    return utils.gpa.dupe(u8, path);
+    return utils.gpa.dupeZ(u8, path);
 }
 
 /// Check whether this machine's hostname matches the hostname property
@@ -85,6 +86,7 @@ pub inline fn logWarnInvalidNode(node_name: []const u8) void {
 const std = @import("std");
 const fmt = std.fmt;
 const mem = std.mem;
+const posix = std.posix;
 
 const kdl = @import("kdl");
 
