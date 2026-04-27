@@ -98,6 +98,8 @@ window_rules {
     no_float app_id="mpv"
     // Send Slack to tag 3 (1<<2 = 0x0004)
     tags 0x0004 app_id="Slack"
+    // Make the output with Deadlock on it allow tearing
+    async app_id="steam_app_1422450"
 }
 ```
 
@@ -108,6 +110,8 @@ window_rules {
 | `float`    |                  | Make matching windows float              |
 | `no_float` |                  | Keep matching windows tiled              |
 | `tags`     | u32 (bitmask)    | Assign matching windows to specific tags |
+| `vsync`    |                  | Keep outputs with matching windows vsync |
+| `async`    |                  | Make outputs with matching windows async (i.e. allow them to tear) |
 
 ### Matching
 

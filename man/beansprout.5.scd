@@ -88,6 +88,7 @@ window_rules {
 	float title="*Preferences*"
 	no_float app_id="mpv"
 	tags 0x0004 app_id="Slack"
+	async app_id="steam_app_1422450"
 }
 ```
 
@@ -102,6 +103,13 @@ window_rules {
 *tags* _bitmask_ [*app_id=*_pattern_] [*title=*_pattern_]
 	Assign matching windows to specific tags. The argument is a 32-bit
 	integer representing the tag bitfield.
+
+*vsync* [*app_id=*_pattern_] [*title=*_pattern_]
+	Keep outputs with matching windows vsync.
+
+*async* [*app_id=*_pattern_] [*title=*_pattern_]
+	Make outputs with matching windows async (i.e. allow the output to tear).
+	If *any* visible window on an output has this rule, the output will be async.
 
 ## Matching
 
