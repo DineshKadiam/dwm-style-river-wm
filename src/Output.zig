@@ -15,15 +15,15 @@ wl_output: ?*wl.Output = null,
 /// Friendly name of this output
 name: ?[]const u8 = null,
 
-/// Output geometry
 scale: u31 = 1,
+/// The rect for the entire output, this includes space that's taken by widgets like bars and not
+/// made available to windows.
 geometry: Rect = .{},
 
-/// Area available for window layout (output geometry minus bar space)
-/// Maybe I'll re-add support for layer shell exclusive areas later,
-/// but adding that makes it more work for me and I don't personally
-/// know of anything that makes me want them since external bars won't
-/// work with beansprout.
+/// Output geometry minus layer shell exclusive zones
+non_exclusive_area: Rect = .{},
+
+/// Area available for window layout (non_exclusive_area minus bar space)
 usable_geometry: Rect = .{},
 
 wallpaper: ?Wallpaper = null,
@@ -64,6 +64,7 @@ const TagLayoutOverride = struct {
 const PendingManage = struct {
     position: ?struct { x: i32, y: i32 } = null,
     dimensions: ?struct { width: u31, height: u31 } = null,
+    non_exclusive_area: ?Rect = null,
 
     tags: ?u32 = null,
     primary_ratio: ?f32 = null,
@@ -106,6 +107,7 @@ pub fn create(context: *Context, river_output_v1: *river.OutputV1) !*Output {
     output.windows.init();
 
     output.river_output_v1.setListener(*Output, riverOutputListener, output);
+    output.river_layer_shell_output_v1.setListener(*Output, riverLayerShellOutputListener, output);
 
     return output;
 }
@@ -200,8 +202,28 @@ pub fn prevWindow(output: *Output, current: *Window) ?*Window {
     }
 }
 
-// Used for the river_output_v1 interface
-fn riverOutputListener(river_output_v1: *river.OutputV1, event: river.OutputV1.Event, output: *Output) void {
+fn riverLayerShellOutputListener(
+    _: *river.LayerShellOutputV1,
+    event: river.LayerShellOutputV1.Event,
+    output: *Output,
+) void {
+    switch (event) {
+        .non_exclusive_area => |area| {
+            output.pending_manage.non_exclusive_area = .{
+                .x = area.x,
+                .y = area.y,
+                .width = @intCast(area.width),
+                .height = @intCast(area.height),
+            };
+        },
+    }
+}
+
+fn riverOutputListener(
+    river_output_v1: *river.OutputV1,
+    event: river.OutputV1.Event,
+    output: *Output,
+) void {
     assert(output.river_output_v1 == river_output_v1);
     switch (event) {
         .removed => {
@@ -286,7 +308,14 @@ pub fn manage(output: *Output) void {
         output.geometry.height = dimensions.height;
     }
 
-    if (output.pending_manage.position != null or output.pending_manage.dimensions != null) {
+    if (output.pending_manage.non_exclusive_area) |non_exclusive_area| {
+        output.non_exclusive_area = non_exclusive_area;
+    }
+
+    if (output.pending_manage.position != null or
+        output.pending_manage.dimensions != null or
+        output.pending_manage.non_exclusive_area != null)
+    {
         if (output.wallpaper) |*wallpaper| {
             wallpaper.pending_render.draw = true;
         }
@@ -391,11 +420,10 @@ pub fn manage(output: *Output) void {
         };
     }
 
-    // Compute usable geometry from output geometry minus bar space.
-    // We don't use non_exclusive_area from layer shell since we don't support
-    // other layer shell clients with exclusive zones (layer shell clients that
-    // don't use exclusive areas are fine).
-    output.usable_geometry = output.geometry;
+    // Compute usable geometry starting from the non-exclusive area reported by the layer shell,
+    // then additionally subtract space for beansprout's own bar (which uses river shell, not layer
+    // shell, so it's not included in the exclusive zone calculation).
+    output.usable_geometry = output.non_exclusive_area;
     if (output.bar) |bar| {
         if (bar.geometry.height > 0) {
             const bar_height: i32 = bar.geometry.height;

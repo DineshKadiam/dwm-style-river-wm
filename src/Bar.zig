@@ -35,6 +35,8 @@ pending_manage: PendingManage = .{},
 pending_render: PendingRender = .{},
 
 const PendingManage = struct {
+    /// Recalculate bar geometry (size and position) on the next manage cycle
+    /// Set when output dimensions, position, scale, or exclusive zones change
     output_geometry: bool = false,
 };
 
@@ -159,7 +161,10 @@ pub fn manage(bar: *Bar) !void {
 
         const logical_font_height = @divFloor(bar.fcft_fonts.height, @as(i32, bar.font_scale));
         const height: u31 = @intCast(logical_font_height + 2 * options.vertical_padding);
-        const width: u31 = output.geometry.width -| @as(u31, @intCast(options.margins.left + options.margins.right));
+        // Use the non-exclusive area so the bar sits adjacent to any external layer shell
+        // surfaces rather than overlapping them.
+        const base = output.non_exclusive_area;
+        const width: u31 = @as(u31, @intCast(base.width)) -| @as(u31, @intCast(options.margins.left + options.margins.right));
 
         if (bar.geometry.width != width or bar.geometry.height != height) {
             bar.geometry.width = width;
@@ -171,10 +176,10 @@ pub fn manage(bar: *Bar) !void {
             bar.surfaces.wl_surface.setOpaqueRegion(opaque_region);
         }
 
-        const x = output.geometry.x + options.margins.left;
+        const x = base.x + options.margins.left;
         const y = switch (options.position) {
-            .top => output.geometry.y + options.margins.top,
-            .bottom => output.geometry.y + output.geometry.height - bar.geometry.height - options.margins.bottom,
+            .top => base.y + options.margins.top,
+            .bottom => base.y + base.height - bar.geometry.height - options.margins.bottom,
         };
         bar.pending_render.position = .{ .x = x, .y = y };
         bar.pending_render.draw = true;
