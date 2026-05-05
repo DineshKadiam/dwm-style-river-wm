@@ -29,21 +29,21 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
                         continue;
                     }
                     const mod_str = utils.stripQuotes(node.arg(parser, 0) orelse {
-                        log.warn("tag_bind: missing modifier argument. Ignoring", .{});
-                        continue;
+                        log.err("tag_bind: missing modifier argument", .{});
+                        return error.InvalidConfig;
                     });
                     const cmd_str = utils.stripQuotes(node.arg(parser, 1) orelse {
-                        log.warn("tag_bind: missing command argument. Ignoring", .{});
-                        continue;
+                        log.err("tag_bind: missing command argument", .{});
+                        return error.InvalidConfig;
                     });
                     const modifiers = try utils.parseModifiers(mod_str) orelse {
-                        log.warn("tag_bind: invalid modifiers \"{s}\". Ignoring", .{mod_str});
-                        continue;
+                        log.err("tag_bind: invalid modifiers \"{s}\"", .{mod_str});
+                        return error.InvalidConfig;
                     };
 
                     const command_tag_type = std.meta.stringToEnum(NodeName, cmd_str) orelse {
-                        log.warn("tag_bind: invalid command \"{s}\". Ignoring", .{cmd_str});
-                        continue;
+                        log.err("tag_bind: invalid command \"{s}\"", .{cmd_str});
+                        return error.InvalidConfig;
                     };
                     const command: XkbBindings.Command = switch (command_tag_type) {
                         // We can set these to "0" since they're not used (when in the tag_bind node)
@@ -52,8 +52,8 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
                         .toggle_output_tags => .{ .toggle_output_tags = 0 },
                         .toggle_window_tags => .{ .toggle_window_tags = 0 },
                         else => {
-                            log.warn("tag_bind: invalid command \"{s}\". Only tag-keybinds can be used with tag_binds. Ignoring", .{cmd_str});
-                            continue;
+                            log.err("tag_bind: invalid command \"{s}\". Only tag-keybinds can be used with tag_binds", .{cmd_str});
+                            return error.InvalidConfig;
                         },
                     };
 
@@ -76,17 +76,15 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
                     // All nodes should have at least a command, modifiers, and a keysym
                     // Some may have more arguments handled in the switch
                     const mod_str = utils.stripQuotes(node.arg(parser, 0) orelse {
-                        logWarnMissingNodeArg(name, "modifier(s)");
-                        continue;
+                        return errMissingArg(name, "modifier(s)");
                     });
                     const modifiers = try utils.parseModifiers(mod_str) orelse {
-                        log.warn("keybinds: invalid modifiers \"{s}\". Ignoring", .{mod_str});
-                        continue;
+                        log.err("keybinds: invalid modifiers \"{s}\"", .{mod_str});
+                        return error.InvalidConfig;
                     };
 
                     const key_str = utils.stripQuotes(node.arg(parser, 1) orelse {
-                        logWarnMissingNodeArg(name, "keysym");
-                        continue;
+                        return errMissingArg(name, "keysym");
                     });
                     // Keysym.fromName() needs a [*:0]const u8
                     const z = try utils.gpa.dupeZ(u8, key_str);
@@ -97,8 +95,7 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
                         .spawn => {
                             // TODO: Add properties to support ENV vars
                             const exec_str = utils.stripQuotes(node.arg(parser, 2) orelse {
-                                logWarnMissingNodeArg(name, "command");
-                                continue;
+                                return errMissingArg(name, "command");
                             });
                             var split_exec = try utils.tokenizeShell(exec_str);
                             if (split_exec.len > 0) {
@@ -120,12 +117,10 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
                         },
                         inline .change_primary_ratio, .change_single_window_ratio => |cmd| {
                             const diff_str = utils.stripQuotes(node.arg(parser, 2) orelse {
-                                logWarnMissingNodeArg(name, "diff");
-                                continue;
+                                return errMissingArg(name, "diff");
                             });
                             const diff = fmt.parseFloat(f32, diff_str) catch {
-                                logWarnInvalidNodeArg(name, diff_str);
-                                continue;
+                                return errInvalidArg(name, diff_str);
                             };
                             break :sw @unionInit(XkbBindings.Command, @tagName(cmd), diff);
                         },
@@ -159,23 +154,19 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
                         .resize_height,
                         => |cmd| {
                             const amount_str = utils.stripQuotes(node.arg(parser, 2) orelse {
-                                logWarnMissingNodeArg(name, "amount");
-                                continue;
+                                return errMissingArg(name, "amount");
                             });
                             const amount = fmt.parseInt(i32, amount_str, 0) catch {
-                                logWarnInvalidNodeArg(name, amount_str);
-                                continue;
+                                return errInvalidArg(name, amount_str);
                             };
                             break :sw @unionInit(XkbBindings.Command, @tagName(cmd), amount);
                         },
                         inline .set_output_tags, .set_window_tags, .toggle_output_tags, .toggle_window_tags => |cmd| {
                             const tags_str = utils.stripQuotes(node.arg(parser, 2) orelse {
-                                logWarnMissingNodeArg(name, "tags");
-                                continue;
+                                return errMissingArg(name, "tags");
                             });
                             const tags = fmt.parseInt(u32, tags_str, 0) catch {
-                                logWarnInvalidNodeArg(name, tags_str);
-                                continue;
+                                return errInvalidArg(name, tags_str);
                             };
                             break :sw @unionInit(XkbBindings.Command, @tagName(cmd), tags);
                         },
@@ -190,12 +181,12 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
                     }
                     gop.value_ptr.* = command;
                 } else {
-                    helpers.logWarnInvalidNode(node.name);
+                    return helpers.invalidNode(node.name);
                 }
             },
             .child_block_begin => {
                 // keybinds should never have a nested child block
-                try helpers.skipChildBlock(parser);
+                try helpers.unexpectedChildBlock(parser);
             },
             .child_block_end => {
                 // Done parsing the keybinds block; return
@@ -205,12 +196,14 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
     }
 }
 
-inline fn logWarnMissingNodeArg(node_name: NodeName, comptime arg: []const u8) void {
-    log.warn("\"keybind.{s}\" missing " ++ arg ++ " argument. Ignoring", .{@tagName(node_name)});
+fn errMissingArg(node_name: NodeName, comptime arg: []const u8) error{InvalidConfig} {
+    log.err("\"keybind.{s}\" missing " ++ arg ++ " argument", .{@tagName(node_name)});
+    return error.InvalidConfig;
 }
 
-inline fn logWarnInvalidNodeArg(node_name: NodeName, node_value: []const u8) void {
-    log.warn("Invalid \"keybind.{s}\" ({s}). Ignoring", .{ @tagName(node_name), node_value });
+fn errInvalidArg(node_name: NodeName, node_value: []const u8) error{InvalidConfig} {
+    log.err("Invalid \"keybind.{s}\" ({s})", .{ @tagName(node_name), node_value });
+    return error.InvalidConfig;
 }
 
 const std = @import("std");

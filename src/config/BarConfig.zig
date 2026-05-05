@@ -84,8 +84,8 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
         switch (event) {
             .node => |node| {
                 if (next_child_block) |child| {
-                    log.warn("Expected child block for bar.{s}, got node instead. Ignoring", .{@tagName(child)});
-                    next_child_block = null;
+                    log.err("Expected child block for bar.{s}, got node instead", .{@tagName(child)});
+                    return error.InvalidConfig;
                 }
                 const node_name = std.meta.stringToEnum(NodeName, node.name);
                 if (node_name) |name| {
@@ -97,8 +97,7 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
                     switch (name) {
                         .fonts => {
                             if (node.argcount() < 1) {
-                                logWarnMissingNodeArg(name, "font specification");
-                                continue;
+                                return errMissingArg(name, "font specification");
                             }
                             config.bar_config.?.fonts = utils.gpa.dupe(u8, val_str) catch @panic("Out of memory");
                             logDebugSettingNode(name, val_str);
@@ -108,19 +107,18 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
                                 config.bar_config.?.position = pos;
                                 logDebugSettingNode(name, val_str);
                             } else {
-                                logWarnInvalidNodeArg(name, val_str);
+                                return errInvalidArg(name, val_str);
                             }
                         },
                         .time_format => {
                             if (node.argcount() < 1) {
-                                logWarnMissingNodeArg(name, "format string");
-                                continue;
+                                return errMissingArg(name, "format string");
                             }
                             if (validateTimeFormat(val_str)) {
                                 config.bar_config.?.time_format = utils.gpa.dupe(u8, val_str) catch @panic("Out of memory");
                                 logDebugSettingNode(name, val_str);
                             } else {
-                                logWarnInvalidNodeArg(name, val_str);
+                                return errInvalidArg(name, val_str);
                             }
                         },
                         .margins => next_child_block = .margins,
@@ -128,8 +126,7 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
                         .text_color,
                         => |tag| {
                             @field(config.bar_config.?, @tagName(tag)) = utils.parseRgbaPixman(val_str) catch {
-                                logWarnInvalidNodeArg(name, val_str);
-                                continue;
+                                return errInvalidArg(name, val_str);
                             };
                             logDebugSettingNode(name, val_str);
                         },
@@ -138,8 +135,7 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
                         => |tag| {
                             const padding_str = utils.stripQuotes(node.arg(parser, 0) orelse "");
                             const padding = fmt.parseInt(u8, padding_str, 10) catch {
-                                logWarnInvalidNodeArg(name, padding_str);
-                                continue;
+                                return errInvalidArg(name, padding_str);
                             };
                             @field(config.bar_config.?, @tagName(tag)) = padding;
                             logDebugSettingNode(name, padding_str);
@@ -149,12 +145,12 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
                                 @field(config.bar_config.?, @tagName(tag)) = component;
                                 logDebugSettingNode(name, val_str);
                             } else {
-                                logWarnInvalidNodeArg(name, val_str);
+                                return errInvalidArg(name, val_str);
                             }
                         },
                     }
                 } else {
-                    helpers.logWarnInvalidNode(node.name);
+                    return helpers.invalidNode(node.name);
                 }
             },
             .child_block_begin => {
@@ -164,7 +160,7 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
                     }
                     next_child_block = null;
                 } else {
-                    try helpers.skipChildBlock(parser);
+                    try helpers.unexpectedChildBlock(parser);
                 }
             },
             .child_block_end => return,
@@ -184,8 +180,7 @@ fn loadMarginsBlock(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8)
                     }
                     const val_str = utils.stripQuotes(node.arg(parser, 0) orelse "");
                     const val = fmt.parseInt(u8, val_str, 10) catch {
-                        logWarnInvalidNodeArg(name, val_str);
-                        continue;
+                        return errInvalidArg(name, val_str);
                     };
                     switch (name) {
                         .top => config.bar_config.?.margin_top = val,
@@ -195,10 +190,10 @@ fn loadMarginsBlock(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8)
                     }
                     logDebugSettingNode(name, val_str);
                 } else {
-                    helpers.logWarnInvalidNode(node.name);
+                    return helpers.invalidNode(node.name);
                 }
             },
-            .child_block_begin => try helpers.skipChildBlock(parser),
+            .child_block_begin => try helpers.unexpectedChildBlock(parser),
             .child_block_end => return,
         }
     }
@@ -222,13 +217,14 @@ inline fn logDebugHostMismatch(node_name: anytype) void {
     }
 }
 
-inline fn logWarnInvalidNodeArg(node_name: anytype, node_value: []const u8) void {
+fn errInvalidArg(node_name: anytype, node_value: []const u8) error{InvalidConfig} {
     const node_name_type = @TypeOf(node_name);
     switch (node_name_type) {
-        NodeName => log.warn("Invalid \"bar.{s}\" ({s}). Using default value", .{ @tagName(node_name), node_value }),
-        MarginsNodeName => log.warn("Invalid \"bar.margins.{s}\" ({s}). Using default value", .{ @tagName(node_name), node_value }),
+        NodeName => log.err("Invalid \"bar.{s}\" ({s})", .{ @tagName(node_name), node_value }),
+        MarginsNodeName => log.err("Invalid \"bar.margins.{s}\" ({s})", .{ @tagName(node_name), node_value }),
         else => @compileError("This function does not (yet) support type \"" ++ @typeName(node_name_type) ++ "\""),
     }
+    return error.InvalidConfig;
 }
 
 fn validateTimeFormat(format: []const u8) bool {
@@ -240,8 +236,9 @@ fn validateTimeFormat(format: []const u8) bool {
     return true;
 }
 
-inline fn logWarnMissingNodeArg(node_name: NodeName, comptime arg: []const u8) void {
-    log.warn("\"bar.{s}\" missing " ++ arg ++ " argument. Ignoring", .{@tagName(node_name)});
+fn errMissingArg(node_name: NodeName, comptime arg: []const u8) error{InvalidConfig} {
+    log.err("\"bar.{s}\" missing " ++ arg ++ " argument", .{@tagName(node_name)});
+    return error.InvalidConfig;
 }
 
 const std = @import("std");

@@ -106,40 +106,16 @@ pub fn create() !*Config {
         var read_buffer: [1024]u8 = undefined;
         var file_reader = file.reader(&read_buffer);
 
-        config.load(&file_reader.interface) catch |err| {
-            log.err("Error while loading config: {s}. Continuing with default config", .{@errorName(err)});
-            // Free any partially-loaded state and reset to defaults
-            for (config.keybinds.values()) |cmd| {
-                cmd.deinit();
-            }
-            config.keybinds.clearAndFree(utils.gpa);
-            config.tag_binds.clearAndFree(utils.gpa);
-            config.pointer_binds.clearAndFree(utils.gpa);
-            for (config.input_configs.items) |ic| {
-                if (ic.name) |name| utils.gpa.free(name);
-            }
-            config.input_configs.clearAndFree(utils.gpa);
-            for (config.window_rules.items) |rule| {
-                if (rule.app_id_glob) |app_id_glob| utils.gpa.free(app_id_glob);
-                if (rule.title_glob) |title_glob| utils.gpa.free(title_glob);
-            }
-            config.window_rules.clearAndFree(utils.gpa);
-            if (config.bar_config) |bc| {
-                if (bc.fonts) |fonts| utils.gpa.free(fonts);
-            }
-            if (config.keyboard_layout.rules) |s| utils.gpa.free(s);
-            if (config.keyboard_layout.model) |s| utils.gpa.free(s);
-            if (config.keyboard_layout.layout) |s| utils.gpa.free(s);
-            if (config.keyboard_layout.variant) |s| utils.gpa.free(s);
-            if (config.keyboard_layout.options) |s| utils.gpa.free(s);
-            if (config.wallpaper_image_path) |path| {
-                utils.gpa.free(path);
-            }
-            config.* = .{};
-        };
+        try config.load(&file_reader.interface);
     }
 
     if (config.keybinds.count() == 0) {
+        log.warn(
+            \\Loaded a config without keybinds. Falling back to defaults:
+            \\  Mod4+T        - spawn `foot`
+            \\  Mod4+Shift+R  - reload config
+            \\  Ctrl+Alt+Del  - exit River
+        , .{});
         config.addFallbackKeybinds();
     }
 
@@ -211,10 +187,8 @@ fn load(config: *Config, reader: *Io.Reader) !void {
         switch (event) {
             .node => |node| {
                 if (next_child_block) |child_block| {
-                    logWarnMissingChildBlock(child_block);
-                    next_child_block = null;
-                    if (pending_input_name) |n| utils.gpa.free(n);
-                    pending_input_name = null;
+                    log.err("Expected child block for {s}, but got another node instead", .{@tagName(child_block)});
+                    return error.InvalidConfig;
                 }
                 // If it's a node, we check if it's a valid NodeName
                 const node_name = std.meta.stringToEnum(NodeName, node.name);
@@ -229,16 +203,14 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                             const count_str = utils.stripQuotes(node.arg(&parser, 0) orelse "");
                             // Use @max to ensure a minimum of 1
                             config.primary_count = @max(1, fmt.parseInt(u8, count_str, 10) catch {
-                                logWarnInvalidNodeArg(name, count_str);
-                                continue;
+                                return errInvalidArg(name, count_str);
                             });
                             logDebugSettingNode(name, count_str);
                         },
                         .primary_ratio => {
                             const ratio_str = utils.stripQuotes(node.arg(&parser, 0) orelse "");
                             const ratio = fmt.parseFloat(f32, ratio_str) catch {
-                                logWarnInvalidNodeArg(name, ratio_str);
-                                continue;
+                                return errInvalidArg(name, ratio_str);
                             };
                             config.primary_ratio = std.math.clamp(ratio, min_primary_ratio, max_primary_ratio);
                             if (ratio != config.primary_ratio) {
@@ -252,15 +224,13 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                                 config.primary_side = mode;
                                 logDebugSettingNode(name, primary_side_str);
                             } else {
-                                logWarnInvalidNodeArg(name, primary_side_str);
-                                continue;
+                                return errInvalidArg(name, primary_side_str);
                             }
                         },
                         .single_window_ratio => {
                             const ratio_str = utils.stripQuotes(node.arg(&parser, 0) orelse "");
                             const ratio = fmt.parseFloat(f32, ratio_str) catch {
-                                logWarnInvalidNodeArg(name, ratio_str);
-                                continue;
+                                return errInvalidArg(name, ratio_str);
                             };
                             // We use 1.00 here because it doesn't make sense for a window to have a ratio > 1,
                             // i.e. for it to be wider than the output
@@ -276,8 +246,7 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                                 config.attach_mode = mode;
                                 logDebugSettingNode(name, attach_mode_str);
                             } else {
-                                logWarnInvalidNodeArg(name, attach_mode_str);
-                                continue;
+                                return errInvalidArg(name, attach_mode_str);
                             }
                         },
                         .focus_follows_pointer => {
@@ -286,8 +255,7 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                                 config.focus_follows_pointer = focus_follows_pointer;
                                 logDebugSettingNode(name, focus_follows_pointer_str);
                             } else |_| {
-                                logWarnInvalidNodeArg(name, focus_follows_pointer_str);
-                                continue;
+                                return errInvalidArg(name, focus_follows_pointer_str);
                             }
                         },
                         .output_focus_follows_pointer => {
@@ -296,8 +264,7 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                                 config.output_focus_follows_pointer = output_focus_follows_pointer;
                                 logDebugSettingNode(name, output_focus_follows_pointer_str);
                             } else |_| {
-                                logWarnInvalidNodeArg(name, output_focus_follows_pointer_str);
-                                continue;
+                                return errInvalidArg(name, output_focus_follows_pointer_str);
                             }
                         },
                         .pointer_warp_on_focus_change => {
@@ -306,20 +273,17 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                                 config.pointer_warp_on_focus_change = pointer_warp_on_focus_change;
                                 logDebugSettingNode(name, pointer_warp_on_focus_change_str);
                             } else |_| {
-                                logWarnInvalidNodeArg(name, pointer_warp_on_focus_change_str);
-                                continue;
+                                return errInvalidArg(name, pointer_warp_on_focus_change_str);
                             }
                         },
                         .wallpaper_image_path => {
                             if (node.argcount() < 1) {
-                                logWarnMissingNodeArg(name, "image path");
-                                continue;
+                                return errMissingArg(name, "image path");
                             }
 
                             const path_str = utils.stripQuotes(node.arg(&parser, 0).?);
                             config.wallpaper_image_path = helpers.expandTilde(path_str) catch {
-                                logWarnInvalidNodeArg(name, path_str);
-                                continue;
+                                return errInvalidArg(name, path_str);
                             };
                             logDebugSettingNode(name, path_str);
                         },
@@ -340,7 +304,7 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                         => |n| next_child_block = n,
                     }
                 } else {
-                    helpers.logWarnInvalidNode(node.name);
+                    return helpers.invalidNode(node.name);
                 }
             },
             .child_block_begin => {
@@ -364,24 +328,30 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                     }
                     next_child_block = null;
                 } else {
-                    try helpers.skipChildBlock(&parser);
+                    try helpers.unexpectedChildBlock(&parser);
                 }
             },
-            .child_block_end => log.err("Reached unexpected .child_block_end. Ignoring it", .{}),
+            .child_block_end => {
+                log.err("Unexpected closing brace", .{});
+                return error.InvalidConfig;
+            },
         }
+    }
+
+    if (parser.depth != 0) {
+        log.err("Unclosed block in config (missing closing brace)", .{});
+        return error.UnclosedBlock;
     }
 }
 
-inline fn logWarnInvalidNodeArg(node_name: NodeName, node_value: []const u8) void {
-    log.warn("Invalid \"{s}\" ({s}). Using default value", .{ @tagName(node_name), node_value });
+fn errInvalidArg(node_name: NodeName, node_value: []const u8) error{InvalidConfig} {
+    log.err("Invalid \"{s}\" ({s})", .{ @tagName(node_name), node_value });
+    return error.InvalidConfig;
 }
 
-inline fn logWarnMissingNodeArg(node_name: NodeName, comptime arg: []const u8) void {
-    log.warn("\"{s}\" missing " ++ arg ++ " argument. Ignoring", .{@tagName(node_name)});
-}
-
-inline fn logWarnMissingChildBlock(child_block: NodeName) void {
-    log.warn("Expected child block for {s}, but got another node instead. Continuing but ignoring {s}", .{ @tagName(child_block), @tagName(child_block) });
+fn errMissingArg(node_name: NodeName, comptime arg: []const u8) error{InvalidConfig} {
+    log.err("\"{s}\" missing " ++ arg ++ " argument", .{@tagName(node_name)});
+    return error.InvalidConfig;
 }
 
 inline fn logDebugSettingNode(node_name: NodeName, node_value: []const u8) void {
@@ -413,8 +383,6 @@ const InputConfig = @import("config/InputConfig.zig");
 const TagOverlayConfig = @import("config/TagOverlayConfig.zig");
 
 const log = std.log.scoped(.Config);
-
-const testing = std.testing;
 
 test {
     _ = helpers;

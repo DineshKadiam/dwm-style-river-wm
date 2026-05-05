@@ -68,8 +68,10 @@ pub fn main() !void {
     const river_xkb_bindings_v1 = globals.river_xkb_bindings_v1 orelse utils.interfaceNotAdvertised(river.XkbBindingsV1);
     const river_xkb_config_v1 = globals.river_xkb_config_v1 orelse utils.interfaceNotAdvertised(river.XkbConfigV1);
 
-    const config = try Config.create();
-    defer config.destroy();
+    const config = Config.create() catch |e| {
+        log.err("Failed to load config; fix the errors above and try again.", .{});
+        return e;
+    };
     const context = try Context.create(.{
         .wl_compositor = wl_compositor,
         .wl_display = wl_display,
@@ -314,6 +316,7 @@ pub fn logFn(
     comptime format: []const u8,
     args: anytype,
 ) void {
+    if (builtin.is_test) return;
     if (@intFromEnum(level) > @intFromEnum(runtime_log_level)) return;
 
     const scope_prefix = if (scope == .default) ": " else "(" ++ @tagName(scope) ++ "): ";

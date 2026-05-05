@@ -30,22 +30,18 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
                     }
                     // Parse modifiers (arg 0)
                     const mod_str = utils.stripQuotes(node.arg(parser, 0) orelse {
-                        logWarnMissingNodeArg(name, "modifier(s)");
-                        continue;
+                        return errMissingArg(name, "modifier(s)");
                     });
                     const modifiers = try utils.parseModifiers(mod_str) orelse {
-                        logWarnInvalidNodeArg(name, mod_str);
-                        continue;
+                        return errInvalidArg(name, mod_str);
                     };
 
                     // Parse button (arg 1)
                     const button_str = utils.stripQuotes(node.arg(parser, 1) orelse {
-                        logWarnMissingNodeArg(name, "button");
-                        continue;
+                        return errMissingArg(name, "button");
                     });
                     const button = helpers.parseButton(button_str) orelse {
-                        logWarnInvalidNodeArg(name, button_str);
-                        continue;
+                        return errInvalidArg(name, button_str);
                     };
 
                     const action: PointerAction = switch (name) {
@@ -61,11 +57,11 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
 
                     log.debug("pointer_binds.{s}: {s} {s}", .{ @tagName(name), mod_str, button_str });
                 } else {
-                    helpers.logWarnInvalidNode(node.name);
+                    return helpers.invalidNode(node.name);
                 }
             },
             .child_block_begin => {
-                try helpers.skipChildBlock(parser);
+                try helpers.unexpectedChildBlock(parser);
             },
             .child_block_end => {
                 return;
@@ -74,12 +70,14 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
     }
 }
 
-inline fn logWarnInvalidNodeArg(node_name: NodeName, node_value: []const u8) void {
-    log.warn("Invalid \"pointer_binds.{s}\" ({s}). Ignoring", .{ @tagName(node_name), node_value });
+fn errInvalidArg(node_name: NodeName, node_value: []const u8) error{InvalidConfig} {
+    log.err("Invalid \"pointer_binds.{s}\" ({s})", .{ @tagName(node_name), node_value });
+    return error.InvalidConfig;
 }
 
-inline fn logWarnMissingNodeArg(node_name: NodeName, comptime arg: []const u8) void {
-    log.warn("\"pointer_binds.{s}\" missing " ++ arg ++ " argument. Ignoring", .{@tagName(node_name)});
+fn errMissingArg(node_name: NodeName, comptime arg: []const u8) error{InvalidConfig} {
+    log.err("\"pointer_binds.{s}\" missing " ++ arg ++ " argument", .{@tagName(node_name)});
+    return error.InvalidConfig;
 }
 
 const std = @import("std");

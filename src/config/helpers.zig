@@ -56,31 +56,16 @@ pub fn hostMatches(node: kdl.Parser.Node, parser: *kdl.Parser, hostname: ?[]cons
     return mem.eql(u8, host_property, hostname_str);
 }
 
-/// Skips an entire child block including any nested child blocks
-pub fn skipChildBlock(parser: *kdl.Parser) !void {
-    log.warn("Unexpected child block. Skipping it", .{});
-
-    var depth: usize = 0;
-    while (try parser.next()) |event| {
-        switch (event) {
-            // Nested child block
-            .child_block_begin => depth += 1,
-            .child_block_end => {
-                if (depth == 0) {
-                    return;
-                } else {
-                    depth -= 1;
-                }
-            },
-            else => {
-                // We don't care about any nodes in here
-            },
-        }
-    }
+/// Returns error.InvalidConfig for an unexpected child block
+pub fn unexpectedChildBlock(parser: *kdl.Parser) error{ InvalidConfig, OutOfMemory, KdlParseError }!void {
+    _ = parser;
+    log.err("Unexpected child block", .{});
+    return error.InvalidConfig;
 }
 
-pub inline fn logWarnInvalidNode(node_name: []const u8) void {
-    log.warn("Invalid KDL node {s}. Ignoring it and carrying on", .{node_name});
+pub inline fn invalidNode(node_name: []const u8) error{InvalidConfig} {
+    log.err("Invalid KDL node {s}", .{node_name});
+    return error.InvalidConfig;
 }
 
 const std = @import("std");

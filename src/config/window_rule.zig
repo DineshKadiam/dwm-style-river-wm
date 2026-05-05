@@ -37,8 +37,8 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
                     const app_id_glob = if (node.prop(parser, "app_id")) |raw_app_id| blk: {
                         const app_id = utils.stripQuotes(raw_app_id);
                         globber.validate(app_id) catch {
-                            log.warn("Invalid glob for app_id \"{s}\"", .{app_id});
-                            continue;
+                            log.err("Invalid glob for app_id \"{s}\"", .{app_id});
+                            return error.InvalidConfig;
                         };
                         break :blk try utils.gpa.dupe(u8, app_id);
                     } else null;
@@ -46,8 +46,8 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
                     const title_glob = if (node.prop(parser, "title")) |raw_title| blk: {
                         const title = utils.stripQuotes(raw_title);
                         globber.validate(title) catch {
-                            log.warn("Invalid glob for title \"{s}\"", .{title});
-                            continue;
+                            log.err("Invalid glob for title \"{s}\"", .{title});
+                            return error.InvalidConfig;
                         };
                         break :blk try utils.gpa.dupe(u8, title);
                     } else null;
@@ -59,8 +59,7 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
                         .tags => {
                             const tags_str = utils.stripQuotes(node.arg(parser, 0) orelse "");
                             const tags = fmt.parseInt(u32, tags_str, 0) catch {
-                                logWarnInvalidNodeArg(name, tags_str);
-                                continue;
+                                return errInvalidArg(name, tags_str);
                             };
                             break :sw .{ .tags = tags };
                         },
@@ -74,12 +73,12 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
                         .action = action,
                     });
                 } else {
-                    helpers.logWarnInvalidNode(node.name);
+                    return helpers.invalidNode(node.name);
                 }
             },
             .child_block_begin => {
                 // window_rules should never have a nested child block
-                try helpers.skipChildBlock(parser);
+                try helpers.unexpectedChildBlock(parser);
             },
             .child_block_end => {
                 // Done parsing the window_rules block; return
@@ -89,8 +88,9 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
     }
 }
 
-inline fn logWarnInvalidNodeArg(node_name: NodeName, node_value: []const u8) void {
-    log.warn("Invalid \"window_rule.{s}\" ({s}). Ignoring", .{ @tagName(node_name), node_value });
+fn errInvalidArg(node_name: NodeName, node_value: []const u8) error{InvalidConfig} {
+    log.err("Invalid \"window_rule.{s}\" ({s})", .{ @tagName(node_name), node_value });
+    return error.InvalidConfig;
 }
 
 const std = @import("std");

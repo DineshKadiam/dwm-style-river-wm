@@ -85,16 +85,14 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
                         .square_border_width,
                         => |tag| {
                             const val = fmt.parseInt(u8, val_str, 10) catch {
-                                logWarnInvalidNodeArg(name, val_str);
-                                continue;
+                                return errInvalidArg(name, val_str);
                             };
                             @field(config.tag_overlay_config.?, @tagName(tag)) = val;
                             logDebugSettingNode(name, val_str);
                         },
                         .timeout => {
                             config.tag_overlay_config.?.timeout = fmt.parseInt(u32, val_str, 10) catch {
-                                logWarnInvalidNodeArg(name, val_str);
-                                continue;
+                                return errInvalidArg(name, val_str);
                             };
                             logDebugSettingNode(name, val_str);
                         },
@@ -108,17 +106,16 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
                         .square_inactive_occupied_color,
                         => |tag| {
                             @field(config.tag_overlay_config.?, @tagName(tag)) = utils.parseRgbaPixman(val_str) catch {
-                                logWarnInvalidNodeArg(name, val_str);
-                                continue;
+                                return errInvalidArg(name, val_str);
                             };
                             logDebugSettingNode(name, val_str);
                         },
                     }
                 } else {
-                    helpers.logWarnInvalidNode(node.name);
+                    return helpers.invalidNode(node.name);
                 }
             },
-            .child_block_begin => try helpers.skipChildBlock(parser),
+            .child_block_begin => try helpers.unexpectedChildBlock(parser),
             .child_block_end => return,
         }
     }
@@ -140,12 +137,9 @@ inline fn logDebugHostMismatch(node_name: anytype) void {
     }
 }
 
-inline fn logWarnInvalidNodeArg(node_name: anytype, node_value: []const u8) void {
-    const node_name_type = @TypeOf(node_name);
-    switch (node_name_type) {
-        NodeName => log.warn("Invalid \"tag_overlay.{s}\" ({s}). Using default value", .{ @tagName(node_name), node_value }),
-        else => @compileError("This function does not (yet) support type \"" ++ @typeName(node_name_type) ++ "\""),
-    }
+fn errInvalidArg(node_name: NodeName, node_value: []const u8) error{InvalidConfig} {
+    log.err("Invalid \"tag_overlay.{s}\" ({s})", .{ @tagName(node_name), node_value });
+    return error.InvalidConfig;
 }
 
 const std = @import("std");

@@ -64,30 +64,26 @@ pub fn load(config: *Config, parser: *kdl.Parser, name: ?[]const u8, hostname: ?
                         continue;
                     }
                     const val_str = utils.stripQuotes(node.arg(parser, 0) orelse {
-                        log.warn("\"input.{s}\" missing value argument. Ignoring", .{@tagName(tag)});
-                        continue;
+                        return errMissingArg(tag, "value");
                     });
                     switch (tag) {
                         .accel_speed => {
                             const speed = fmt.parseFloat(f64, val_str) catch {
-                                logWarnInvalidNodeArg(tag, val_str);
-                                continue;
+                                return errInvalidArg(tag, val_str);
                             };
                             input_config.accel_speed = speed;
                             log.debug("input.accel_speed: {s}", .{val_str});
                         },
                         .scroll_button => {
                             const button = helpers.parseButton(val_str) orelse {
-                                logWarnInvalidNodeArg(tag, val_str);
-                                continue;
+                                return errInvalidArg(tag, val_str);
                             };
                             input_config.scroll_button = button;
                             log.debug("input.scroll_button: {s}", .{val_str});
                         },
                         .rotation => {
                             const angle = fmt.parseInt(u32, val_str, 0) catch {
-                                logWarnInvalidNodeArg(tag, val_str);
-                                continue;
+                                return errInvalidArg(tag, val_str);
                             };
                             input_config.rotation = angle;
                             log.debug("input.rotation: {s}", .{val_str});
@@ -118,15 +114,15 @@ pub fn load(config: *Config, parser: *kdl.Parser, name: ?[]const u8, hostname: ?
                                 @field(input_config, field_name) = val;
                                 log.debug("input.{s}: {s}", .{ field_name, val_str });
                             } else {
-                                logWarnInvalidNodeArg(cmd, val_str);
+                                return errInvalidArg(cmd, val_str);
                             }
                         },
                     }
                 } else {
-                    helpers.logWarnInvalidNode(node.name);
+                    return helpers.invalidNode(node.name);
                 }
             },
-            .child_block_begin => try helpers.skipChildBlock(parser),
+            .child_block_begin => try helpers.unexpectedChildBlock(parser),
             .child_block_end => {
                 try config.input_configs.append(utils.gpa, input_config);
                 return;
@@ -135,8 +131,14 @@ pub fn load(config: *Config, parser: *kdl.Parser, name: ?[]const u8, hostname: ?
     }
 }
 
-inline fn logWarnInvalidNodeArg(node_name: NodeName, node_value: []const u8) void {
-    log.warn("Invalid \"input.{s}\" ({s}). Ignoring", .{ @tagName(node_name), node_value });
+fn errInvalidArg(node_name: NodeName, node_value: []const u8) error{InvalidConfig} {
+    log.err("Invalid \"input.{s}\" ({s})", .{ @tagName(node_name), node_value });
+    return error.InvalidConfig;
+}
+
+fn errMissingArg(node_name: NodeName, comptime arg: []const u8) error{InvalidConfig} {
+    log.err("\"input.{s}\" missing " ++ arg ++ " argument", .{@tagName(node_name)});
+    return error.InvalidConfig;
 }
 
 const std = @import("std");

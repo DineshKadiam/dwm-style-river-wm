@@ -23,35 +23,32 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
                         .width => {
                             const width_str = utils.stripQuotes(node.arg(parser, 0) orelse "");
                             config.border_width = fmt.parseInt(u8, width_str, 10) catch {
-                                logWarnInvalidNodeArg(name, width_str);
-                                continue;
+                                return errInvalidArg(name, width_str);
                             };
                             logDebugSettingNode(name, width_str);
                         },
                         .color_focused => {
                             const color_str = utils.stripQuotes(node.arg(parser, 0) orelse "");
                             config.border_color_focused = utils.parseRgba(color_str) catch {
-                                logWarnInvalidNodeArg(name, color_str);
-                                continue;
+                                return errInvalidArg(name, color_str);
                             };
                             logDebugSettingNode(name, color_str);
                         },
                         .color_unfocused => {
                             const color_str = utils.stripQuotes(node.arg(parser, 0) orelse "");
                             config.border_color_unfocused = utils.parseRgba(color_str) catch {
-                                logWarnInvalidNodeArg(name, color_str);
-                                continue;
+                                return errInvalidArg(name, color_str);
                             };
                             logDebugSettingNode(name, color_str);
                         },
                     }
                 } else {
-                    helpers.logWarnInvalidNode(node.name);
+                    return helpers.invalidNode(node.name);
                 }
             },
             .child_block_begin => {
                 // borders should never have a nested child block
-                try helpers.skipChildBlock(parser);
+                try helpers.unexpectedChildBlock(parser);
             },
             .child_block_end => {
                 // Done parsing the borders block; return
@@ -65,8 +62,9 @@ inline fn logDebugSettingNode(node_name: NodeName, node_value: []const u8) void 
     log.debug("Setting border.{s} to {s}", .{ @tagName(node_name), node_value });
 }
 
-inline fn logWarnInvalidNodeArg(node_name: NodeName, node_value: []const u8) void {
-    log.warn("Invalid \"border.{s}\" ({s}). Ignoring", .{ @tagName(node_name), node_value });
+fn errInvalidArg(node_name: NodeName, node_value: []const u8) error{InvalidConfig} {
+    log.err("Invalid \"border.{s}\" ({s})", .{ @tagName(node_name), node_value });
+    return error.InvalidConfig;
 }
 
 const std = @import("std");

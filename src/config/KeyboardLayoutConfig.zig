@@ -29,8 +29,7 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
                         continue;
                     }
                     const value = utils.stripQuotes(node.arg(parser, 0) orelse {
-                        logWarnMissingNodeArg(name);
-                        continue;
+                        return errMissingArg(name);
                     });
                     const duped = try utils.gpa.dupe(u8, value);
                     const target = switch (name) {
@@ -46,10 +45,10 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
                     target.* = duped;
                     logDebugSettingNode(name, value);
                 } else {
-                    helpers.logWarnInvalidNode(node.name);
+                    return helpers.invalidNode(node.name);
                 }
             },
-            .child_block_begin => try helpers.skipChildBlock(parser),
+            .child_block_begin => try helpers.unexpectedChildBlock(parser),
             .child_block_end => return,
         }
     }
@@ -59,8 +58,9 @@ inline fn logDebugSettingNode(node_name: NodeName, node_value: []const u8) void 
     log.debug("Setting keyboard_layout.{s} to {s}", .{ @tagName(node_name), node_value });
 }
 
-inline fn logWarnMissingNodeArg(node_name: NodeName) void {
-    log.warn("\"keyboard_layout.{s}\" missing argument. Ignoring", .{@tagName(node_name)});
+fn errMissingArg(node_name: NodeName) error{InvalidConfig} {
+    log.err("\"keyboard_layout.{s}\" missing argument", .{@tagName(node_name)});
+    return error.InvalidConfig;
 }
 
 const std = @import("std");

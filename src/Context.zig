@@ -96,6 +96,7 @@ pub fn create(options: Options) !*Context {
 }
 
 pub fn destroy(context: *Context) void {
+    context.config.destroy();
     context.env.deinit();
     context.im.destroy();
     context.wm.destroy();
