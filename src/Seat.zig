@@ -102,13 +102,11 @@ fn seatListener(river_seat_v1: *river.SeatV1, event: river.SeatV1.Event, seat: *
         .pointer_enter => |ev| if (seat.context.config.focus_follows_pointer) {
             seat.setWindowFocus(ev.window);
         },
-        .pointer_leave => if (seat.context.config.focus_follows_pointer) {
-            if (seat.pending_manage.window == null) {
-                // We only want to clear the pending focus if there's not already one set,
-                // e.g. from a .pointer_enter event.
-                seat.pending_manage.window = .clear_focus;
-            }
-        },
+        // We reverted clearing focus on .pointer_leave (introduced in ed72d8a). Clearing focus here
+        // causes popups to dismiss themselves when the parent window loses focus as the pointer
+        // moves toward them. Reverting ed72d8a actually makes this behavior match river-classic's
+        // focus_follows_cursor
+        .pointer_leave => {},
         .window_interaction => |ev| seat.setWindowFocus(ev.window),
         .op_delta => |ev| {
             seat.pending_manage.op_delta = .{ .dx = ev.dx, .dy = ev.dy };
