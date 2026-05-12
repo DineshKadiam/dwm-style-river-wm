@@ -13,6 +13,8 @@ single_window_ratio 0.70
 primary_side left 
 // Whether mousing over a new window should move focus
 focus_follows_pointer #true
+// Whether mousing over a new output should move output focus (i.e. the output new windows spawn on)
+output_focus_follows_pointer #true
 // Whether the focus should warp to the center of newly-focused windows
 pointer_warp_on_focus_change #true
 // Path to image to use as wallpaper
