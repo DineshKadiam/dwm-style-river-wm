@@ -43,6 +43,9 @@ pointer_warp_on_focus_change: bool = true,
 /// Path to the wallpaper image
 wallpaper_image_path: ?[]const u8 = null,
 
+/// XCursor theme; if null, the compositor default is used
+cursor: ?CursorConfig = null,
+
 /// Tag overlay configuration. If null, no overlay is created.
 tag_overlay_config: ?TagOverlayConfig = null,
 /// Bar configuration. If null, no bar is created.
@@ -79,6 +82,7 @@ const NodeName = enum {
     output_focus_follows_pointer,
     pointer_warp_on_focus_change,
     wallpaper_image_path,
+    cursor_theme,
     // Sections with child blocks
     bar,
     borders,
@@ -163,6 +167,7 @@ pub fn destroy(config: *Config) void {
     if (config.wallpaper_image_path) |path| {
         utils.gpa.free(path);
     }
+    if (config.cursor) |cursor| cursor.deinit();
     utils.gpa.destroy(config);
 }
 
@@ -287,6 +292,10 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                             };
                             logDebugSettingNode(name, path_str);
                         },
+                        .cursor_theme => {
+                            if (config.cursor) |old| old.deinit();
+                            config.cursor = try CursorConfig.parse(node, &parser);
+                        },
                         .input => {
                             pending_input_name = if (node.prop(&parser, "name")) |n|
                                 try utils.gpa.dupe(u8, utils.stripQuotes(n))
@@ -379,6 +388,7 @@ const keybind = @import("config/keybind.zig");
 const pointer_bind = @import("config/pointer_bind.zig");
 const window_rule = @import("config/window_rule.zig");
 const BarConfig = @import("config/BarConfig.zig");
+const CursorConfig = @import("config/CursorConfig.zig");
 const InputConfig = @import("config/InputConfig.zig");
 const TagOverlayConfig = @import("config/TagOverlayConfig.zig");
 
