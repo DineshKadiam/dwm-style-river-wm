@@ -139,7 +139,7 @@ const XkbBinding = struct {
 
         // TODO: Should I log.warn when commands return early?
         switch (xkb_binding.command) {
-            .spawn => |cmd| spawnProcess(cmd),
+            .spawn => |cmd| spawnProcess(cmd, &context.env),
             .focus_next_window => focusWindow(context, .next),
             .focus_prev_window => focusWindow(context, .prev),
             .focus_next_output => focusOutput(context, .next),
@@ -399,7 +399,7 @@ const XkbBinding = struct {
 
     // Borrowed and modified from river-classic
     // https://codeberg.org/river/river-classic/src/commit/d72408df18310d5945147d485fe4bb66eef043d3/river/process.zig
-    fn spawnProcess(cmd: []const [:0]const u8) void {
+    fn spawnProcess(cmd: []const [:0]const u8, env: *const process.EnvMap) void {
         const pid = posix.fork() catch |err| {
             return log.err("Failed to fork \"{s}\": {}", .{ cmd[0], err });
         };
@@ -410,9 +410,11 @@ const XkbBinding = struct {
             const c_argv = utils.gpa.allocSentinel(?[*:0]const u8, cmd.len, null) catch posix.exit(1);
             for (cmd, 0..) |arg, i| c_argv[i] = arg.ptr;
 
+            const envp = process.createNullDelimitedEnvMap(utils.gpa, env) catch posix.exit(1);
+
             const pid2 = posix.fork() catch posix.exit(1);
             if (pid2 == 0) {
-                posix.execvpeZ(c_argv[0].?, c_argv, std.c.environ) catch posix.exit(1);
+                posix.execvpeZ(c_argv[0].?, c_argv, envp) catch posix.exit(1);
             }
 
             posix.exit(0);

@@ -80,6 +80,8 @@ pub fn create(context: *Context, river_seat_v1: *river.SeatV1) !*Seat {
     seat.river_seat_v1.setListener(*Seat, seatListener, seat);
     seat.river_layer_shell_seat_v1.setListener(*Seat, riverLayerShellSeatListener, seat);
 
+    seat.setXcursorTheme();
+
     return seat;
 }
 
@@ -366,6 +368,11 @@ pub fn manage(seat: *Seat) void {
 
 pub fn render(seat: *Seat) void {
     _ = seat;
+}
+
+pub fn setXcursorTheme(seat: *Seat) void {
+    const cursor = seat.context.config.cursor orelse return;
+    seat.river_seat_v1.setXcursorTheme(cursor.theme, cursor.size);
 }
 
 pub fn movePointerBindingListener(_: *river.PointerBindingV1, event: river.PointerBindingV1.Event, seat: *Seat) void {

@@ -12,7 +12,6 @@ These are in no particular order anymore.
 - [ ] Add build-time options for including the wallpaper (and maybe bar)
 - [ ] Check pointer position and only warp if not on focused window already
 - [ ] Change focus direction when closing window
-- [ ] Use set_xcursor_theme request
 - [ ] Support overriding config location
 - [ ] Add support for center-primary layout
 - [ ] Support per-output bar visibility
@@ -55,3 +54,4 @@ These are in no particular order anymore.
 - [x] Support 12-hour clock format (maybe take any time format string?)
 - [x] Support configuring bar item positions (left/center/right)
 - [x] Skip proposing dimensions for floating windows altogether?
+- [x] Use set_xcursor_theme request

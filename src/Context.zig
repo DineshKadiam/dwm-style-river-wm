@@ -76,6 +76,14 @@ pub fn create(options: Options) !*Context {
     // Don't force children to have WAYLAND_DEBUG
     env.remove("WAYLAND_DEBUG");
 
+    // *Force* children to have Xcursor theme/size
+    if (options.config.cursor) |c| {
+        try env.put("XCURSOR_THEME", c.theme);
+        var buf: [11]u8 = undefined; // u32 max (4294967295) is 10 digits + null terminator
+        const size_str = try std.fmt.bufPrint(&buf, "{d}", .{c.size});
+        try env.put("XCURSOR_SIZE", size_str);
+    }
+
     context.* = .{
         .initialized = false,
         .env = env,
@@ -214,6 +222,12 @@ pub fn manage(context: *Context) void {
             }
         }
 
+        context.updateCursorInEnv(new_config);
+        var seat_it = context.wm.seats.iterator(.forward);
+        while (seat_it.next()) |seat| {
+            seat.setXcursorTheme();
+        }
+
         if (wallpaper_changed) {
             if (context.wallpaper_image) |img| img.destroy();
             context.wallpaper_image = loadWallpaperImage(new_config);
@@ -239,6 +253,24 @@ pub fn manage(context: *Context) void {
     var dev_it = context.im.libinput_devices.iterator(.forward);
     while (dev_it.next()) |libinput_device| {
         libinput_device.manage();
+    }
+}
+
+/// Updates XCURSOR_THEME and XCURSOR_SIZE in the child process environment
+/// so that spawned children inherit the configured cursor theme.
+fn updateCursorInEnv(context: *Context, config: *const Config) void {
+    if (config.cursor) |c| {
+        context.env.put("XCURSOR_THEME", c.theme) catch {
+            log.err("Failed to set XCURSOR_THEME in env", .{});
+        };
+        var buf: [11]u8 = undefined; // u32 max (4294967295) is 10 digits + null terminator
+        const size_str = std.fmt.bufPrint(&buf, "{d}", .{c.size}) catch return;
+        context.env.put("XCURSOR_SIZE", size_str) catch {
+            log.err("Failed to set XCURSOR_SIZE in env", .{});
+        };
+    } else {
+        context.env.remove("XCURSOR_THEME");
+        context.env.remove("XCURSOR_SIZE");
     }
 }
 
