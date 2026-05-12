@@ -43,8 +43,12 @@ pointer_warp_on_focus_change: bool = true,
 /// Path to the wallpaper image
 wallpaper_image_path: ?[]const u8 = null,
 
-/// XCursor theme; if null, the compositor default is used
-cursor: ?CursorConfig = null,
+cursor: ?struct {
+    /// Name of the XCursor theme to use, e.g. "Adwaita" or "Bibata-Modern-Classic"
+    theme: [:0]const u8,
+    /// Cursor size in pixels
+    size: u32,
+} = null,
 
 /// Tag overlay configuration. If null, no overlay is created.
 tag_overlay_config: ?TagOverlayConfig = null,
@@ -167,7 +171,9 @@ pub fn destroy(config: *Config) void {
     if (config.wallpaper_image_path) |path| {
         utils.gpa.free(path);
     }
-    if (config.cursor) |cursor| cursor.deinit();
+    if (config.cursor) |cursor| {
+        utils.gpa.free(cursor.theme);
+    }
     utils.gpa.destroy(config);
 }
 
@@ -287,14 +293,31 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                             }
 
                             const path_str = utils.stripQuotes(node.arg(&parser, 0).?);
-                            config.wallpaper_image_path = helpers.expandTilde(path_str) catch {
+                            const new_path = helpers.expandTilde(path_str) catch {
                                 return errInvalidArg(name, path_str);
                             };
+                            if (config.wallpaper_image_path) |old| utils.gpa.free(old);
+                            config.wallpaper_image_path = new_path;
                             logDebugSettingNode(name, path_str);
                         },
                         .cursor_theme => {
-                            if (config.cursor) |old| old.deinit();
-                            config.cursor = try CursorConfig.parse(node, &parser);
+                            if (config.cursor) |old| utils.gpa.free(old.theme);
+                            if (node.argcount() < 1) {
+                                log.err("\"cursor_theme\" missing theme name argument", .{});
+                                return error.InvalidConfig;
+                            }
+                            const theme_str = utils.stripQuotes(node.arg(&parser, 0).?);
+                            const theme = try utils.gpa.dupeZ(u8, theme_str);
+                            const size: u32 = if (node.argcount() >= 2) blk: {
+                                const size_str = utils.stripQuotes(node.arg(&parser, 1).?);
+                                break :blk fmt.parseInt(u32, size_str, 10) catch {
+                                    utils.gpa.free(theme);
+                                    log.err("Invalid \"cursor_theme\" size ({s})", .{size_str});
+                                    return error.InvalidConfig;
+                                };
+                            } else 24;
+                            logDebugSettingNode(name, theme_str);
+                            config.cursor = .{ .theme = theme, .size = size };
                         },
                         .input => {
                             pending_input_name = if (node.prop(&parser, "name")) |n|
@@ -388,7 +411,6 @@ const keybind = @import("config/keybind.zig");
 const pointer_bind = @import("config/pointer_bind.zig");
 const window_rule = @import("config/window_rule.zig");
 const BarConfig = @import("config/BarConfig.zig");
-const CursorConfig = @import("config/CursorConfig.zig");
 const InputConfig = @import("config/InputConfig.zig");
 const TagOverlayConfig = @import("config/TagOverlayConfig.zig");
 
