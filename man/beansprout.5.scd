@@ -54,6 +54,18 @@ This is useful for sharing a config file across machines. Nodes without a
 	outputs, scaled separately. If not set, the background is a blank black
 	screen.
 
+*cursor_theme* _theme_ [_size_]
+	XCursor theme to use. _theme_ must be the name of an installed XCursor
+	theme (e.g. a directory under _/usr/share/icons/_). _size_ is the cursor
+	size in pixels. (Default size: 24)
+
+	If not set, the compositor's default cursor theme is used. Note that the
+	theme cannot be reverted to the compositor default via config reload; set
+	a theme explicitly if you want to control it.
+
+	The configured theme and size are also exported as *XCURSOR_THEME* and
+	*XCURSOR_SIZE* environment variables for child processes.
+
 # BORDERS
 
 Border settings are placed inside a *borders* block:

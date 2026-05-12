@@ -47,6 +47,9 @@ pointer_warp_on_focus_change #true
 // The same image is displayed on all outputs, but scaled separately
 // If this config is missing, then the background is blank black screen
 wallpaper_image_path "~/Pictures/wallpaper.png"
+
+// XCursor theme name and size in pixels (size is optional, defaults to 24)
+cursor_theme "Adwaita" 24
 ```
 
 | Setting                      | Type   | Default | Description                                         |
@@ -59,6 +62,7 @@ wallpaper_image_path "~/Pictures/wallpaper.png"
 | `focus_follows_pointer`      | bool   | `#true` | Focus follows the pointer between windows           |
 | `pointer_warp_on_focus_change` | bool | `#true` | Warp pointer to center of newly-focused windows     |
 | `wallpaper_image_path`       | string | none    | Path to wallpaper image                             |
+| `cursor_theme`               | string [u32] | none | XCursor theme name, and optionally cursor size in pixels (default: 24). The theme name must match an installed XCursor theme directory (e.g. under `/usr/share/icons/`). Also sets `XCURSOR_THEME`/`XCURSOR_SIZE` for child processes. |
 
 Boolean values can be written as `#true`/`#false` or `true`/`false`.
 
