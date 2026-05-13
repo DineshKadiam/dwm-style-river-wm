@@ -37,6 +37,8 @@ attach_mode: AttachMode = .top,
 focus_follows_pointer: bool = true,
 /// Should the output that windows spawn on change to follow the pointer
 output_focus_follows_pointer: bool = true,
+/// Should focus follow windows being sent to another output
+focus_on_send: FocusOnSend = .if_visible,
 /// Should the pointer warp to the center of newly-focused windows
 pointer_warp_on_focus_change: bool = true,
 
@@ -76,6 +78,19 @@ pub const PrimarySide = enum { left, right };
 
 pub const AttachMode = enum { top, bottom };
 
+pub const FocusOnSend = enum {
+    /// follow the window only if it's visible on the destination (current behaviour as of 510feb42)
+    if_visible,
+    /// focus stays on current output, falling back to next visible window or getting cleared
+    never,
+    /// follow unconditionally, OR the window's tags onto the destination if the window wouldn't be visible
+    always,
+    /// follow unconditionally AND always OR the window's tags onto the destination even if the
+    /// window would be visible. This is only different than `always` in the case that the
+    /// window has multiple tags
+    always_or,
+};
+
 const NodeName = enum {
     attach_mode,
     primary_count,
@@ -84,6 +99,7 @@ const NodeName = enum {
     primary_side,
     focus_follows_pointer,
     output_focus_follows_pointer,
+    focus_on_send,
     pointer_warp_on_focus_change,
     wallpaper_image_path,
     cursor_theme,
@@ -276,6 +292,15 @@ fn load(config: *Config, reader: *Io.Reader) !void {
                                 logDebugSettingNode(name, output_focus_follows_pointer_str);
                             } else |_| {
                                 return errInvalidArg(name, output_focus_follows_pointer_str);
+                            }
+                        },
+                        .focus_on_send => {
+                            const focus_on_send_str = utils.stripQuotes(node.arg(&parser, 0) orelse "");
+                            if (std.meta.stringToEnum(FocusOnSend, focus_on_send_str)) |focus_on_send| {
+                                config.focus_on_send = focus_on_send;
+                                logDebugSettingNode(name, focus_on_send_str);
+                            } else {
+                                return errInvalidArg(name, focus_on_send_str);
                             }
                         },
                         .pointer_warp_on_focus_change => {

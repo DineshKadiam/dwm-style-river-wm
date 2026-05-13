@@ -72,8 +72,8 @@ need to set `WAYLAND_DISPLAY` yourself, e.g. `WAYLAND_DISPLAY=wayland-1 beanspro
 ## Configuration
 
 Beansprout is configured with a [KDL](https://kdl.dev) file at
-`$XDG_CONFIG_HOME/beansprout/config.kdl`. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md)
-for a full reference and [examples/config.kdl](examples/config.kdl) for an example config.
+`$XDG_CONFIG_HOME/beansprout/config.kdl`. See `beansprout(5)` for a full reference
+and [examples/config.kdl](examples/config.kdl) for an example config.
 
 ## Licensing
 

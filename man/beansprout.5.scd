@@ -49,6 +49,31 @@ This is useful for sharing a config file across machines. Nodes without a
 	Whether the pointer should warp to the center of newly-focused windows.
 	(Default: *true*)
 
+*focus_on_send* *if_visible*|*never*|*always*|*always_or*
+	Controls output and window focus when a window is sent to another output
+	with *send_to_next_output* or *send_to_prev_output*.
+	(Default: *if_visible*)
+
+	*if_visible*
+		Follow the window to the destination output only if the window's tags
+		are visible there. Otherwise, focus stays on the current output and
+		falls back to the next visible window.
+
+	*never*
+		Focus never follows the window. Focus stays on the current output and
+		falls back to the next visible window regardless of tag visibility.
+
+	*always*
+		Focus always follows the window. If the window's tags are not visible
+		on the destination, its tags are OR'd onto the destination's active
+		tags to make it visible.
+
+	*always_or*
+		Focus always follows the window and the window's tags are always OR'd
+		onto the destination's active tags, even if the window would already
+		be visible. This differs from *always* when the window has multiple
+		tags and not all of them are currently shown on the destination.
+
 *wallpaper_image_path* _path_
 	Path to image to use as wallpaper. The same image is displayed on all
 	outputs, scaled separately. If not set, the background is a blank black
