@@ -37,7 +37,7 @@ dimensions_hint: DimensionsHint = .{},
 /// to wait for that event.
 ///
 /// This can't be part of PendingManage because it lasts between manage cycles.
-needs_position: bool = true,
+needs_position: bool = false,
 
 initialized: bool = false,
 
