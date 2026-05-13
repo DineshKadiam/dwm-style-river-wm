@@ -172,8 +172,8 @@ fn windowListener(river_window_v1: *river.WindowV1, event: river.WindowV1.Event,
                     window.needs_position = false;
 
                     window.pending_render.position = .{
-                        .x = (output.geometry.width / 2) - (window.pending_manage.dimensions.?.width / 2),
-                        .y = (output.geometry.height / 2) - (window.pending_manage.dimensions.?.height / 2),
+                        .x = output.usable_geometry.x + (output.geometry.width / 2) - (window.pending_manage.dimensions.?.width / 2),
+                        .y = output.usable_geometry.y + (output.geometry.height / 2) - (window.pending_manage.dimensions.?.height / 2),
                     };
                 }
             }
