@@ -349,12 +349,14 @@ const XkbBinding = struct {
                 current_focus.pending_render.focused = false;
             }
             // Then set the new one
-            if (output.windows.first()) |window| {
-                seat.pending_manage.window = .{ .window = window };
-                // Pointer won't warp if window is empty
-                seat.pending_manage.should_warp_pointer = true;
+            var window_it = output.windows.iterator(.forward);
+            while (window_it.next()) |window| {
+                if (window.tags & output.tags != 0) {
+                    seat.pending_manage.window = .{ .window = window };
+                    seat.pending_manage.should_warp_pointer = true;
+                    break;
+                }
             } else {
-                // Clear old focus
                 seat.pending_manage.window = .clear_focus;
             }
         } else {
@@ -391,9 +393,30 @@ const XkbBinding = struct {
             window.link.remove();
             output.windows.append(window);
 
-            seat.pending_manage.output = .{ .output = output };
-            seat.pending_manage.should_warp_pointer = true;
             window.pending_manage.pending_output = .{ .output = output };
+
+            if (output.tags & window.tags != 0) {
+                // Window is visible on the destination; follow it there.
+                seat.pending_manage.output = .{ .output = output };
+                seat.pending_manage.should_warp_pointer = true;
+            } else {
+                // Window isn't visible on the destination; keep focus on the current output
+                // and move window focus to the next visible window here.
+                var it = current_output.windows.iterator(.forward);
+                var new_focus: ?*Window = null;
+                while (it.next()) |w| {
+                    if (w.tags & current_output.tags != 0) {
+                        new_focus = w;
+                        break;
+                    }
+                }
+                if (new_focus) |w| {
+                    seat.pending_manage.window = .{ .window = w };
+                    seat.pending_manage.should_warp_pointer = true;
+                } else {
+                    seat.pending_manage.window = .clear_focus;
+                }
+            }
         }
     }
 

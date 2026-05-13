@@ -130,11 +130,21 @@ fn seatListener(river_seat_v1: *river.SeatV1, event: river.SeatV1.Event, seat: *
 
                 // New output, find which one the pointer is in
                 var it = seat.context.wm.outputs.iterator(.forward);
-                while (it.next()) |output| {
+                while (it.next()) |output| outer: {
                     if (output != focused_output and
                         utils.isPosInRect(seat.pointer_pos, output.geometry))
                     {
-                        seat.focused_output = output;
+                        seat.pending_manage.output = .{ .output = output };
+                        var window_it = output.windows.iterator(.forward);
+                        while (window_it.next()) |w| inner: {
+                            if (w.tags & output.tags != 0) {
+                                seat.pending_manage.window = .{ .window = w };
+                                break :inner;
+                            }
+                        } else {
+                            seat.pending_manage.window = .clear_focus;
+                        }
+                        break :outer;
                     }
                 }
             }
