@@ -37,7 +37,7 @@ dimensions_hint: DimensionsHint = .{},
 /// to wait for that event.
 ///
 /// This can't be part of PendingManage because it lasts between manage cycles.
-needs_position: bool = true,
+needs_position: bool = false,
 
 initialized: bool = false,
 
@@ -171,9 +171,13 @@ fn windowListener(river_window_v1: *river.WindowV1, event: river.WindowV1.Event,
                 if (window.output) |output| {
                     window.needs_position = false;
 
+                    window.floating_rect.x = output.usable_geometry.x + (output.geometry.width / 2) - (window.pending_manage.dimensions.?.width / 2);
+                    window.floating_rect.y = output.usable_geometry.y + (output.geometry.height / 2) - (window.pending_manage.dimensions.?.height / 2);
+                    window.floating_rect.width = @intCast(ev.width);
+                    window.floating_rect.height = @intCast(ev.height);
                     window.pending_render.position = .{
-                        .x = (output.geometry.width / 2) - (window.pending_manage.dimensions.?.width / 2),
-                        .y = (output.geometry.height / 2) - (window.pending_manage.dimensions.?.height / 2),
+                        .x = window.floating_rect.x,
+                        .y = window.floating_rect.y,
                     };
                 }
             }
