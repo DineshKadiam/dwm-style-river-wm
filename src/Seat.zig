@@ -245,6 +245,10 @@ pub fn manage(seat: *Seat) void {
                     log.warn("Trying to warp-on-focus-change without a focused window.", .{});
                     break :blk;
                 };
+                if (window.needs_position) {
+                    // Window is floating and still needs its position set, don't warp.
+                    break :blk;
+                }
                 // Warp pointer to center of focused window;
                 // because the x and y coords are set during render, we need to check if
                 // there are new coordinates in window.pending_render.
