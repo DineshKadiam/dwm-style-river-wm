@@ -130,7 +130,7 @@ fn addFallbackKeybinds(config: *Config) void {
     const Entry = struct { keybind.Key, XkbBindings.Command };
     const fallbacks = [_]Entry{
         .{ .{ .modifiers = .{ .ctrl = true, .mod1 = true }, .keysym = .Delete }, @unionInit(XkbBindings.Command, "exit_river", {}) },
-        .{ .{ .modifiers = .{ .mod4 = true, .shift = true }, .keysym = .R }, @unionInit(XkbBindings.Command, "reload_config", {}) },
+        .{ .{ .modifiers = .{ .mod4 = true, .shift = true }, .keysym = .r }, @unionInit(XkbBindings.Command, "reload_config", {}) },
         .{ .{ .modifiers = .{ .mod4 = true }, .keysym = .t }, .{ .spawn = utils.gpa.dupe([:0]const u8, &.{
             utils.gpa.dupeZ(u8, "foot") catch @panic("Out of memory"),
         }) catch @panic("Out of memory") } },
