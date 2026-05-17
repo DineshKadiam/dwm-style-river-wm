@@ -14,3 +14,8 @@ SPDX-License-Identifier = "HPND"
 path = [".gitignore", "examples/**"]
 SPDX-FileCopyrightText = "2026 Ben Buhse <me@benbuhse.email>"
 SPDX-License-Identifier = "CC0-1.0"
+
+[[annotations]]
+path = ["src/stb_image.h"]
+SPDX-FileCopyrightText = "2017 Sean Barrett"
+SPDX-License-Identifier = "MIT OR Unlicense"

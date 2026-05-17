@@ -37,7 +37,6 @@ pub fn build(b: *std.Build) !void {
     const pixman = b.dependency("pixman", .{}).module("pixman");
     const xkbcommon = b.dependency("xkbcommon", .{}).module("xkbcommon");
     const zeit = b.dependency("zeit", .{}).module("zeit");
-    const zigimg = b.dependency("zigimg", .{}).module("zigimg");
 
     scanner.addCustomProtocol(b.path("protocol/river-input-management-v1.xml"));
     scanner.addCustomProtocol(b.path("protocol/river-libinput-config-v1.xml"));
@@ -102,13 +101,17 @@ pub fn build(b: *std.Build) !void {
 
     beansprout.root_module.addOptions("build_options", options);
 
+    beansprout.root_module.addCSourceFile(.{
+        .file = b.path("src/stb_image.c"),
+        .flags = &.{},
+    });
+
     beansprout.root_module.addImport("wayland", wayland);
     beansprout.root_module.addImport("fcft", fcft);
     beansprout.root_module.addImport("kdl", kdl);
     beansprout.root_module.addImport("known_folders", known_folders);
     beansprout.root_module.addImport("pixman", pixman);
     beansprout.root_module.addImport("xkbcommon", xkbcommon);
-    beansprout.root_module.addImport("zigimg", zigimg);
     beansprout.root_module.addImport("zeit", zeit);
 
     beansprout.root_module.link_libc = true;

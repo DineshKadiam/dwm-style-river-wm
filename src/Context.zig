@@ -273,7 +273,9 @@ fn updateCursorInEnv(context: *Context, config: Config) void {
 
 fn loadWallpaperImage(config: Config) ?*Wallpaper.Image {
     const image_path = config.wallpaper_image_path orelse return null;
-    if (image_path.len == 0) return null;
+    if (image_path.len == 0) {
+        return null;
+    }
     return Wallpaper.Image.create(image_path) catch |e| {
         log.err("Failed to load wallpaper image from path \"{s}\": {s}", .{ image_path, @errorName(e) });
         return null;

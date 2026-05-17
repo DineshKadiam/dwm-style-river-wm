@@ -43,7 +43,7 @@ focus_on_send: FocusOnSend = .if_visible,
 pointer_warp_on_focus_change: bool = true,
 
 /// Path to the wallpaper image
-wallpaper_image_path: ?[]const u8 = null,
+wallpaper_image_path: ?[:0]const u8 = null,
 
 cursor: ?struct {
     /// Name of the XCursor theme to use, e.g. "Adwaita" or "Bibata-Modern-Classic"

@@ -23,8 +23,8 @@ pub const PendingRender = struct {
 /// Stored on Context; each output's Wallpaper references it for rendering.
 pub const Image = struct {
     // This is used as the backing store for the pixman image
-    // It's the actual image (png, jpeg, etc.) decoded into pixels.
-    zigimg_image: zigimg.Image,
+    // It's the raw image decoded into pixels.
+    stbi_pixels: [*]u8,
     // Only used on big-endian; holds manually converted ARGB pixel data.
     // On BE: std.ArrayList(u32), on LE: void
     argb_pixels: if (native_endian == .big) std.ArrayList(u32) else void = if (native_endian == .big) .empty else {},
@@ -32,48 +32,49 @@ pub const Image = struct {
     // This is the actual scaled, transformed, and rendered image
     pix_image: *pixman.Image,
 
-    pub fn create(image_path: []const u8) !*Image {
+    pub fn create(image_path: [:0]const u8) !*Image {
         var image = try utils.gpa.create(Image);
         errdefer utils.gpa.destroy(image);
 
-        var read_buf: [zigimg.io.DEFAULT_BUFFER_SIZE]u8 = undefined;
-        image.zigimg_image = try zigimg.Image.fromFilePath(utils.gpa, io, image_path, &read_buf);
-        errdefer image.zigimg_image.deinit(utils.gpa);
+        var width: c_int = 0;
+        var height: c_int = 0;
+        var channels_in_file: c_int = 0;
+        const stbi_pixels = stbi_load(image_path, &width, &height, &channels_in_file, 4) orelse {
+            if (stbi_failure_reason()) |reason| {
+                log.err("stbi_load failed: {s}", .{reason});
+            }
+            return error.FailedToLoadImage;
+        };
+        image.stbi_pixels = stbi_pixels;
+        errdefer stbi_image_free(stbi_pixels);
 
-        // We don't want to deal with all the possible formats,
-        // so let's just convert to one we can use with pixman.
-        if (image.zigimg_image.pixelFormat() != .rgba32) {
-            try image.zigimg_image.convert(utils.gpa, .rgba32);
-        }
+        log.debug("Image loaded ({}x{})", .{ width, height });
 
-        log.debug("Image loaded ({}x{})", .{ image.zigimg_image.width, image.zigimg_image.height });
+        const stride: c_int = width * 4;
 
-        const pixels = image.zigimg_image.pixels.rgba32;
-        const width: c_int = @intCast(image.zigimg_image.width);
-        const height: c_int = @intCast(image.zigimg_image.height);
-        const stride: c_int = @intCast(image.zigimg_image.width * image.zigimg_image.pixelFormat().pixelStride());
-
-        // zigimg's Rgba32 is an extern struct {r, g, b, a}, which actually matches pixman's a8b8g8r8
-        // (u32 with R at bits 0-7, A at bits 24-31) on little endian machines. That means we can actually
-        // use zigimg's pixel data directly. On big-endian we keep the manual conversion I used to use.
+        // stbi_load with desired_channels=4 returns pixels as {r, g, b, a} bytes, which actually
+        // matches pixman's a8b8g8r8 (u32 with R at bits 0-7, A at bits 24-31) on little endian
+        // machines. That means we can use the pixel data directly. On big-endian we keep the
+        // manual conversion.
         switch (native_endian) {
             .little => {
                 image.pix_image = pixman.Image.createBits(
                     .a8b8g8r8,
                     width,
                     height,
-                    @ptrCast(@alignCast(pixels.ptr)),
+                    @ptrCast(@alignCast(stbi_pixels)),
                     stride,
                 ) orelse return error.FailedToCreatePixmanImage;
             },
             .big => {
-                image.argb_pixels = try std.ArrayList(u32).initCapacity(utils.gpa, pixels.len);
+                const pixel_count: usize = @intCast(width * height);
+                image.argb_pixels = try std.ArrayList(u32).initCapacity(utils.gpa, pixel_count);
                 errdefer image.argb_pixels.deinit(utils.gpa);
-                for (pixels) |px| {
-                    const a: u32 = px.a;
-                    const r: u32 = px.r;
-                    const g: u32 = px.g;
-                    const b: u32 = px.b;
+                for (0..pixel_count) |i| {
+                    const r: u32 = stbi_pixels[i * 4 + 0];
+                    const g: u32 = stbi_pixels[i * 4 + 1];
+                    const b: u32 = stbi_pixels[i * 4 + 2];
+                    const a: u32 = stbi_pixels[i * 4 + 3];
                     image.argb_pixels.appendAssumeCapacity((a << 24) | (r << 16) | (g << 8) | b);
                 }
                 image.pix_image = pixman.Image.createBits(
@@ -92,8 +93,7 @@ pub const Image = struct {
     pub fn destroy(image: *Image) void {
         _ = image.pix_image.unref();
         if (native_endian == .big) image.argb_pixels.deinit(utils.gpa);
-        image.zigimg_image.deinit(utils.gpa);
-
+        stbi_image_free(image.stbi_pixels);
         utils.gpa.destroy(image);
     }
 };
@@ -278,17 +278,18 @@ fn draw(wallpaper: *Wallpaper, output_width: u31, output_height: u31, output_sca
 const std = @import("std");
 const builtin = @import("builtin");
 const native_endian = builtin.cpu.arch.endian();
-const Io = std.Io;
-const io = Io.Threaded.global_single_threaded.io();
 
 const wayland = @import("wayland");
 const wl = wayland.client.wl;
 const river = wayland.client.river;
 const pixman = @import("pixman");
-const zigimg = @import("zigimg");
 
 const utils = @import("utils.zig");
 const Context = @import("Context.zig");
 const Output = @import("Output.zig");
 
 const log = std.log.scoped(.Wallpaper);
+
+extern fn stbi_load(filename: [*:0]const u8, x: *c_int, y: *c_int, channels_in_file: *c_int, desired_channels: c_int) ?[*]u8;
+extern fn stbi_image_free(retval_from_stbi_load: ?*anyopaque) void;
+extern fn stbi_failure_reason() ?[*:0]const u8;
