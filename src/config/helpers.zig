@@ -140,7 +140,7 @@ test "parseButton invalid" {
 }
 
 test "expandTilde with tilde" {
-    const home = std.posix.getenv("HOME") orelse return;
+    const home = std.mem.span(std.c.getenv("HOME") orelse return);
     var env = std.process.Environ.Map.init(testing.allocator);
     defer env.deinit();
     try env.put("HOME", home);
