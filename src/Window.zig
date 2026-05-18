@@ -160,7 +160,7 @@ fn windowListener(river_window_v1: *river.WindowV1, event: river.WindowV1.Event,
                         seat.pending_manage.pointer_resize_request = null;
                 }
             }
-            window.nextFocus();
+            window.removeFocus();
 
             window.destroy();
         },
@@ -382,7 +382,7 @@ pub fn manage(window: *Window) void {
         if (window.output) |o| {
             if (o.tags & window.tags == 0) {
                 // This window isn't visible anymore, we need to move focus off it
-                window.nextFocus();
+                window.removeFocus();
             }
         }
     }
@@ -471,32 +471,44 @@ fn applyRules(window: *Window) struct {
     };
 }
 
-/// Check if this window is focused on an output, if it is, then we move the
-/// output's focus to the next window in its list.
-fn nextFocus(window: *Window) void {
-    if (window.output) |output| {
-        // Get a new window for the wm to focus
-        var it = window.context.wm.seats.iterator(.forward);
-        while (it.next()) |seat| {
-            if (seat.focused_window == window) {
-                // Find another window to focus and warp pointer there
-                if (output.nextWindow(window)) |next_focus| {
-                    if (next_focus != window) {
-                        seat.pending_manage.window = .{ .window = next_focus };
-                        seat.pending_manage.should_warp_pointer = true;
-                    } else {
-                        // This was the only visible window, so nothing to change focus to
-                        seat.pending_manage.window = .clear_focus;
-                    }
-                } else {
-                    // TODO: I believe this should be unreachable, needs further testing.
-                    //       Regardless, it probably doesn't make sense to clear focus if this
-                    //       window wasn't focused.
-                    seat.pending_manage.window = .clear_focus;
-                }
+/// Removes this window from all seat focus state. If a seat had this window focused
+/// or queued as pending focus, redirects it to the next window instead.
+fn removeFocus(window: *Window) void {
+    var it = window.context.wm.seats.iterator(.forward);
+    while (it.next()) |seat| {
+        if (seat.focused_window == window) {
+            // Need to clear focused_window to prevent the use-after-free seen in #20
+            seat.focused_window = null;
+
+            window.assignNextFocus(seat);
+            seat.pending_manage.should_warp_pointer = true;
+        } else if (seat.pending_manage.window) |pending_window| {
+            // This window isn't focused yet, but a previous window was closed in the same
+            // dispatch cycle and set this one as the pending focus. We need to skip to the
+            // next.
+            switch (pending_window) {
+                .window => |pending_w| if (pending_w == window) {
+                    window.assignNextFocus(seat);
+                },
+                else => {},
             }
         }
     }
+}
+
+/// Sets seat.pending_manage.window to the next visible window on this window's output,
+/// or clear_focus if there is none.
+fn assignNextFocus(window: *Window, seat: *Seat) void {
+    seat.pending_manage.window = blk: {
+        if (window.output) |output| {
+            const next = output.nextWindow(window) orelse break :blk .clear_focus;
+            // next == window means this was the only visible window, so nothing to change focus to
+            if (next != window) {
+                break :blk .{ .window = next };
+            }
+        }
+        break :blk .clear_focus;
+    };
 }
 
 const std = @import("std");
