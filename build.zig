@@ -12,9 +12,13 @@ pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const strip = b.option(bool, "strip", "Omit debug information") orelse false;
-    const llvm = b.option(bool, "llvm", "Use LLVM backend") orelse false;
-    const pie = b.option(bool, "pie", "Build a Position Independent Executable") orelse false;
+    const strip = b.option(bool, "strip", "Omit debug information. Defaults to false.") orelse false;
+    const pie = b.option(bool, "pie", "Build a Position Independent Executable. Defaults to false.") orelse false;
+    const llvm = b.option(bool, "llvm", "Use LLVM compiled backend. Defaults to false on x86, else true.") orelse switch (target.result.cpu.arch) {
+        // self-hosted backend seems to work *okay* for x86_64, but it needs work on other architectures
+        .x86_64 => false,
+        else => true,
+    };
     const man_pages = b.option(
         bool,
         "man-pages",
@@ -97,6 +101,7 @@ pub fn build(b: *std.Build) !void {
         }),
     });
     beansprout.use_llvm = llvm;
+    beansprout.use_lld = llvm;
     beansprout.pie = pie;
 
     beansprout.root_module.addOptions("build_options", options);
