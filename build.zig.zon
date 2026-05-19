@@ -20,7 +20,7 @@
             .hash = "xkbcommon-0.4.0-VDqIe0i2AgDRsok2GpMFYJ8SVhQS10_PI2M_CnHXsJJZ",
         },
         .kdl = .{
-            .url = "https://codeberg.org/desttinghim/zig-kdl/archive/main.tar.gz",
+            .url = "https://codeberg.org/desttinghim/zig-kdl/archive/22fa7655d70de1f447c864921ab847effec355f3.tar.gz",
             .hash = "kdl-0.0.0-8rilELAEAgCwhdgb36ZsWmGgtvrKaLmLI7eMlwBz8UDt",
         },
         .known_folders = .{
