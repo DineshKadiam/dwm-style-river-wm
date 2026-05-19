@@ -14,9 +14,8 @@ pub fn build(b: *std.Build) !void {
 
     const strip = b.option(bool, "strip", "Omit debug information. Defaults to false.") orelse false;
     const pie = b.option(bool, "pie", "Build a Position Independent Executable. Defaults to false.") orelse false;
-    const llvm = b.option(bool, "llvm", "Use LLVM compiled backend. Defaults to false on x86, else true.") orelse switch (target.result.cpu.arch) {
-        // self-hosted backend seems to work *okay* for x86_64, but it needs work on other architectures
-        .x86_64 => false,
+    const llvm = b.option(bool, "llvm", "Use LLVM compiled backend. Defaults to false on x86_64 debug builds, true otherwise.") orelse switch (target.result.cpu.arch) {
+        .x86_64 => optimize != .Debug,
         else => true,
     };
     const man_pages = b.option(
