@@ -13,9 +13,17 @@ Beansprout uses a primary/stack tiling layout inspired by dwm with a customizabl
 Similarly, beansprout has a 32-bit tag system, rather than workspaces. Each output has its own tags and own
 primary count/ratio.
 
-## Building
+## Downloading
 
-Requires [Zig](https://ziglang.org/) 0.15.1 or later.
+Tarballs are available for x86_64 on the Codeberg releases page.
+
+Tarballs starting with version v1.0.0 are signed with [minisign](https://jedisct1.github.io/minisign/) using the public key:
+
+`RWQcxCZRzxZ6AifHx9eOsLFLI5zhC46dhFIBP+CwEsZxDzotewvh0a4D`
+
+## Building from Source
+
+Requires [Zig](https://ziglang.org/) 0.16.0 or later.
 
 ### Dependencies
 
