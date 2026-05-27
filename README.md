@@ -83,6 +83,10 @@ Beansprout is configured with a [KDL](https://kdl.dev) file at
 `$XDG_CONFIG_HOME/beansprout/config.kdl`. See `beansprout(5)` for a full reference
 and [examples/config.kdl](examples/config.kdl) for an example config.
 
+## Support
+
+Feel free to join #beansprout on [libera.chat](https://libera.chat/) to ask for help!
+
 ## Licensing
 
 This project follows the [REUSE Specification](https://reuse.software/spec-3.3/),
