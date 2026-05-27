@@ -8,6 +8,7 @@ const NodeName = enum {
     tags,
     vsync,
     async,
+    output,
 };
 
 pub const Rule = struct {
@@ -21,6 +22,7 @@ pub const Action = union(enum) {
     float: bool,
     tags: u32,
     presentation_mode: PresentationMode,
+    output: []const u8,
 };
 
 /// State accumulated while parsing a KDL node
@@ -123,6 +125,13 @@ fn flushNode(config: *Config, hostname: ?[]const u8, state: ParseState) !void {
                 return errInvalidArg(name, tags_str);
             };
             break :sw .{ .tags = tags };
+        },
+        .output => {
+            if (state.arg_count < 1) {
+                return errMissingArg(name);
+            }
+            const output = utils.stripQuotes(state.arg);
+            break :sw .{ .output = try utils.gpa.dupe(u8, output) };
         },
         inline .vsync, .async => |mode_name| .{
             .presentation_mode = @field(PresentationMode, @tagName(mode_name)),

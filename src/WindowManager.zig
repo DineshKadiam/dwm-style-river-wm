@@ -83,6 +83,24 @@ pub fn prevOutput(wm: *WindowManager, current: *Output) ?*Output {
     return null;
 }
 
+/// Get a specific output from friendly name or description.
+pub fn outputFromName(wm: *WindowManager, name: []const u8) ?*Output {
+    var it = wm.outputs.iterator(.forward);
+    while (it.next()) |output| {
+        if (output.name) |output_name| {
+            if (std.mem.eql(u8, output_name, name)) {
+                return output;
+            }
+        }
+        if (output.description) |output_description| {
+            if (std.mem.eql(u8, output_description, name)) {
+                return output;
+            }
+        }
+    }
+    return null;
+}
+
 fn initialize(wm: *WindowManager) void {
     if (wm.context.initialized) return;
 

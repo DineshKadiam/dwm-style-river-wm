@@ -386,63 +386,7 @@ const XkbBinding = struct {
                 break :blk;
             }
 
-            // We have to remove window from current output's windows list first
-            window.link.remove();
-            output.windows.append(window);
-
-            window.pending_manage.pending_output = .{ .output = output };
-
-            switch (context.config.focus_on_send) {
-                .if_visible => if (output.tags & window.tags != 0) {
-                    // Focus is following the window
-                    seat.pending_manage.output = .{ .output = output };
-                    seat.pending_manage.should_warp_pointer = true;
-                } else {
-                    // Focus isn't following, so we need to find a fallback
-                    var it = current_output.windows.iterator(.forward);
-                    while (it.next()) |w| {
-                        if (w.tags & current_output.tags != 0) {
-                            seat.pending_manage.window = .{ .window = w };
-                            seat.pending_manage.should_warp_pointer = true;
-                            break;
-                        }
-                    } else {
-                        seat.pending_manage.window = .clear_focus;
-                    }
-                },
-                .never => {
-                    // Focus isn't following, so we need to find a fallback
-                    var it = current_output.windows.iterator(.forward);
-                    while (it.next()) |w| {
-                        if (w.tags & current_output.tags != 0) {
-                            seat.pending_manage.window = .{ .window = w };
-                            seat.pending_manage.should_warp_pointer = true;
-                            break;
-                        }
-                    } else {
-                        seat.pending_manage.window = .clear_focus;
-                    }
-                },
-                .always => {
-                    seat.pending_manage.output = .{ .output = output };
-                    seat.pending_manage.should_warp_pointer = true;
-                    if (output.tags & window.tags == 0) {
-                        // Focus is following the window, but it wouldn't be visible, so we're
-                        // going to OR the window's tags onto the output
-                        output.pending_manage.tags = output.tags | window.tags;
-                    }
-                },
-                .always_or => {
-                    seat.pending_manage.output = .{ .output = output };
-                    seat.pending_manage.should_warp_pointer = true;
-                    const new_tags = output.tags | window.tags;
-                    if (new_tags != output.tags) {
-                        // Focus is following the window and the window has tags that aren't
-                        // active on the new output so let's OR them in
-                        output.pending_manage.tags = new_tags;
-                    }
-                },
-            }
+            window.sendToOutput(output);
         }
     }
 

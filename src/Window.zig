@@ -281,6 +281,9 @@ pub fn initialize(window: *Window) void {
     if (res.presentation_mode) |presentation_mode| {
         window.presentation_mode = presentation_mode;
     }
+    if (res.output) |output| {
+        window.sendToOutput(output);
+    }
 }
 
 pub fn manage(window: *Window) void {
@@ -442,10 +445,12 @@ fn applyRules(window: *Window) struct {
     float: ?bool,
     tags: ?u32,
     presentation_mode: ?PresentationMode,
+    output: ?*Output,
 } {
     var float: ?bool = null;
     var tags: ?u32 = null;
     var presentation_mode: ?PresentationMode = null;
+    var output: ?*Output = null;
     for (window.context.config.window_rules.items) |rule| {
         const app_id_matches = if (rule.app_id_glob) |glob|
             if (window.app_id) |app_id| globber.match(app_id, glob) else false
@@ -460,6 +465,7 @@ fn applyRules(window: *Window) struct {
                 .float => |should_float| float = should_float,
                 .tags => |tagmask| tags = tagmask,
                 .presentation_mode => |mode| presentation_mode = mode,
+                .output => |new_output| output = window.context.wm.outputFromName(new_output),
             }
         }
     }
@@ -468,7 +474,75 @@ fn applyRules(window: *Window) struct {
         .float = float,
         .tags = tags,
         .presentation_mode = presentation_mode,
+        .output = output,
     };
+}
+
+/// Send window to a new output. Requires that the window is currently on an
+/// output AND that the output is currently focused on the first seat.
+pub fn sendToOutput(window: *Window, output: *Output) void {
+    const context = window.context;
+    const wm = context.wm;
+    const seat = wm.seats.first() orelse return;
+
+    const current_output = seat.focused_output.?;
+
+    window.link.remove();
+    output.windows.append(window);
+
+    window.pending_manage.pending_output = .{ .output = output };
+
+    switch (context.config.focus_on_send) {
+        .if_visible => if (output.tags & window.tags != 0) {
+            // Focus is following the window
+            seat.pending_manage.output = .{ .output = output };
+            seat.pending_manage.should_warp_pointer = true;
+        } else {
+            // Focus isn't following, so we need to find a fallback
+            var it = current_output.windows.iterator(.forward);
+            while (it.next()) |w| {
+                if (w.tags & current_output.tags != 0) {
+                    seat.pending_manage.window = .{ .window = w };
+                    seat.pending_manage.should_warp_pointer = true;
+                    break;
+                }
+            } else {
+                seat.pending_manage.window = .clear_focus;
+            }
+        },
+        .never => {
+            // Focus isn't following, so we need to find a fallback
+            var it = current_output.windows.iterator(.forward);
+            while (it.next()) |w| {
+                if (w.tags & current_output.tags != 0) {
+                    seat.pending_manage.window = .{ .window = w };
+                    seat.pending_manage.should_warp_pointer = true;
+                    break;
+                }
+            } else {
+                seat.pending_manage.window = .clear_focus;
+            }
+        },
+        .always => {
+            seat.pending_manage.output = .{ .output = output };
+            seat.pending_manage.should_warp_pointer = true;
+            if (output.tags & window.tags == 0) {
+                // Focus is following the window, but it wouldn't be visible, so we're
+                // going to OR the window's tags onto the output
+                output.pending_manage.tags = output.tags | window.tags;
+            }
+        },
+        .always_or => {
+            seat.pending_manage.output = .{ .output = output };
+            seat.pending_manage.should_warp_pointer = true;
+            const new_tags = output.tags | window.tags;
+            if (new_tags != output.tags) {
+                // Focus is following the window and the window has tags that aren't
+                // active on the new output so let's OR them in
+                output.pending_manage.tags = new_tags;
+            }
+        },
+    }
 }
 
 /// Removes this window from all seat focus state. If a seat had this window focused

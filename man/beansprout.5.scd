@@ -148,6 +148,10 @@ window_rules {
 	Make outputs with matching windows async (i.e. allow the output to tear).
 	If *any* visible window on an output has this rule, the output will be async.
 
+*output* _name_ [*app_id=*_pattern_] [*title=*_pattern_]
+	Assign matching windows to a specific output. The argument is a string
+	representing either the output's name or description.
+
 ## Matching
 
 Each rule can have an *app_id=* and/or *title=* property. Both support glob

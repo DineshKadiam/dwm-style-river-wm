@@ -15,6 +15,9 @@ wl_output: ?*wl.Output = null,
 /// Friendly name of this output
 name: ?[]const u8 = null,
 
+/// Description of this output
+description: ?[]const u8 = null,
+
 scale: u31 = 1,
 /// The rect for the entire output, this includes space that's taken by widgets like bars and not
 /// made available to windows.
@@ -170,6 +173,7 @@ pub fn destroy(output: *Output) void {
     // Destroy/deinit other Output fields
     output.tag_layout_overrides.deinit(utils.gpa);
     if (output.name) |name| utils.gpa.free(name);
+    if (output.description) |description| utils.gpa.free(description);
 
     // Destroy/release relevant Wayland interfaces
     output.river_layer_shell_output_v1.destroy();
@@ -299,6 +303,10 @@ fn wlOutputListener(_: *wl.Output, event: wl.Output.Event, output: *Output) void
         .name => |ev| {
             if (output.name) |old_name| utils.gpa.free(old_name);
             output.name = utils.gpa.dupe(u8, mem.span(ev.name)) catch @panic("Out of memory");
+        },
+        .description => |ev| {
+            if (output.description) |old_description| utils.gpa.free(old_description);
+            output.description = utils.gpa.dupe(u8, mem.span(ev.description)) catch @panic("Out of memory");
         },
         else => {},
     }
