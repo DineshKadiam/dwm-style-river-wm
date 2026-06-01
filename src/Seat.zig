@@ -9,8 +9,7 @@ context: *Context,
 river_seat_v1: *river.SeatV1,
 river_layer_shell_seat_v1: *river.LayerShellSeatV1,
 
-focused_window: ?*Window,
-focused_output: ?*Output,
+focused: ?Focused = null,
 layer_focus: LayerFocus = .focus_none,
 
 pointer_op: PointerOp = .none,
@@ -25,13 +24,21 @@ link: wl.list.Link,
 move_pointer_binding: ?*river.PointerBindingV1 = null,
 resize_pointer_binding: ?*river.PointerBindingV1 = null,
 
+pub const Focused = struct {
+    /// We do not allow focus without an output
+    /// If there is no output to focus, then Seat.focused itself should be null.
+    output: *Output,
+
+    /// We *do* allow focusing an output without a window
+    window: ?*Window,
+};
+
 // We just steal the Event's tag type to use as our enum. If another event is added
 // that's *not* for focus, we'll have to create our own enum and just keep it in sync.
 pub const LayerFocus = @typeInfo(river.LayerShellSeatV1.Event).@"union".tag_type.?;
 
 const PendingManage = struct {
-    window: ?PendingWindow = null,
-    output: ?PendingOutput = null,
+    focus: ?PendingFocus = null,
     layer_focus: ?LayerFocus = null,
     should_warp_pointer: bool = false,
 
@@ -40,14 +47,9 @@ const PendingManage = struct {
     pointer_move_request: ?*Window = null,
     pointer_resize_request: ?struct { window: *Window, edges: river.WindowV1.Edges } = null,
 
-    const PendingWindow = union(enum) {
-        window: *Window,
-        clear_focus,
-    };
-
-    const PendingOutput = union(enum) {
-        output: *Output,
-        clear_focus,
+    const PendingFocus = union(enum) {
+        clear,
+        focus: Focused,
     };
 };
 
@@ -72,8 +74,6 @@ pub fn create(context: *Context, river_seat_v1: *river.SeatV1) !*Seat {
         .context = context,
         .river_seat_v1 = river_seat_v1,
         .river_layer_shell_seat_v1 = try context.river_layer_shell_v1.getSeat(river_seat_v1),
-        .focused_window = null,
-        .focused_output = null,
         .link = undefined, // Handled by the wl.list
     };
 
@@ -122,8 +122,8 @@ fn seatListener(river_seat_v1: *river.SeatV1, event: river.SeatV1.Event, seat: *
 
             // We use this to track if the cursor is moving to a new output
             if (seat.context.config.output_focus_follows_pointer) blk: {
-                const focused_output = seat.focused_output orelse break :blk;
-                if (utils.isPosInRect(seat.pointer_pos, focused_output.geometry)) {
+                const focused = seat.focused orelse break :blk;
+                if (utils.isPosInRect(seat.pointer_pos, focused.output.geometry)) {
                     // Same output, skip
                     break :blk;
                 }
@@ -131,19 +131,17 @@ fn seatListener(river_seat_v1: *river.SeatV1, event: river.SeatV1.Event, seat: *
                 // New output, find which one the pointer is in
                 var it = seat.context.wm.outputs.iterator(.forward);
                 while (it.next()) |output| outer: {
-                    if (output != focused_output and
+                    if (output != focused.output and
                         utils.isPosInRect(seat.pointer_pos, output.geometry))
                     {
-                        seat.pending_manage.output = .{ .output = output };
                         var window_it = output.windows.iterator(.forward);
-                        while (window_it.next()) |w| inner: {
+                        while (window_it.next()) |w| {
                             if (w.tags & output.tags != 0) {
-                                seat.pending_manage.window = .{ .window = w };
-                                break :inner;
+                                seat.pending_manage.focus = .{ .focus = .{ .output = output, .window = w } };
+                                break :outer;
                             }
-                        } else {
-                            seat.pending_manage.window = .clear_focus;
                         }
+                        seat.pending_manage.focus = .{ .focus = .{ .output = output, .window = null } };
                         break :outer;
                     }
                 }
@@ -165,7 +163,8 @@ fn setWindowFocus(seat: *Seat, river_window_v1: ?*river.WindowV1) void {
         log.err("river_window_v1 has no user data", .{});
         return;
     }));
-    seat.pending_manage.window = .{ .window = window };
+    const output = window.output orelse return;
+    seat.pending_manage.focus = .{ .focus = .{ .output = output, .window = window } };
 }
 
 pub fn manage(seat: *Seat) void {
@@ -173,27 +172,26 @@ pub fn manage(seat: *Seat) void {
 
     // Focus events are ignored by the compositor when a layer shell has exclusive focus.
     if (seat.layer_focus != .focus_exclusive) {
-        if (seat.pending_manage.window) |pending_window| {
-            switch (pending_window) {
-                .window => |window| {
-                    if (seat.focused_window) |focused| {
-                        if (focused != window) {
-                            // Tell the previously focused Window that it's no longer focused
-                            focused.pending_render.focused = false;
-                        }
+        if (seat.pending_manage.focus) |pending_focus| {
+            if (seat.focused) |focused| if (focused.window) |window| {
+                window.pending_render.focused = false;
+            };
+            switch (pending_focus) {
+                .focus => |focused| {
+                    const output_changed = if (seat.focused) |prev| prev.output != focused.output else true;
+                    seat.focused = focused;
+                    if (output_changed) {
+                        focused.output.river_layer_shell_output_v1.setDefault();
                     }
-                    seat.focused_window = window;
-                    seat.river_seat_v1.focusWindow(window.river_window_v1);
-                    window.pending_render.focused = true;
                 },
-                .clear_focus => {
-                    if (seat.focused_window) |focused| {
-                        // Tell the previously focused Window that it's no longer focused
-                        focused.pending_render.focused = false;
-                    }
-                    seat.focused_window = null;
-                    seat.river_seat_v1.clearFocus();
-                },
+                .clear => seat.focused = null,
+            }
+            const new_window: ?*Window = if (seat.focused) |focused| focused.window else null;
+            if (new_window) |window| {
+                seat.river_seat_v1.focusWindow(window.river_window_v1);
+                window.pending_render.focused = true;
+            } else {
+                seat.river_seat_v1.clearFocus();
             }
             // Bars should redraw because the title (may) have changed
             var it = seat.context.wm.outputs.iterator(.forward);
@@ -204,19 +202,8 @@ pub fn manage(seat: *Seat) void {
             }
         }
     }
-    if (seat.pending_manage.output) |pending_output| {
-        switch (pending_output) {
-            .output => |output| {
-                seat.focused_output = output;
-                output.river_layer_shell_output_v1.setDefault();
-            },
-            .clear_focus => {
-                seat.focused_output = null;
-            },
-        }
-    }
 
-    // Handle layer focus changes after window focus so focused_window is up to date.
+    // Handle layer focus changes after window focus so focused is up to date.
     // This overrides whatever pending_render.focused the window focus block just set.
     if (seat.pending_manage.layer_focus) |layer_focus| {
         seat.layer_focus = layer_focus;
@@ -224,15 +211,15 @@ pub fn manage(seat: *Seat) void {
             .focus_exclusive,
             .focus_non_exclusive,
             => {
-                if (seat.focused_window) |focused_window| {
-                    focused_window.pending_render.focused = false;
-                }
+                if (seat.focused) |focused| if (focused.window) |window| {
+                    window.pending_render.focused = false;
+                };
             },
             .focus_none => {
-                if (seat.focused_window) |focused_window| {
-                    seat.river_seat_v1.focusWindow(focused_window.river_window_v1);
-                    focused_window.pending_render.focused = true;
-                }
+                if (seat.focused) |focused| if (focused.window) |window| {
+                    seat.river_seat_v1.focusWindow(window.river_window_v1);
+                    window.pending_render.focused = true;
+                };
             },
         }
     }
@@ -241,7 +228,8 @@ pub fn manage(seat: *Seat) void {
     if (seat.layer_focus != .focus_exclusive) {
         if (seat.pending_manage.should_warp_pointer) blk: {
             if (seat.context.config.pointer_warp_on_focus_change) {
-                const window = seat.focused_window orelse {
+                const focused = seat.focused orelse break :blk;
+                const window = focused.window orelse {
                     log.warn("Trying to warp-on-focus-change without a focused window.", .{});
                     break :blk;
                 };
@@ -352,21 +340,19 @@ pub fn manage(seat: *Seat) void {
     if (seat.pending_manage.op_released) {
         switch (seat.pointer_op) {
             .none => {},
-            .move => {
-                const window = seat.focused_window orelse return;
+            .move => |op| {
                 seat.river_seat_v1.opEnd();
                 seat.pointer_op = .none;
                 // Iterate over every display and check if the curser is inside it
                 var it = seat.context.wm.outputs.iterator(.forward);
                 while (it.next()) |output| {
                     if (utils.isPosInRect(seat.pointer_pos, output.geometry)) {
-                        window.pending_manage.pending_output = .{ .output = output };
                         // We have to remove window from current output's windows list first
-                        window.link.remove();
-                        output.windows.append(window);
+                        op.window.link.remove();
+                        output.windows.append(op.window);
 
-                        seat.pending_manage.output = .{ .output = output };
-                        window.pending_manage.pending_output = .{ .output = output };
+                        seat.pending_manage.focus = .{ .focus = .{ .output = output, .window = op.window } };
+                        op.window.pending_manage.pending_output = .{ .output = output };
                         break;
                     }
                 }
@@ -392,7 +378,8 @@ pub fn setXcursorTheme(seat: *Seat) void {
 pub fn movePointerBindingListener(_: *river.PointerBindingV1, event: river.PointerBindingV1.Event, seat: *Seat) void {
     switch (event) {
         .pressed => {
-            const window = seat.focused_window orelse return;
+            const focused = seat.focused orelse return;
+            const window = focused.window orelse return;
             if (!window.floating) {
                 // Auto-float on drag
                 window.pending_manage.floating = true;
@@ -407,7 +394,8 @@ pub fn movePointerBindingListener(_: *river.PointerBindingV1, event: river.Point
 pub fn resizePointerBindingListener(_: *river.PointerBindingV1, event: river.PointerBindingV1.Event, seat: *Seat) void {
     switch (event) {
         .pressed => {
-            const window = seat.focused_window orelse return;
+            const focused = seat.focused orelse return;
+            const window = focused.window orelse return;
             if (!window.floating) {
                 // Auto-float on drag
                 window.pending_manage.floating = true;

@@ -184,25 +184,15 @@ fn manage(wm: *WindowManager) void {
         const seat = wm.seats.first();
         // We want the seat's focused output if one exists, but otherwise just
         // whatever output is hanging around is fine.
-        const output = if (seat) |s| blk: {
-            if (s.pending_manage.output) |pending_output| {
-                // We need to check the pending manage first because the seat doesn't get managed
-                // until later in this function.
-                break :blk switch (pending_output) {
-                    .output => |output| output,
-                    .clear_focus => null,
+        const output: ?*Output = if (seat) |s| blk: {
+            if (s.pending_manage.focus) |pending_focus| {
+                break :blk switch (pending_focus) {
+                    .focus => |focused| focused.output,
+                    .clear => null,
                 };
-            } else {
-                // If there's not a pending change for output focus, we can use the currently
-                // focused output. This still works if it's null, because null is handled in the
-                // next block.
-                break :blk s.focused_output;
             }
-        } else blk: {
-            // If there's no seat, we just try get the first output in the wm's output list. This
-            // is null if there are no outputs, which is handled correctly in the next block.
-            break :blk wm.outputs.first();
-        };
+            break :blk if (s.focused) |focused| focused.output else null;
+        } else wm.outputs.first();
 
         if (output) |o| {
             var it = wm.orphan_windows.iterator(.forward);
@@ -210,18 +200,18 @@ fn manage(wm: *WindowManager) void {
                 window.pending_manage.pending_output = .{ .output = o };
             }
             if (seat) |s| blk: {
-                // If we don't have a focused window, iterate through the orphans and try see if any
-                // have matching tags. For now, that's always only 0x8000, but maybe I'll had output
+                // If we don't have a focused window, iterate through the orphans and try to see if any
+                // have matching tags. For now, that's always only 0x8000, but maybe I'll add output
                 // caching later so it can keep track of focused tags when the last output is destroyed.
                 // We set focus to the first window we find on the matching tagmask.
-                if (s.focused_window == null) {
-                    var window_it = wm.orphan_windows.iterator(.forward);
-                    while (window_it.next()) |window| {
-                        if (o.tags & window.tags != 0) {
-                            s.pending_manage.window = .{ .window = window };
-                            s.pending_manage.should_warp_pointer = true;
-                            break :blk;
-                        }
+                const has_focused_window = if (s.focused) |focused| focused.window != null else false;
+                if (has_focused_window) break :blk;
+                var window_it = wm.orphan_windows.iterator(.forward);
+                while (window_it.next()) |window| {
+                    if (o.tags & window.tags != 0) {
+                        s.pending_manage.focus = .{ .focus = .{ .output = o, .window = window } };
+                        s.pending_manage.should_warp_pointer = true;
+                        break :blk;
                     }
                 }
             }
@@ -275,8 +265,8 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
             wm.outputs.append(output);
             // If there was already a seat, but no outputs, set this new output as focused
             if (wm.seats.first()) |seat| {
-                if (seat.focused_output == null and seat.pending_manage.output == null) {
-                    seat.pending_manage.output = .{ .output = output };
+                if (seat.focused == null and seat.pending_manage.focus == null) {
+                    seat.pending_manage.focus = .{ .focus = .{ .output = output, .window = null } };
                 }
             }
         },
@@ -293,21 +283,22 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
 
             // If there was already an output, but no seats, set the first output as focused
             if (wm.outputs.first()) |output| {
-                seat.pending_manage.output = .{ .output = output };
+                seat.pending_manage.focus = .{ .focus = .{ .output = output, .window = null } };
             }
         },
         .window => |ev| {
             const seat = wm.seats.first();
-            const focused_output = if (seat) |s|
-                s.focused_output orelse if (s.pending_manage.output) |pending_output|
-                    switch (pending_output) {
-                        .output => |output| output,
-                        .clear_focus => null,
-                    }
-                else
-                    wm.outputs.first()
-            else
-                wm.outputs.first();
+            const focused_output: ?*Output = blk: {
+                const s = seat orelse break :blk wm.outputs.first();
+                if (s.focused) |focused| break :blk focused.output;
+                if (s.pending_manage.focus) |pending_focus| {
+                    break :blk switch (pending_focus) {
+                        .focus => |focused| focused.output,
+                        .clear => null,
+                    };
+                }
+                break :blk wm.outputs.first();
+            };
             const window_list = if (focused_output) |output|
                 &output.windows
             else
@@ -318,10 +309,10 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
                 .top => window_list.prepend(window),
                 .bottom => window_list.append(window),
             }
-            if (seat) |s| {
-                s.pending_manage.window = .{ .window = window };
+            if (seat) |s| if (focused_output) |output| {
+                s.pending_manage.focus = .{ .focus = .{ .output = output, .window = window } };
                 s.pending_manage.should_warp_pointer = true;
-            }
+            };
         },
         .finished => {
             log.info("river_window_manager_v1 finished, exiting.", .{});

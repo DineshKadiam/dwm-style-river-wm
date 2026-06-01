@@ -206,15 +206,13 @@ fn windowListener(river_window_v1: *river.WindowV1, event: river.WindowV1.Event,
 
             // Need to update the bar if this window is focused
             if (window.context.wm.seats.first()) |seat| {
-                if (seat.focused_window) |focused_window| {
-                    if (focused_window == window) {
-                        if (window.output) |output| {
-                            if (output.bar) |*bar| {
-                                bar.pending_render.draw = true;
-                            }
+                if (seat.focused) |focused| if (focused.window == window) {
+                    if (window.output) |output| {
+                        if (output.bar) |*bar| {
+                            bar.pending_render.draw = true;
                         }
                     }
-                }
+                };
             }
         },
         .parent => |ev| {
@@ -485,63 +483,50 @@ pub fn sendToOutput(window: *Window, output: *Output) void {
     const wm = context.wm;
     const seat = wm.seats.first() orelse return;
 
-    const current_output = seat.focused_output.?;
+    const current_output = if (seat.focused) |focused| focused.output else return;
 
     window.link.remove();
     output.windows.append(window);
 
     window.pending_manage.pending_output = .{ .output = output };
 
-    switch (context.config.focus_on_send) {
-        .if_visible => if (output.tags & window.tags != 0) {
-            // Focus is following the window
-            seat.pending_manage.output = .{ .output = output };
-            seat.pending_manage.should_warp_pointer = true;
-        } else {
-            // Focus isn't following, so we need to find a fallback
-            var it = current_output.windows.iterator(.forward);
-            while (it.next()) |w| {
-                if (w.tags & current_output.tags != 0) {
-                    seat.pending_manage.window = .{ .window = w };
-                    seat.pending_manage.should_warp_pointer = true;
-                    break;
-                }
-            } else {
-                seat.pending_manage.window = .clear_focus;
-            }
-        },
-        .never => {
-            // Focus isn't following, so we need to find a fallback
-            var it = current_output.windows.iterator(.forward);
-            while (it.next()) |w| {
-                if (w.tags & current_output.tags != 0) {
-                    seat.pending_manage.window = .{ .window = w };
-                    seat.pending_manage.should_warp_pointer = true;
-                    break;
-                }
-            } else {
-                seat.pending_manage.window = .clear_focus;
-            }
-        },
-        .always => {
-            seat.pending_manage.output = .{ .output = output };
-            seat.pending_manage.should_warp_pointer = true;
-            if (output.tags & window.tags == 0) {
+    const follow_window = switch (context.config.focus_on_send) {
+        .always, .always_or => true,
+        .if_visible => output.tags & window.tags != 0,
+        .never => false,
+    };
+
+    if (follow_window) {
+        seat.pending_manage.focus = .{ .focus = .{ .output = output, .window = window } };
+        seat.pending_manage.should_warp_pointer = true;
+        switch (context.config.focus_on_send) {
+            .always => if (output.tags & window.tags == 0) {
                 // Focus is following the window, but it wouldn't be visible, so we're
                 // going to OR the window's tags onto the output
                 output.pending_manage.tags = output.tags | window.tags;
+            },
+            .always_or => {
+                const new_tags = output.tags | window.tags;
+                if (new_tags != output.tags) {
+                    // Focus is following the window and the window has tags that aren't
+                    // active on the new output so let's OR them in
+                    output.pending_manage.tags = new_tags;
+                }
+            },
+            else => {},
+        }
+    } else {
+        // Focus isn't following, so we need to find a fallback on the current output
+        var it = current_output.windows.iterator(.forward);
+        while (it.next()) |w| {
+            if (w.tags & current_output.tags != 0) {
+                seat.pending_manage.focus = .{ .focus = .{ .output = current_output, .window = w } };
+                seat.pending_manage.should_warp_pointer = true;
+                break;
             }
-        },
-        .always_or => {
-            seat.pending_manage.output = .{ .output = output };
-            seat.pending_manage.should_warp_pointer = true;
-            const new_tags = output.tags | window.tags;
-            if (new_tags != output.tags) {
-                // Focus is following the window and the window has tags that aren't
-                // active on the new output so let's OR them in
-                output.pending_manage.tags = new_tags;
-            }
-        },
+        } else {
+            seat.pending_manage.focus = .{ .focus = .{ .output = current_output, .window = null } };
+        }
     }
 }
 
@@ -550,39 +535,39 @@ pub fn sendToOutput(window: *Window, output: *Output) void {
 fn removeFocus(window: *Window) void {
     var it = window.context.wm.seats.iterator(.forward);
     while (it.next()) |seat| {
-        if (seat.focused_window == window) {
-            // Need to clear focused_window to prevent the use-after-free seen in #20
-            seat.focused_window = null;
-
+        const is_focused = if (seat.focused) |focused| focused.window == window else false;
+        if (is_focused) {
+            // Need to clear focused.window to prevent the use-after-free seen in #20
+            seat.focused.?.window = null;
             window.assignNextFocus(seat);
             seat.pending_manage.should_warp_pointer = true;
-        } else if (seat.pending_manage.window) |pending_window| {
+        } else if (seat.pending_manage.focus) |pending_focus| {
             // This window isn't focused yet, but a previous window was closed in the same
-            // dispatch cycle and set this one as the pending focus. We need to skip to the
-            // next.
-            switch (pending_window) {
-                .window => |pending_w| if (pending_w == window) {
+            // dispatch cycle and set this one as the pending focus. We need to skip to the next.
+            switch (pending_focus) {
+                .focus => |focused| if (focused.window == window) {
                     window.assignNextFocus(seat);
                 },
-                else => {},
+                .clear => {},
             }
         }
     }
 }
 
-/// Sets seat.pending_manage.window to the next visible window on this window's output,
-/// or clear_focus if there is none.
+/// Sets seat.pending_manage.focus.window to the next visible window on this window's output,
+/// or clears window focus if there are no windows.
 fn assignNextFocus(window: *Window, seat: *Seat) void {
-    seat.pending_manage.window = blk: {
-        if (window.output) |output| {
-            const next = output.nextWindow(window) orelse break :blk .clear_focus;
-            // next == window means this was the only visible window, so nothing to change focus to
-            if (next != window) {
-                break :blk .{ .window = next };
-            }
-        }
-        break :blk .clear_focus;
+    const output = window.output orelse {
+        seat.pending_manage.focus = .clear;
+        return;
     };
+    const next = output.nextWindow(window);
+    // next == window means this was the only visible window, so clear window focus but keep output focus
+    const next_window: ?*Window = blk: {
+        const w = next orelse break :blk null;
+        break :blk if (w != window) w else null;
+    };
+    seat.pending_manage.focus = .{ .focus = .{ .output = output, .window = next_window } };
 }
 
 const std = @import("std");

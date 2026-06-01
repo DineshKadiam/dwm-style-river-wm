@@ -145,12 +145,16 @@ const XkbBinding = struct {
             .send_to_prev_output => sendWindowToOutput(context, .prev),
             .zoom => {
                 const seat = first_seat orelse return;
-                const current_focus = if (seat.pending_manage.window) |pending_focus| blk: {
-                    switch (pending_focus) {
-                        .clear_focus => return,
-                        .window => |window| break :blk window,
+                const current_focus: *Window = blk: {
+                    if (seat.pending_manage.focus) |pending_focus| {
+                        switch (pending_focus) {
+                            .clear => return,
+                            .focus => |focused| break :blk focused.window orelse return,
+                        }
                     }
-                } else seat.focused_window orelse return;
+                    const focused = seat.focused orelse return;
+                    break :blk focused.window orelse return;
+                };
 
                 // Noop if the focused window is floating
                 if (current_focus.floating) return;
@@ -178,7 +182,7 @@ const XkbBinding = struct {
 
                 current_focus.link.swapWith(&first_tiled.link);
                 // Update focus
-                seat.pending_manage.window = .{ .window = current_focus };
+                seat.pending_manage.focus = .{ .focus = .{ .output = output, .window = current_focus } };
                 // Warp pointer when the focused window is promoted to primary
                 if (!focus_is_first_tiled) {
                     seat.pending_manage.should_warp_pointer = true;
@@ -186,7 +190,8 @@ const XkbBinding = struct {
             },
             .toggle_float => {
                 const seat = first_seat orelse return;
-                const window = seat.focused_window orelse return;
+                const focused = seat.focused orelse return;
+                const window = focused.window orelse return;
                 // Noop if the window is fullscreened
                 if (window.fullscreen) return;
                 window.pending_manage.floating = !window.floating;
@@ -194,7 +199,8 @@ const XkbBinding = struct {
             },
             inline .change_primary_ratio, .change_single_window_ratio => |diff, cmd| {
                 const seat = first_seat orelse return;
-                const output = seat.focused_output orelse return;
+                const focused = seat.focused orelse return;
+                const output = focused.output;
                 // Get rid of the "change_" from the start of the command name
                 const field_name = @tagName(cmd)[7..];
                 @field(output.pending_manage, field_name) = @field(output, field_name) + diff;
@@ -202,14 +208,14 @@ const XkbBinding = struct {
             },
             .increment_primary_count => {
                 const seat = first_seat orelse return;
-                const output = seat.focused_output orelse return;
-                output.pending_manage.primary_count = output.primary_count + 1;
+                const focused = seat.focused orelse return;
+                focused.output.pending_manage.primary_count = focused.output.primary_count + 1;
                 context.wm.river_window_manager_v1.manageDirty();
             },
             .decrement_primary_count => {
                 const seat = first_seat orelse return;
-                const output = seat.focused_output orelse return;
-                output.pending_manage.primary_count = output.primary_count - 1;
+                const focused = seat.focused orelse return;
+                focused.output.pending_manage.primary_count = focused.output.primary_count - 1;
                 context.wm.river_window_manager_v1.manageDirty();
             },
             .reload_config => {
@@ -230,46 +236,45 @@ const XkbBinding = struct {
             },
             .toggle_fullscreen => {
                 const seat = first_seat orelse return;
-                const window = seat.focused_window orelse return;
+                const focused = seat.focused orelse return;
+                const window = focused.window orelse return;
                 window.pending_manage.fullscreen = !window.fullscreen;
                 context.wm.river_window_manager_v1.manageDirty();
             },
             .close_window => {
                 const seat = first_seat orelse return;
-                if (seat.focused_window) |window| {
+                if (seat.focused) |focused| if (focused.window) |window| {
                     window.river_window_v1.close();
-                }
+                };
             },
             .exit_river => context.wm.river_window_manager_v1.exitSession(),
             .set_output_tags => |tags| {
                 const seat = first_seat orelse return;
-                const output = seat.focused_output orelse return;
-                output.pending_manage.tags = tags;
+                const focused = seat.focused orelse return;
+                focused.output.pending_manage.tags = tags;
                 context.wm.river_window_manager_v1.manageDirty();
             },
             .set_window_tags => |tags| {
                 const seat = first_seat orelse return;
-                // TODO: I don't think pending_focus should ever be set at this point?
-                // const window = seat.pending_manage.pending_focus orelse seat.focused;
-                const window = seat.focused_window orelse return;
+                const focused = seat.focused orelse return;
+                const window = focused.window orelse return;
                 window.pending_manage.tags = tags;
                 context.wm.river_window_manager_v1.manageDirty();
             },
             .toggle_output_tags => |tags| {
                 const seat = first_seat orelse return;
-                const output = seat.focused_output orelse return;
-                const old_tags = output.pending_manage.tags orelse output.tags;
+                const focused = seat.focused orelse return;
+                const old_tags = focused.output.pending_manage.tags orelse focused.output.tags;
                 const new_tags = old_tags ^ tags;
                 if (new_tags != 0) {
-                    output.pending_manage.tags = new_tags;
+                    focused.output.pending_manage.tags = new_tags;
                     context.wm.river_window_manager_v1.manageDirty();
                 }
             },
             .toggle_window_tags => |tags| {
                 const seat = first_seat orelse return;
-                // TODO: I don't think pending_focus should ever be set at this point?
-                // const window = seat.pending_manage.pending_focus orelse seat.focused;
-                const window = seat.focused_window orelse return;
+                const focused = seat.focused orelse return;
+                const window = focused.window orelse return;
                 const old_tags = window.pending_manage.tags orelse window.tags;
                 const new_tags = old_tags ^ tags;
                 if (new_tags != 0) {
@@ -295,8 +300,9 @@ const XkbBinding = struct {
 
     fn focusWindow(context: *Context, direction: FocusDirection) void {
         const seat = context.wm.seats.first() orelse return;
-        const output = seat.focused_output orelse return;
-        const pending_focus = if (seat.focused_window) |current| blk: {
+        const focused = seat.focused orelse return;
+        const output = focused.output;
+        const next_window = if (focused.window) |current| blk: {
             assert(current.output == output);
             break :blk switch (direction) {
                 .next => output.nextWindow(current),
@@ -306,22 +312,18 @@ const XkbBinding = struct {
             .next => output.windows.first(),
             .prev => output.windows.last(),
         };
-
-        if (pending_focus) |window| {
-            seat.pending_manage.window = .{ .window = window };
-            seat.pending_manage.should_warp_pointer = true;
-        } else {
-            seat.pending_manage.window = .clear_focus;
-        }
+        seat.pending_manage.focus = .{ .focus = .{ .output = output, .window = next_window } };
+        if (next_window != null) seat.pending_manage.should_warp_pointer = true;
     }
 
     fn focusOutput(context: *Context, direction: FocusDirection) void {
         const wm = context.wm;
         const seat = wm.seats.first() orelse return;
-        if (seat.focused_window) |window| {
-            assert(window.output == seat.focused_output);
-        }
-        const pending_focus = if (seat.focused_output) |current|
+        const current_output = if (seat.focused) |focused| focused.output else null;
+        if (seat.focused) |focused| if (focused.window) |window| {
+            assert(window.output == focused.output);
+        };
+        const next_output = if (current_output) |current|
             switch (direction) {
                 .next => wm.nextOutput(current),
                 .prev => wm.prevOutput(current),
@@ -331,36 +333,26 @@ const XkbBinding = struct {
             .prev => wm.outputs.last(),
         };
 
-        if (pending_focus) |output| blk: {
+        if (next_output) |output| {
             // This should be a noop if there's only one output
-            if (output == seat.focused_output) {
+            if (output == current_output) {
                 log.debug("focusOutput(): trying to focus current output", .{});
-                break :blk;
+                return;
             }
-
-            seat.pending_manage.output = .{ .output = output };
-
-            // We got the new output, but we need to switch window focus, too
-            // First tell the old one
-            if (seat.focused_window) |current_focus| {
-                current_focus.pending_render.focused = false;
-            }
-            // Then set the new one
             var window_it = output.windows.iterator(.forward);
             while (window_it.next()) |window| {
                 if (window.tags & output.tags != 0) {
-                    seat.pending_manage.window = .{ .window = window };
+                    seat.pending_manage.focus = .{ .focus = .{ .output = output, .window = window } };
                     seat.pending_manage.should_warp_pointer = true;
-                    break;
+                    return;
                 }
-            } else {
-                seat.pending_manage.window = .clear_focus;
             }
+            seat.pending_manage.focus = .{ .focus = .{ .output = output, .window = null } };
         } else {
             log.warn("focusOutput(): no outputs", .{});
             // This should only ever be reached if there were no outputs and then the user
             // tries to change the focused output again.
-            seat.pending_manage.output = .clear_focus;
+            seat.pending_manage.focus = .clear;
         }
     }
 
@@ -369,24 +361,17 @@ const XkbBinding = struct {
     fn sendWindowToOutput(context: *Context, direction: FocusDirection) void {
         const wm = context.wm;
         const seat = wm.seats.first() orelse return;
-        const window = seat.focused_window orelse return;
-
-        assert(window.output == seat.focused_output);
-        assert(seat.focused_output != null);
-
-        const current_output = seat.focused_output.?;
-        const pending_output = switch (direction) {
+        const focused = seat.focused orelse return;
+        const window = focused.window orelse return;
+        assert(window.output == focused.output);
+        const current_output = focused.output;
+        const next_output = switch (direction) {
             .next => wm.nextOutput(current_output),
             .prev => wm.prevOutput(current_output),
         };
-
-        if (pending_output) |output| blk: {
+        if (next_output) |output| {
             // This should be a noop if there's only one output
-            if (output == window.output) {
-                break :blk;
-            }
-
-            window.sendToOutput(output);
+            if (output != window.output) window.sendToOutput(output);
         }
     }
 
@@ -436,7 +421,8 @@ const XkbBinding = struct {
 
     fn moveFloatingWindow(context: *Context, dx: i32, dy: i32) void {
         const seat = context.wm.seats.first() orelse return;
-        const window = seat.focused_window orelse return;
+        const focused = seat.focused orelse return;
+        const window = focused.window orelse return;
         if (!window.floating) return;
 
         window.floating_rect.x += dx;
@@ -447,7 +433,8 @@ const XkbBinding = struct {
 
     fn resizeFloatingWindow(context: *Context, dw: i32, dh: i32) void {
         const seat = context.wm.seats.first() orelse return;
-        const window = seat.focused_window orelse return;
+        const focused = seat.focused orelse return;
+        const window = focused.window orelse return;
         if (!window.floating) return;
 
         const new_width: i32 = @as(i32, window.floating_rect.width) + dw;
@@ -461,7 +448,8 @@ const XkbBinding = struct {
 
     fn centerFloatingWindow(context: *Context) void {
         const seat = context.wm.seats.first() orelse return;
-        const window = seat.focused_window orelse return;
+        const focused = seat.focused orelse return;
+        const window = focused.window orelse return;
         if (!window.floating) return;
         const output = window.output orelse return;
 
@@ -473,7 +461,8 @@ const XkbBinding = struct {
 
     fn swapWindow(context: *Context, comptime direction: enum { next, prev }) void {
         const seat = context.wm.seats.first() orelse return;
-        const window = seat.focused_window orelse return;
+        const focused = seat.focused orelse return;
+        const window = focused.window orelse return;
         const output = window.output orelse {
             log.err("focused window has no output during swap", .{});
             return;

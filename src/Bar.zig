@@ -254,10 +254,12 @@ fn draw(bar: *Bar) !void {
     defer utils.gpa.free(clock_codepoints);
 
     // Title (empty string if no focused window)
-    const focused_title: []const u8 = if (context.wm.seats.first()) |seat|
-        if (seat.focused_window) |window| window.title orelse "" else ""
-    else
-        "";
+    const focused_title: []const u8 = blk: {
+        const seat = context.wm.seats.first() orelse break :blk "";
+        const focused = seat.focused orelse break :blk "";
+        const window = focused.window orelse break :blk "";
+        break :blk window.title orelse "";
+    };
     const title_codepoints = try utils.utf8ToCodepoints(focused_title);
     defer utils.gpa.free(title_codepoints);
 

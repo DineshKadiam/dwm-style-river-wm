@@ -155,14 +155,16 @@ pub fn destroy(output: *Output) void {
         // If the output was focused, move focus to the output that took this one's windows
         // (and its first window, if any).
         const seat = wm.seats.first() orelse break :seat_blk;
-        if (seat.focused_output != output) break :seat_blk;
+        const focused = seat.focused orelse break :seat_blk;
+        if (focused.output != output) break :seat_blk;
 
-        seat.pending_manage.output = if (prev_output) |prev| prev_blk: {
-            if (prev.windows.first()) |window| {
-                seat.pending_manage.window = .{ .window = window };
-            }
-            break :prev_blk .{ .output = prev };
-        } else .clear_focus;
+        seat.pending_manage.focus = if (prev_output) |prev|
+            .{ .focus = .{
+                .output = prev,
+                .window = if (prev.windows.first()) |window| window else null,
+            } }
+        else
+            .clear;
     }
 
     // Deinit optional surfaces
@@ -389,13 +391,9 @@ pub fn manage(output: *Output) void {
 
         // If the focused window is no longer visible on the new tags, update focus.
         if (output.context.wm.seats.first()) |seat| {
-            if (seat.focused_output == output) {
+            if (seat.focused) |focused| if (focused.output == output) {
                 // Whether focus has changed, either to a new window or to no focus
-                const should_update_focus = if (seat.focused_window) |w|
-                    w.tags & new_tags == 0
-                else
-                    true;
-                if (should_update_focus) {
+                if (focused.window == null or focused.window.?.tags & new_tags == 0) {
                     var new_focus: ?*Window = null;
                     var it = output.windows.iterator(.forward);
                     while (it.next()) |window| {
@@ -404,14 +402,20 @@ pub fn manage(output: *Output) void {
                             break;
                         }
                     }
-                    if (new_focus) |w| {
-                        seat.pending_manage.window = .{ .window = w };
+                    if (new_focus) |window| {
+                        seat.pending_manage.focus = .{ .focus = .{
+                            .output = output,
+                            .window = window,
+                        } };
                         seat.pending_manage.should_warp_pointer = true;
                     } else {
-                        seat.pending_manage.window = .clear_focus;
+                        seat.pending_manage.focus = .{ .focus = .{
+                            .output = output,
+                            .window = null,
+                        } };
                     }
                 }
-            }
+            };
         }
 
         // Show tag overlay (or refresh its timeout if already visible)
@@ -484,7 +488,7 @@ pub fn render(output: *Output) void {
     }
 
     const seat = output.context.wm.seats.first();
-    const focused = if (seat) |s| s.focused_window else null;
+    const focused = if (seat) |s| s.focused else null;
 
     var it = output.windows.iterator(.forward);
     while (it.next()) |window| {
@@ -497,14 +501,14 @@ pub fn render(output: *Output) void {
     }
 
     // Make sure that the *focused* floating window goes above any other floating windows
-    if (focused) |focused_window| {
+    if (focused) |f| if (f.window) |focused_window| {
         if (focused_window.floating and focused_window.output == output) {
             // If the window is focused, it must be visible. Not being visible is a bug.
             assert(output.tags & focused_window.tags != 0);
 
             focused_window.river_node_v1.placeTop();
         }
-    }
+    };
 
     if (output.pending_render.presentation_mode) |mode| {
         output.river_output_v1.setPresentationMode(mode);
