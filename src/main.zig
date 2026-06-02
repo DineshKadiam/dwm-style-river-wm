@@ -44,7 +44,6 @@ pub fn main(init: process.Init) !void {
     defer fcft.fini();
 
     var environ = try init.minimal.environ.createMap(utils.gpa);
-    defer environ.deinit();
 
     const wayland_display_var = init.minimal.environ.getPosix("WAYLAND_DISPLAY") orelse {
         fatal("WAYLAND_DISPLAY environment variable not set. Exiting", .{});
