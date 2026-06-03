@@ -483,12 +483,18 @@ xkb_bindings_v1: *river.XkbBindingsV1,
 /// When passthrough_active is true, keybinds (except for passthrough_toggle) are disabled.
 passthrough_active: bool = false,
 
+/// When the session is locked, all keybinds are disabled
+/// TODO: Create keybinds that are allowed while locked
+session_locked: bool = false,
+
 bindings: wl.list.Head(XkbBinding, .link),
 
 pending_manage: PendingManage = .{},
 
 const PendingManage = struct {
     toggle_passthrough: bool = false,
+
+    session_locked: ?bool = null,
 };
 
 pub fn create(context: *Context, xkb_bindings_v1: *river.XkbBindingsV1) !*XkbBindings {
@@ -531,17 +537,30 @@ pub fn addBinding(xkb_bindings: *XkbBindings, river_seat_v1: *river.SeatV1, keys
 
 pub fn manage(xkb_bindings: *XkbBindings) void {
     defer xkb_bindings.pending_manage = .{};
+    const pending_manage = xkb_bindings.pending_manage;
 
-    if (xkb_bindings.pending_manage.toggle_passthrough) {
-        xkb_bindings.passthrough_active = !xkb_bindings.passthrough_active;
+    // TODO: Use keybind modes or whatever they were called in river-classic instead of having a specific "passthrough"
+    const will_be_locked = pending_manage.session_locked orelse xkb_bindings.session_locked;
+    const will_have_passthrough = if (pending_manage.toggle_passthrough)
+        !xkb_bindings.passthrough_active
+    else
+        xkb_bindings.passthrough_active;
+
+    const locked_changed = will_be_locked != xkb_bindings.session_locked;
+    const passthrough_changed = will_have_passthrough != xkb_bindings.passthrough_active;
+
+    xkb_bindings.session_locked = will_be_locked;
+    xkb_bindings.passthrough_active = will_have_passthrough;
+
+    if (locked_changed or passthrough_changed) {
         var it = xkb_bindings.bindings.iterator(.forward);
         while (it.next()) |binding| {
-            if (binding.command != .toggle_passthrough) {
-                if (xkb_bindings.passthrough_active) {
-                    binding.xkb_binding_v1.disable();
-                } else {
-                    binding.xkb_binding_v1.enable();
-                }
+            if (will_be_locked) {
+                binding.xkb_binding_v1.disable();
+            } else if (will_have_passthrough and binding.command != .toggle_passthrough) {
+                binding.xkb_binding_v1.disable();
+            } else {
+                binding.xkb_binding_v1.enable();
             }
         }
     }

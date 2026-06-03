@@ -314,12 +314,11 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
                 s.pending_manage.should_warp_pointer = true;
             };
         },
+        .session_locked => wm.context.xkb_bindings.pending_manage.session_locked = true,
+        .session_unlocked => wm.context.xkb_bindings.pending_manage.session_locked = false,
         .finished => {
             log.info("river_window_manager_v1 finished, exiting.", .{});
             posix.raise(posix.SIG.INT) catch |err| log.err("Failed to raise SIGINT: {}", .{err});
-        },
-        else => |ev| {
-            log.debug("unhandled event: {s}", .{@tagName(ev)});
         },
     }
 }
