@@ -394,15 +394,7 @@ pub fn manage(output: *Output) void {
             if (seat.focused) |focused| if (focused.output == output) {
                 // Whether focus has changed, either to a new window or to no focus
                 if (focused.window == null or focused.window.?.tags & new_tags == 0) {
-                    var new_focus: ?*Window = null;
-                    var it = output.windows.iterator(.forward);
-                    while (it.next()) |window| {
-                        if (window.tags & new_tags != 0) {
-                            new_focus = window;
-                            break;
-                        }
-                    }
-                    if (new_focus) |window| {
+                    if (output.findFocusCandidate()) |window| {
                         seat.pending_manage.focus = .{ .focus = .{
                             .output = output,
                             .window = window,
@@ -697,6 +689,20 @@ pub fn countVisible(output: *Output) usize {
         if (window.tags & output.tags != 0) visible += 1;
     }
     return visible;
+}
+
+/// Selects a window to focus after the output's tag set changes.
+///
+/// The preferred candidate is the first visible window.
+/// Returns null when no windows are visible.
+pub fn findFocusCandidate(output: *Output) ?*Window {
+    var it = output.windows.iterator(.forward);
+    while (it.next()) |window| {
+        if (window.tags & output.tags != 0) {
+            return window;
+        }
+    }
+    return null;
 }
 
 const std = @import("std");

@@ -517,13 +517,9 @@ pub fn sendToOutput(window: *Window, output: *Output) void {
         }
     } else {
         // Focus isn't following, so we need to find a fallback on the current output
-        var it = current_output.windows.iterator(.forward);
-        while (it.next()) |w| {
-            if (w.tags & current_output.tags != 0) {
-                seat.pending_manage.focus = .{ .focus = .{ .output = current_output, .window = w } };
-                seat.pending_manage.should_warp_pointer = true;
-                break;
-            }
+        if (current_output.findFocusCandidate()) |w| {
+            seat.pending_manage.focus = .{ .focus = .{ .output = current_output, .window = w } };
+            seat.pending_manage.should_warp_pointer = true;
         } else {
             seat.pending_manage.focus = .{ .focus = .{ .output = current_output, .window = null } };
         }

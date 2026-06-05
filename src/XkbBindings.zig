@@ -339,13 +339,10 @@ const XkbBinding = struct {
                 log.debug("focusOutput(): trying to focus current output", .{});
                 return;
             }
-            var window_it = output.windows.iterator(.forward);
-            while (window_it.next()) |window| {
-                if (window.tags & output.tags != 0) {
-                    seat.pending_manage.focus = .{ .focus = .{ .output = output, .window = window } };
-                    seat.pending_manage.should_warp_pointer = true;
-                    return;
-                }
+            if (output.findFocusCandidate()) |window| {
+                seat.pending_manage.focus = .{ .focus = .{ .output = output, .window = window } };
+                seat.pending_manage.should_warp_pointer = true;
+                return;
             }
             seat.pending_manage.focus = .{ .focus = .{ .output = output, .window = null } };
         } else {
