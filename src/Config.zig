@@ -39,6 +39,8 @@ focus_follows_pointer: bool = true,
 output_focus_follows_pointer: bool = true,
 /// Should focus follow windows being sent to another output
 focus_on_send: FocusOnSend = .if_visible,
+/// Next focus direction after currently focused window is closed or hidden
+focus_next_direction: FocusDirection = .next,
 /// Should the pointer warp to the center of newly-focused windows
 pointer_warp_on_focus_change: bool = true,
 
@@ -91,6 +93,8 @@ pub const FocusOnSend = enum {
     always_or,
 };
 
+const FocusDirection = enum { next, prev };
+
 const NodeName = enum {
     primary_count,
     primary_ratio,
@@ -100,6 +104,7 @@ const NodeName = enum {
     focus_follows_pointer,
     output_focus_follows_pointer,
     focus_on_send,
+    focus_next_direction,
     pointer_warp_on_focus_change,
     wallpaper_image_path,
     cursor_theme,
@@ -180,6 +185,7 @@ pub fn init(environ: process.Environ.Map) !Config {
                             .focus_follows_pointer,
                             .output_focus_follows_pointer,
                             .focus_on_send,
+                            .focus_next_direction,
                             .pointer_warp_on_focus_change,
                             .wallpaper_image_path,
                             .cursor_theme,
@@ -266,6 +272,7 @@ pub fn init(environ: process.Environ.Map) !Config {
                 .focus_follows_pointer,
                 .output_focus_follows_pointer,
                 .focus_on_send,
+                .focus_next_direction,
                 .pointer_warp_on_focus_change,
                 .wallpaper_image_path,
                 .cursor_theme,
@@ -434,6 +441,14 @@ pub fn flushTopLevelNode(
         .focus_on_send => |tag| {
             if (std.meta.stringToEnum(FocusOnSend, arg_str)) |focus_on_send| {
                 config.focus_on_send = focus_on_send;
+                logDebugSettingNode(tag, arg_str);
+            } else {
+                return errInvalidArg(tag, arg_str);
+            }
+        },
+        .focus_next_direction => |tag| {
+            if (std.meta.stringToEnum(FocusDirection, arg_str)) |focus_next_direction| {
+                config.focus_next_direction = focus_next_direction;
                 logDebugSettingNode(tag, arg_str);
             } else {
                 return errInvalidArg(tag, arg_str);

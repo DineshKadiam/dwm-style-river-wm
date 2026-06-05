@@ -74,6 +74,10 @@ This is useful for sharing a config file across machines. Nodes without a
 		be visible. This differs from *always* when the window has multiple
 		tags and not all of them are currently shown on the destination.
 
+*focus_next_direction* *prev*|*next*
+	Controls next window focus after a currently focused window is closed or hidden.
+	(Default: *next*)
+
 *wallpaper_image_path* _path_
 	Path to image to use as wallpaper. The same image is displayed on all
 	outputs, scaled separately. If not set, the background is a blank black
