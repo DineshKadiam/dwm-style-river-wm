@@ -62,6 +62,8 @@ pending_render: PendingRender = .{},
 
 windows: wl.list.Head(Window, .link),
 
+focus_history: wl.list.Head(Window, .focus_link),
+
 link: wl.list.Link,
 
 /// Struct used for tagmask-specific count/ratio overrides
@@ -97,6 +99,7 @@ pub fn create(context: *Context, river_output_v1: *river.OutputV1) !*Output {
         .primary_ratio = context.config.primary_ratio,
         .single_window_ratio = context.config.single_window_ratio,
         .windows = undefined, // we will initialize this shortly
+        .focus_history = undefined, // we will initialize this shortly
         .link = undefined, // Handled by the wl.list
     };
 
@@ -116,6 +119,7 @@ pub fn create(context: *Context, river_output_v1: *river.OutputV1) !*Output {
     } else null;
 
     output.windows.init();
+    output.focus_history.init();
 
     output.river_output_v1.setListener(*Output, riverOutputListener, output);
     output.river_layer_shell_output_v1.setListener(*Output, riverLayerShellOutputListener, output);
@@ -150,6 +154,8 @@ pub fn destroy(output: *Output) void {
     // Finally, move the windows to their new output (or the orphan list)
     const dest_list = if (prev_output) |prev| &prev.windows else &wm.orphan_windows;
     dest_list.appendList(&output.windows);
+
+    // TODO: Move also focus_history to another output?
 
     seat_blk: {
         // If the output was focused, move focus to the output that took this one's windows
@@ -693,9 +699,18 @@ pub fn countVisible(output: *Output) usize {
 
 /// Selects a window to focus after the output's tag set changes.
 ///
-/// The preferred candidate is the first visible window.
-/// Returns null when no windows are visible.
+/// The preferred candidate is the most recently focused visible window.
+/// If no visible window has focus history, the first visible window is
+/// returned instead. Returns null when no windows are visible.
 pub fn findFocusCandidate(output: *Output) ?*Window {
+    if (output.context.config.restore_focus) {
+        var it = output.focus_history.iterator(.forward);
+        while (it.next()) |window| {
+            if (window.tags & output.tags != 0) {
+                return window;
+            }
+        }
+    }
     var it = output.windows.iterator(.forward);
     while (it.next()) |window| {
         if (window.tags & output.tags != 0) {

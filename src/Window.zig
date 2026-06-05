@@ -51,6 +51,7 @@ pending_render: PendingRender = .{},
 active_list_node: DoublyLinkedList.Node = .{},
 
 link: wl.list.Link,
+focus_link: wl.list.Link,
 
 pub const PendingManage = struct {
     dimensions: ?struct { width: u31, height: u31 } = null,
@@ -114,10 +115,15 @@ pub fn create(context: *Context, river_window_v1: *river.WindowV1, output: ?*Out
         .output = output,
         .tags = if (output) |o| o.tags else 0x0001,
         .link = undefined, // Handled by the wl.list
+        .focus_link = undefined, // Handled by the wl.list
         // Ensure borders are applied on the first render cycle, even for windows that
         // are never explicitly told they are unfocused (e.g. on WM restart).
         .pending_render = .{ .focused = false },
     };
+
+    // focus_link must be initialized explicitly, because a window may exist
+    // without being in focus_history list
+    window.focus_link.init();
 
     window.river_window_v1.setListener(*Window, windowListener, window);
 
@@ -132,6 +138,7 @@ pub fn destroy(window: *Window) void {
     window.river_window_v1.destroy();
 
     window.link.remove();
+    window.focus_link.remove();
     utils.gpa.destroy(window);
 }
 
@@ -486,6 +493,7 @@ pub fn sendToOutput(window: *Window, output: *Output) void {
     const current_output = if (seat.focused) |focused| focused.output else return;
 
     window.link.remove();
+    window.focus_link.remove();
     output.windows.append(window);
 
     window.pending_manage.pending_output = .{ .output = output };

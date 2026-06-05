@@ -408,6 +408,11 @@ pub fn resizePointerBindingListener(_: *river.PointerBindingV1, event: river.Poi
 fn focusWindow(seat: *Seat, window: *Window) void {
     seat.river_seat_v1.focusWindow(window.river_window_v1);
     window.pending_render.focused = true;
+    if (window.output) |output| {
+        // Push the window to focus history
+        window.focus_link.remove();
+        output.focus_history.prepend(window);
+    }
 }
 
 const std = @import("std");
