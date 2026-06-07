@@ -155,7 +155,10 @@ pub fn destroy(output: *Output) void {
     const dest_list = if (prev_output) |prev| &prev.windows else &wm.orphan_windows;
     dest_list.appendList(&output.windows);
 
-    // TODO: Move also focus_history to another output?
+    // Move windows focus history to the tail of their new output
+    if (prev_output) |prev| {
+        prev.focus_history.appendList(&output.focus_history);
+    }
 
     seat_blk: {
         // If the output was focused, move focus to the output that took this one's windows
