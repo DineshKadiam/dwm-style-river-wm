@@ -11,7 +11,6 @@ These are in no particular order anymore.
 - [ ] Support window tag/order caching between WM restarts (within a river session)
 - [ ] Add build-time options for including the wallpaper (and maybe bar)
 - [ ] Check pointer position and only warp if not on focused window already
-- [ ] Change focus direction when closing window
 - [ ] Support overriding config location
 - [ ] Add support for center-primary layout
 - [ ] Support per-output bar visibility
@@ -27,6 +26,7 @@ These are in no particular order anymore.
 - [ ] Support taking new output's tags on send-to-output
 - [ ] Add `spawn_tagmask`, `focus_previous_tags`, `send_to_previous_tags` commands
 - [ ] Support switch handling (e.g. lid close)
+- [x] Change focus direction when closing window
 - [x] Support changeable primary ratio
 - [x] Support changeable primary count
 - [x] Support multiple outputs
