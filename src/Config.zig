@@ -43,6 +43,8 @@ focus_on_send: FocusOnSend = .if_visible,
 focus_next_direction: FocusDirection = .next,
 /// Should the pointer warp to the center of newly-focused windows
 pointer_warp_on_focus_change: bool = true,
+/// Should restore focus to the last focused visible window when switching tags or outputs
+restore_focus: bool = false,
 
 /// Path to the wallpaper image
 wallpaper_image_path: ?[:0]const u8 = null,
@@ -106,6 +108,7 @@ const NodeName = enum {
     focus_on_send,
     focus_next_direction,
     pointer_warp_on_focus_change,
+    restore_focus,
     wallpaper_image_path,
     cursor_theme,
     // Sections with child blocks
@@ -187,6 +190,7 @@ pub fn init(environ: process.Environ.Map) !Config {
                             .focus_on_send,
                             .focus_next_direction,
                             .pointer_warp_on_focus_change,
+                            .restore_focus,
                             .wallpaper_image_path,
                             .cursor_theme,
                             => try config.flushTopLevelNode(environ, hostname, state),
@@ -274,6 +278,7 @@ pub fn init(environ: process.Environ.Map) !Config {
                 .focus_on_send,
                 .focus_next_direction,
                 .pointer_warp_on_focus_change,
+                .restore_focus,
                 .wallpaper_image_path,
                 .cursor_theme,
                 => try config.flushTopLevelNode(environ, hostname, state),
@@ -457,6 +462,14 @@ pub fn flushTopLevelNode(
         .pointer_warp_on_focus_change => |tag| {
             if (helpers.boolFromKdlStr(arg_str)) |pointer_warp_on_focus_change| {
                 config.pointer_warp_on_focus_change = pointer_warp_on_focus_change;
+                logDebugSettingNode(tag, arg_str);
+            } else |_| {
+                return errInvalidArg(tag, arg_str);
+            }
+        },
+        .restore_focus => |tag| {
+            if (helpers.boolFromKdlStr(arg_str)) |restore_focus| {
+                config.restore_focus = restore_focus;
                 logDebugSettingNode(tag, arg_str);
             } else |_| {
                 return errInvalidArg(tag, arg_str);

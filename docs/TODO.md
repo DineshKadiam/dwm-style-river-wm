@@ -2,7 +2,6 @@
 
 These are in no particular order anymore.
 
-- [ ] Save focused window when switching back and forth between outputs via keybind
 - [ ] Add a config for how to focus when a window opens with a rule on another tag; should we switch tags, add tags, or just ignore it?
 - [ ] Support per-output single window ratio (in config; this already works at runtime)
 - [ ] Support per-output wallpapers
@@ -27,6 +26,7 @@ These are in no particular order anymore.
 - [ ] Add `spawn_tagmask`, `focus_previous_tags`, `send_to_previous_tags` commands
 - [ ] Support switch handling (e.g. lid close)
 - [x] Change focus direction when closing window
+- [x] Save focused window when switching back and forth between outputs via keybind
 - [x] Support changeable primary ratio
 - [x] Support changeable primary count
 - [x] Support multiple outputs

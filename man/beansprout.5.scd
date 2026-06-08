@@ -78,6 +78,11 @@ This is useful for sharing a config file across machines. Nodes without a
 	Controls next window focus after a currently focused window is closed or hidden.
 	(Default: *next*)
 
+*restore_focus* _bool_
+	Whether focus should be restored to the last focused visible window when
+	switching tags or outputs.
+	(Default: *false*)
+
 *wallpaper_image_path* _path_
 	Path to image to use as wallpaper. The same image is displayed on all
 	outputs, scaled separately. If not set, the background is a blank black

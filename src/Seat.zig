@@ -130,19 +130,16 @@ fn seatListener(river_seat_v1: *river.SeatV1, event: river.SeatV1.Event, seat: *
 
                 // New output, find which one the pointer is in
                 var it = seat.context.wm.outputs.iterator(.forward);
-                while (it.next()) |output| outer: {
+                while (it.next()) |output| {
                     if (output != focused.output and
                         utils.isPosInRect(seat.pointer_pos, output.geometry))
                     {
-                        var window_it = output.windows.iterator(.forward);
-                        while (window_it.next()) |w| {
-                            if (w.tags & output.tags != 0) {
-                                seat.pending_manage.focus = .{ .focus = .{ .output = output, .window = w } };
-                                break :outer;
-                            }
+                        if (output.findFocusCandidate()) |w| {
+                            seat.pending_manage.focus = .{ .focus = .{ .output = output, .window = w } };
+                            break;
                         }
                         seat.pending_manage.focus = .{ .focus = .{ .output = output, .window = null } };
-                        break :outer;
+                        break;
                     }
                 }
             }
@@ -188,8 +185,7 @@ pub fn manage(seat: *Seat) void {
             }
             const new_window: ?*Window = if (seat.focused) |focused| focused.window else null;
             if (new_window) |window| {
-                seat.river_seat_v1.focusWindow(window.river_window_v1);
-                window.pending_render.focused = true;
+                seat.focusWindow(window);
             } else {
                 seat.river_seat_v1.clearFocus();
             }
@@ -217,8 +213,7 @@ pub fn manage(seat: *Seat) void {
             },
             .focus_none => {
                 if (seat.focused) |focused| if (focused.window) |window| {
-                    seat.river_seat_v1.focusWindow(window.river_window_v1);
-                    window.pending_render.focused = true;
+                    seat.focusWindow(window);
                 };
             },
         }
@@ -407,6 +402,16 @@ pub fn resizePointerBindingListener(_: *river.PointerBindingV1, event: river.Poi
             seat.context.wm.river_window_manager_v1.manageDirty();
         },
         .released => {},
+    }
+}
+
+fn focusWindow(seat: *Seat, window: *Window) void {
+    seat.river_seat_v1.focusWindow(window.river_window_v1);
+    window.pending_render.focused = true;
+    if (window.output) |output| {
+        // Push the window to focus history
+        window.focus_link.remove();
+        output.focus_history.prepend(window);
     }
 }
 

@@ -17,6 +17,8 @@ focus_follows_pointer #true
 output_focus_follows_pointer #true
 // Whether the focus should warp to the center of newly-focused windows
 pointer_warp_on_focus_change #true
+// Whether focus should be restored to the last focused visible window when switching tags or outputs
+restore_focus #true
 // Controls focus behavior when sending a window to another output
 // Options: if_visible, never, always, always_or
 focus_on_send if_visible
