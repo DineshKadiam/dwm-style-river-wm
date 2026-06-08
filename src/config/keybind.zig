@@ -9,6 +9,7 @@ pub const Keybind = struct {
     modifiers: river.SeatV1.Modifiers,
     command: XkbBindings.Command,
     keysym: ?xkbcommon.Keysym,
+    allow_locked: bool,
 };
 
 pub const Key = struct {
@@ -16,7 +17,12 @@ pub const Key = struct {
     keysym: xkbcommon.Keysym,
 };
 
-pub const Map = std.AutoArrayHashMapUnmanaged(Key, XkbBindings.Command);
+pub const Value = struct {
+    command: XkbBindings.Command,
+    allow_locked: bool,
+};
+
+pub const Map = std.AutoArrayHashMapUnmanaged(Key, Value);
 
 /// State accumulated while parsing a KDL node
 /// Each node gets its own parse state, i.e. state is reset between nodes
@@ -27,6 +33,8 @@ const ParseState = struct {
 
     /// The hostname that this node should apply to
     host: ?[]const u8 = null,
+    /// Should this keybind be allowed to execute while the session is locked
+    allow_locked: bool = false,
 
     /// Arguments: [0] = modifiers, [1] = keysym/command, [2] = extra arg (spawn cmd, diff, tags, etc.)
     args: [3][]const u8 = .{ "", "", "" },
@@ -53,6 +61,12 @@ pub fn load(config: *Config, parser: *kdl.Parser, hostname: ?[]const u8) !void {
             .prop => |prop| {
                 if (mem.eql(u8, prop.key, "host")) {
                     state.host = prop.val;
+                } else if (mem.eql(u8, prop.key, "allow_locked")) {
+                    if (helpers.boolFromKdlStr(prop.val)) |allow_locked| {
+                        state.allow_locked = allow_locked;
+                    } else |_| {
+                        return errInvalidProp("allow_locked", prop.val);
+                    }
                 }
             },
             .child_block_begin => return helpers.unexpectedChildBlock(),
@@ -107,6 +121,7 @@ fn flushNode(config: *Config, hostname: ?[]const u8, state: ParseState) !void {
             .modifiers = modifiers,
             .command = command,
             .keysym = null, // Tag binds don't need a keysym (automatically 1-9)
+            .allow_locked = state.allow_locked,
         });
         log.debug("tag_bind: {s} {s}", .{ mod_str, cmd_str });
         return;
@@ -208,9 +223,9 @@ fn flushNode(config: *Config, hostname: ?[]const u8, state: ParseState) !void {
         .keysym = keysym,
     });
     if (gop.found_existing) {
-        gop.value_ptr.deinit();
+        gop.value_ptr.command.deinit();
     }
-    gop.value_ptr.* = command;
+    gop.value_ptr.* = .{ .command = command, .allow_locked = state.allow_locked };
     log.debug("keybind: {s} {s}", .{ mod_str, key_str });
 }
 
@@ -221,6 +236,14 @@ fn errMissingArg(node_name: NodeName, comptime arg_name: []const u8) error{Inval
 
 fn errInvalidArg(node_name: NodeName, node_value: []const u8) error{InvalidConfig} {
     log.err("Invalid \"keybind.{s}\" ({s})", .{ @tagName(node_name), node_value });
+    return error.InvalidConfig;
+}
+
+fn errInvalidProp(
+    comptime prop_key: []const u8,
+    prop_value: []const u8,
+) error{InvalidConfig} {
+    log.err("\"keybind:\" invalid " ++ prop_key ++ " value \"{s}\"", .{prop_value});
     return error.InvalidConfig;
 }
 

@@ -304,8 +304,8 @@ pub fn init(environ: process.Environ.Map) !Config {
 }
 
 pub fn deinit(config: *Config) void {
-    for (config.keybinds.values()) |cmd| {
-        cmd.deinit();
+    for (config.keybinds.values()) |value| {
+        value.command.deinit();
     }
     config.keybinds.deinit(utils.gpa);
     config.tag_binds.deinit(utils.gpa);
@@ -504,11 +504,11 @@ pub fn flushTopLevelNode(
 }
 
 fn addFallbackKeybinds(config: *Config) void {
-    const Entry = struct { keybind.Key, XkbBindings.Command };
+    const Entry = struct { keybind.Key, keybind.Value };
     const fallbacks = [_]Entry{
-        .{ .{ .modifiers = .{ .ctrl = true, .mod1 = true }, .keysym = .Delete }, @unionInit(XkbBindings.Command, "exit_river", {}) },
-        .{ .{ .modifiers = .{ .mod4 = true, .shift = true }, .keysym = .r }, @unionInit(XkbBindings.Command, "reload_config", {}) },
-        .{ .{ .modifiers = .{ .mod4 = true }, .keysym = .t }, .{ .spawn = utils.gpa.dupeZ(u8, "foot") catch @panic("Out of memory") } },
+        .{ .{ .modifiers = .{ .ctrl = true, .mod1 = true }, .keysym = .Delete }, .{ .command = @unionInit(XkbBindings.Command, "exit_river", {}), .allow_locked = false } },
+        .{ .{ .modifiers = .{ .mod4 = true, .shift = true }, .keysym = .r }, .{ .command = @unionInit(XkbBindings.Command, "reload_config", {}), .allow_locked = false } },
+        .{ .{ .modifiers = .{ .mod4 = true }, .keysym = .t }, .{ .command = .{ .spawn = utils.gpa.dupeZ(u8, "foot") catch @panic("Out of memory") }, .allow_locked = false } },
     };
     for (&fallbacks) |*entry| {
         config.keybinds.put(utils.gpa, entry[0], entry[1]) catch @panic("Out of memory");

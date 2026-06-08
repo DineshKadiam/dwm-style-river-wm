@@ -322,6 +322,11 @@ form:
 
 	_command_ _modifiers_ _keysym_ [_arguments..._]
 
+Any node within a keybinds block can have an *allow_locked=<bool>* property to
+mark whether it should be available while the session is locked. Nodes without
+an *allow_locked=* property are disabled when the session is locked, i.e. the
+default is *allow_locked=#false*.
+
 ## Modifiers
 
 Modifiers are combined with *+*. They are case-insensitive.

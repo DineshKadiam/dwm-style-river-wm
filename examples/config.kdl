@@ -110,14 +110,14 @@ keybinds {
     resize_height Mod4+Alt+Shift J 100
     resize_height Mod4+Alt+Shift K -100
     resize_width Mod4+Alt+Shift L 100
-    // Media keys (no modifier)
-    spawn None XF86AudioRaiseVolume "~/.config/river/volume-up.sh"
-    spawn None XF86AudioLowerVolume "~/.config/river/volume-down.sh"
-    spawn None XF86AudioMute "~/.config/river/volume-toggle-mute.sh"
-    spawn None XF86AudioMedia "playerctl play-pause"
-    spawn None XF86AudioPlay "playerctl play-pause"
-    spawn None XF86AudioPrev "playerctl previous"
-    spawn None XF86AudioNext "playerctl next"
+    // Media keys (no modifier, allowed while the session is locked)
+    spawn None XF86AudioRaiseVolume "~/.config/river/volume-up.sh" allow_locked=#true
+    spawn None XF86AudioLowerVolume "~/.config/river/volume-down.sh" allow_locked=#true
+    spawn None XF86AudioMute "~/.config/river/volume-toggle-mute.sh" allow_locked=#true
+    spawn None XF86AudioMedia "playerctl play-pause" allow_locked=#true
+    spawn None XF86AudioPlay "playerctl play-pause" allow_locked=#true
+    spawn None XF86AudioPrev "playerctl previous" allow_locked=#true
+    spawn None XF86AudioNext "playerctl next" allow_locked=#true
     // Brightness keys (no modifier)
     spawn None XF86MonBrightnessUp "~/.config/river/brightness-up.sh"
     spawn None XF86MonBrightnessDown "~/.config/river/brightness-down.sh"

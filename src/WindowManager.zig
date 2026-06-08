@@ -127,12 +127,12 @@ fn initialize(wm: *WindowManager) void {
                 .toggle_window_tags => .{ .toggle_window_tags = tags },
                 else => unreachable,
             };
-            context.xkb_bindings.addBinding(river_seat_v1, @field(xkbcommon.Keysym, &buffer), tag_bind.modifiers, command);
+            context.xkb_bindings.addBinding(river_seat_v1, @field(xkbcommon.Keysym, &buffer), tag_bind.modifiers, command, tag_bind.allow_locked);
         }
     }
     // Rest of the keybinds
-    for (context.config.keybinds.keys(), context.config.keybinds.values()) |key, command| {
-        context.xkb_bindings.addBinding(river_seat_v1, key.keysym, key.modifiers, command);
+    for (context.config.keybinds.keys(), context.config.keybinds.values()) |key, value| {
+        context.xkb_bindings.addBinding(river_seat_v1, key.keysym, key.modifiers, value.command, value.allow_locked);
     }
 
     // Pointer bindings

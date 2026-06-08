@@ -95,11 +95,12 @@ const XkbBinding = struct {
     xkb_binding_v1: *river.XkbBindingV1,
     command: Command,
     context: *Context,
+    allow_locked: bool,
     link: wl.list.Link,
 
     const FocusDirection = enum { next, prev };
 
-    fn create(xkb_binding_v1: *river.XkbBindingV1, command: Command, context: *Context) !*XkbBinding {
+    fn create(xkb_binding_v1: *river.XkbBindingV1, command: Command, context: *Context, allow_locked: bool) !*XkbBinding {
         var xkb_binding = try utils.gpa.create(XkbBinding);
         errdefer utils.gpa.destroy(xkb_binding);
 
@@ -107,6 +108,7 @@ const XkbBinding = struct {
             .xkb_binding_v1 = xkb_binding_v1,
             .command = command,
             .context = context,
+            .allow_locked = allow_locked,
             .link = undefined, // Handled by the wl.list
         };
 
@@ -483,8 +485,7 @@ xkb_bindings_v1: *river.XkbBindingsV1,
 /// When passthrough_active is true, keybinds (except for passthrough_toggle) are disabled.
 passthrough_active: bool = false,
 
-/// When the session is locked, all keybinds are disabled
-/// TODO: Create keybinds that are allowed while locked
+/// When the session is locked, keybinds where allow_locked is false are disabled
 session_locked: bool = false,
 
 bindings: wl.list.Head(XkbBinding, .link),
@@ -516,6 +517,7 @@ pub fn destroy(xkb_bindings: *XkbBindings) void {
     var it = xkb_bindings.bindings.safeIterator(.forward);
     while (it.next()) |binding| {
         binding.link.remove();
+        binding.command.deinit();
         binding.xkb_binding_v1.destroy();
         utils.gpa.destroy(binding);
     }
@@ -523,16 +525,22 @@ pub fn destroy(xkb_bindings: *XkbBindings) void {
     utils.gpa.destroy(xkb_bindings);
 }
 
-pub fn addBinding(xkb_bindings: *XkbBindings, river_seat_v1: *river.SeatV1, keysym: xkbcommon.Keysym, modifiers: river.SeatV1.Modifiers, command: Command) void {
+pub fn addBinding(xkb_bindings: *XkbBindings, river_seat_v1: *river.SeatV1, keysym: xkbcommon.Keysym, modifiers: river.SeatV1.Modifiers, command: Command, allow_locked: bool) void {
     const xkb_binding_v1 = xkb_bindings.xkb_bindings_v1.getXkbBinding(river_seat_v1, @intFromEnum(keysym), modifiers) catch |err| {
         log.err("Failed to get river xkb binding: {}", .{err});
         return;
     };
 
-    const xkb_binding = XkbBinding.create(xkb_binding_v1, command, xkb_bindings.context) catch @panic("Out of memory");
+    const xkb_binding = XkbBinding.create(xkb_binding_v1, command, xkb_bindings.context, allow_locked) catch @panic("Out of memory");
     xkb_bindings.bindings.append(xkb_binding);
 
-    xkb_binding_v1.enable();
+    if ((xkb_bindings.session_locked and !allow_locked) or
+        (xkb_bindings.passthrough_active and command != .toggle_passthrough))
+    {
+        xkb_binding_v1.disable();
+    } else {
+        xkb_binding_v1.enable();
+    }
 }
 
 pub fn manage(xkb_bindings: *XkbBindings) void {
@@ -555,7 +563,7 @@ pub fn manage(xkb_bindings: *XkbBindings) void {
     if (locked_changed or passthrough_changed) {
         var it = xkb_bindings.bindings.iterator(.forward);
         while (it.next()) |binding| {
-            if (will_be_locked) {
+            if (will_be_locked and !binding.allow_locked) {
                 binding.xkb_binding_v1.disable();
             } else if (will_have_passthrough and binding.command != .toggle_passthrough) {
                 binding.xkb_binding_v1.disable();
