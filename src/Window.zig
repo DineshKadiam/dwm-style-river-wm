@@ -561,7 +561,8 @@ fn assignNextFocus(window: *Window, seat: *Seat) void {
         seat.pending_manage.focus = .clear;
         return;
     };
-    const next = output.nextWindow(window);
+    const next = if (window.context.config.focus_next_direction == .prev)
+        output.prevWindow(window) else output.nextWindow(window);
     // next == window means this was the only visible window, so clear window focus but keep output focus
     const next_window: ?*Window = blk: {
         const w = next orelse break :blk null;
