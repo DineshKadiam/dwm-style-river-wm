@@ -189,6 +189,15 @@ fn windowListener(river_window_v1: *river.WindowV1, event: river.WindowV1.Event,
                 .max_width = @intCast(ev.max_width),
                 .max_height = @intCast(ev.max_height),
             };
+            const dims = &window.dimensions_hint;
+            if (dims.max_width > 0 and
+                dims.max_height > 0 and
+                dims.min_width == dims.max_width and
+                dims.min_height == dims.max_height)
+            {
+                // auto-float a window with static size
+                window.pending_manage.floating = true;
+            }
         },
         .app_id => |ev| {
             if (window.app_id) |app_id| utils.gpa.free(app_id);
