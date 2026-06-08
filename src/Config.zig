@@ -399,14 +399,6 @@ pub fn flushTopLevelNode(
             }
             logDebugSettingNode(tag, arg_str);
         },
-        .primary_side => |tag| {
-            if (std.meta.stringToEnum(PrimarySide, arg_str)) |mode| {
-                config.primary_side = mode;
-                logDebugSettingNode(tag, arg_str);
-            } else {
-                return errInvalidArg(tag, arg_str);
-            }
-        },
         .single_window_ratio => |tag| {
             const ratio = fmt.parseFloat(f32, arg_str) catch {
                 return errInvalidArg(tag, arg_str);
@@ -418,62 +410,6 @@ pub fn flushTopLevelNode(
                 log.info("single_window_ratio outside of valid range ({d} to {d}); clamping it", .{ min_primary_ratio, 1.00 });
             }
             logDebugSettingNode(tag, arg_str);
-        },
-        .attach_mode => |tag| {
-            if (std.meta.stringToEnum(AttachMode, arg_str)) |mode| {
-                config.attach_mode = mode;
-                logDebugSettingNode(tag, arg_str);
-            } else {
-                return errInvalidArg(tag, arg_str);
-            }
-        },
-        .focus_follows_pointer => |tag| {
-            if (helpers.boolFromKdlStr(arg_str)) |focus_follows_pointer| {
-                config.focus_follows_pointer = focus_follows_pointer;
-                logDebugSettingNode(tag, arg_str);
-            } else |_| {
-                return errInvalidArg(tag, arg_str);
-            }
-        },
-        .output_focus_follows_pointer => |tag| {
-            if (helpers.boolFromKdlStr(arg_str)) |output_focus_follows_pointer| {
-                config.output_focus_follows_pointer = output_focus_follows_pointer;
-                logDebugSettingNode(tag, arg_str);
-            } else |_| {
-                return errInvalidArg(tag, arg_str);
-            }
-        },
-        .focus_on_send => |tag| {
-            if (std.meta.stringToEnum(FocusOnSend, arg_str)) |focus_on_send| {
-                config.focus_on_send = focus_on_send;
-                logDebugSettingNode(tag, arg_str);
-            } else {
-                return errInvalidArg(tag, arg_str);
-            }
-        },
-        .focus_next_direction => |tag| {
-            if (std.meta.stringToEnum(FocusDirection, arg_str)) |focus_next_direction| {
-                config.focus_next_direction = focus_next_direction;
-                logDebugSettingNode(tag, arg_str);
-            } else {
-                return errInvalidArg(tag, arg_str);
-            }
-        },
-        .pointer_warp_on_focus_change => |tag| {
-            if (helpers.boolFromKdlStr(arg_str)) |pointer_warp_on_focus_change| {
-                config.pointer_warp_on_focus_change = pointer_warp_on_focus_change;
-                logDebugSettingNode(tag, arg_str);
-            } else |_| {
-                return errInvalidArg(tag, arg_str);
-            }
-        },
-        .restore_focus => |tag| {
-            if (helpers.boolFromKdlStr(arg_str)) |restore_focus| {
-                config.restore_focus = restore_focus;
-                logDebugSettingNode(tag, arg_str);
-            } else |_| {
-                return errInvalidArg(tag, arg_str);
-            }
         },
         .wallpaper_image_path => |tag| {
             const new_path = helpers.expandTilde(environ, arg_str) catch {
@@ -498,6 +434,31 @@ pub fn flushTopLevelNode(
                 utils.gpa.free(old.theme);
             }
             config.cursor = .{ .theme = theme, .size = size };
+        },
+        // The rest of the configs are in two nearly identical groups, so we inline the prongs
+        inline .focus_follows_pointer,
+        .output_focus_follows_pointer,
+        .pointer_warp_on_focus_change,
+        .restore_focus,
+        => |tag| {
+            if (helpers.boolFromKdlStr(arg_str)) |v| {
+                @field(config, @tagName(tag)) = v;
+                logDebugSettingNode(tag, arg_str);
+            } else |_| {
+                return errInvalidArg(tag, arg_str);
+            }
+        },
+        inline .primary_side,
+        .attach_mode,
+        .focus_on_send,
+        .focus_next_direction,
+        => |tag| {
+            if (std.meta.stringToEnum(@TypeOf(@field(config, @tagName(tag))), arg_str)) |v| {
+                @field(config, @tagName(tag)) = v;
+                logDebugSettingNode(tag, arg_str);
+            } else {
+                return errInvalidArg(tag, arg_str);
+            }
         },
         else => unreachable,
     }
