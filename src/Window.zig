@@ -502,7 +502,13 @@ pub fn sendToOutput(window: *Window, output: *Output) void {
     const current_output = if (seat.focused) |focused| focused.output else return;
 
     window.link.remove();
-    window.focus_link.remove();
+    // Remove from the source output's focus history and reset to sentinel state.
+    // Without the re-init, focusWindow and destroy would panic calling remove() on
+    // the now-null link before the window is re-added to the destination's history.
+    {
+        window.focus_link.remove();
+        window.focus_link.init();
+    }
     output.windows.append(window);
 
     window.pending_manage.pending_output = .{ .output = output };
@@ -575,7 +581,9 @@ fn assignNextFocus(window: *Window, seat: *Seat) void {
         return;
     };
     const next = if (window.context.config.focus_next_direction == .prev)
-        output.prevWindow(window) else output.nextWindow(window);
+        output.prevWindow(window)
+    else
+        output.nextWindow(window);
     // next == window means this was the only visible window, so clear window focus but keep output focus
     const next_window: ?*Window = blk: {
         const w = next orelse break :blk null;
