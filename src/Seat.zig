@@ -128,6 +128,14 @@ fn seatListener(river_seat_v1: *river.SeatV1, event: river.SeatV1.Event, seat: *
                     break :blk;
                 }
 
+                // Check if we already have a focus update pending for this output
+                if (seat.pending_manage.focus) |pending_focus| {
+                    if (utils.isPosInRect(seat.pointer_pos, pending_focus.focus.output.geometry)) {
+                        // We do, skip
+                        break :blk;
+                    }
+                }
+
                 // New output, find which one the pointer is in
                 var it = seat.context.wm.outputs.iterator(.forward);
                 while (it.next()) |output| {
