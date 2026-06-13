@@ -542,7 +542,8 @@ fn calculateLayout(output: *Output) void {
             @branchHint(.unlikely);
             window.initialize();
         }
-        if (output.tags & window.tags != 0x0000) {
+        const effective_tags = window.pending_manage.tags orelse window.tags;
+        if (output.tags & effective_tags != 0x0000) {
             // Fullscreen and floating windows should be shown but not included in layout generation
             const will_be_fullscreen = window.pending_manage.fullscreen orelse window.fullscreen;
             const will_float = window.pending_manage.floating orelse window.floating;

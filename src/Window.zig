@@ -287,7 +287,7 @@ pub fn initialize(window: *Window) void {
 
     const res = window.applyRules();
     if (res.tags) |tags| {
-        window.tags = tags;
+        window.pending_manage.tags = tags;
     }
     if (res.float) |should_float| {
         window.pending_manage.floating = should_float;
