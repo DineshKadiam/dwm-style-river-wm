@@ -381,6 +381,10 @@ pub fn manage(window: *Window) void {
             window.river_window_v1.informFullscreen();
             // We need to do this so the window appears on top of the bar
             window.pending_render.place_top = true;
+            window.pending_render.position = .{
+                .x = output.usable_geometry.x,
+                .y = output.usable_geometry.y,
+            };
         } else {
             window.river_window_v1.exitFullscreen();
             window.river_window_v1.informNotFullscreen();
@@ -518,6 +522,15 @@ pub fn sendToOutput(window: *Window, output: *Output) void {
         .if_visible => output.tags & window.tags != 0,
         .never => false,
     };
+
+    if (window.floating) {
+        // Make sure floating windows have their position properly set to be on
+        // the new output to prevent focus desync.
+        window.pending_render.position = .{
+            .x = output.geometry.x + window.floating_rect.x,
+            .y = output.geometry.y + window.floating_rect.y,
+        };
+    }
 
     if (follow_window) {
         seat.pending_manage.focus = .{ .focus = .{ .output = output, .window = window } };
