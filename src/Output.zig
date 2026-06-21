@@ -426,7 +426,7 @@ pub fn manage(output: *Output) void {
                 break :blk;
             };
             tag_overlay.last_shown = Io.Timestamp.now(io, .awake);
-            tag_overlay.pending_render.draw = true;
+            tag_overlay.pending_render.should_draw = true;
         }
 
         if (output.bar) |*bar| {

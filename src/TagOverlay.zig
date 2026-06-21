@@ -28,7 +28,7 @@ last_shown: ?Io.Timestamp = null,
 pending_render: PendingRender = .{},
 
 pub const PendingRender = struct {
-    draw: bool = false,
+    should_draw: bool = false,
 };
 
 pub const Options = struct {
@@ -129,7 +129,7 @@ pub fn initSurfaces(tag_overlay: *TagOverlay) !void {
         .node = node,
     };
     tag_overlay.last_shown = now;
-    tag_overlay.pending_render.draw = true;
+    tag_overlay.pending_render.should_draw = true;
 }
 
 pub fn deinitSurfaces(tag_overlay: *TagOverlay) void {
@@ -145,7 +145,7 @@ pub fn deinitSurfaces(tag_overlay: *TagOverlay) void {
 pub fn render(tag_overlay: *TagOverlay) void {
     defer tag_overlay.pending_render = .{};
 
-    if (tag_overlay.pending_render.draw) {
+    if (tag_overlay.pending_render.should_draw) {
         tag_overlay.draw() catch |err| {
             log.err("tag_overlay draw failed: {}", .{err});
         };
