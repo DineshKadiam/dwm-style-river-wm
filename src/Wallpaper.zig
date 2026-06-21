@@ -16,7 +16,7 @@ surfaces: struct {
 pending_render: PendingRender = .{},
 
 pub const PendingRender = struct {
-    draw: bool = false,
+    should_draw: bool = false,
 };
 
 /// Decoded image data shared across all outputs.
@@ -132,7 +132,7 @@ pub fn init(context: *Context, output: *Output) !Wallpaper {
             .river_shell_surface = river_shell_surface,
             .node = node,
         },
-        .pending_render = .{ .draw = true },
+        .pending_render = .{ .should_draw = true },
     };
 }
 
@@ -150,7 +150,7 @@ pub fn render(wallpaper: *Wallpaper) void {
     defer wallpaper.pending_render = .{};
 
     // We draw whenever the output's dimensions or scale change
-    if (wallpaper.pending_render.draw) {
+    if (wallpaper.pending_render.should_draw) {
         const output = wallpaper.output;
         const geometry = output.geometry;
         const width = geometry.width;

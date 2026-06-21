@@ -307,7 +307,7 @@ fn wlOutputListener(_: *wl.Output, event: wl.Output.Event, output: *Output) void
             if (new_scale != output.scale) {
                 output.scale = new_scale;
                 if (output.wallpaper) |*wallpaper| {
-                    wallpaper.pending_render.draw = true;
+                    wallpaper.pending_render.should_draw = true;
                 }
             }
         },
@@ -344,7 +344,7 @@ pub fn manage(output: *Output) void {
         output.pending_manage.non_exclusive_area != null)
     {
         if (output.wallpaper) |*wallpaper| {
-            wallpaper.pending_render.draw = true;
+            wallpaper.pending_render.should_draw = true;
         }
         if (output.bar) |*bar| {
             bar.pending_manage.output_geometry = true;
