@@ -173,20 +173,28 @@ fn windowListener(river_window_v1: *river.WindowV1, event: river.WindowV1.Event,
         },
         .dimensions => |ev| {
             window.pending_manage.dimensions = .{ .width = @intCast(ev.width), .height = @intCast(ev.height) };
-            if (window.needs_position) {
-                @branchHint(.unlikely);
-                if (window.output) |output| {
-                    window.needs_position = false;
 
-                    window.floating_rect.x = output.usable_geometry.x + (output.geometry.width / 2) - (window.pending_manage.dimensions.?.width / 2);
-                    window.floating_rect.y = output.usable_geometry.y + (output.geometry.height / 2) - (window.pending_manage.dimensions.?.height / 2);
-                    window.floating_rect.width = @intCast(ev.width);
-                    window.floating_rect.height = @intCast(ev.height);
-                    window.pending_render.position = .{
-                        .x = window.floating_rect.x,
-                        .y = window.floating_rect.y,
-                    };
+            if (!window.needs_position) return;
+
+            if (window.output) |output| {
+                window.needs_position = false;
+
+                var x_offset: i32 = output.geometry.width / 2;
+                var y_offset: i32 = output.geometry.height / 2;
+                if (window.parent) |parent| {
+                    const parent_window: *Window = @ptrCast(@alignCast(parent.getUserData() orelse return));
+                    x_offset = parent_window.rect.x + (parent_window.rect.width / 2);
+                    y_offset = parent_window.rect.y + (parent_window.rect.height / 2);
                 }
+
+                window.floating_rect.x = output.geometry.x + x_offset - @divFloor(ev.width, 2);
+                window.floating_rect.y = output.geometry.y + y_offset - @divFloor(ev.height, 2);
+                window.floating_rect.width = @intCast(ev.width);
+                window.floating_rect.height = @intCast(ev.height);
+                window.pending_render.position = .{
+                    .x = window.floating_rect.x,
+                    .y = window.floating_rect.y,
+                };
             }
         },
         .dimensions_hint => |ev| {
@@ -236,13 +244,8 @@ fn windowListener(river_window_v1: *river.WindowV1, event: river.WindowV1.Event,
             const parent = ev.parent orelse return;
             window.parent = parent;
 
-            // Make window float on top of its parent
+            // Make window floating
             window.pending_manage.floating = true;
-            const parent_window: *Window = @ptrCast(@alignCast(parent.getUserData() orelse return));
-            window.pending_render.position = .{
-                .x = parent_window.rect.x + @divTrunc(parent_window.rect.width, 2),
-                .y = parent_window.rect.y + @divTrunc(parent_window.rect.height, 2),
-            };
         },
         .fullscreen_requested => |ev| {
             window.pending_manage.fullscreen = true;
