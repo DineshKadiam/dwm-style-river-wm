@@ -179,16 +179,16 @@ fn windowListener(river_window_v1: *river.WindowV1, event: river.WindowV1.Event,
             if (window.output) |output| {
                 window.needs_position = false;
 
-                var x_offset: i32 = output.geometry.width / 2;
-                var y_offset: i32 = output.geometry.height / 2;
+                var x_offset: i32 = (output.geometry.x + output.geometry.width / 2);
+                var y_offset: i32 = (output.geometry.y + output.geometry.height / 2);
                 if (window.parent) |parent| {
                     const parent_window: *Window = @ptrCast(@alignCast(parent.getUserData() orelse return));
                     x_offset = parent_window.rect.x + (parent_window.rect.width / 2);
                     y_offset = parent_window.rect.y + (parent_window.rect.height / 2);
                 }
 
-                window.floating_rect.x = output.geometry.x + x_offset - @divFloor(ev.width, 2);
-                window.floating_rect.y = output.geometry.y + y_offset - @divFloor(ev.height, 2);
+                window.floating_rect.x = x_offset - @divFloor(ev.width, 2);
+                window.floating_rect.y = y_offset - @divFloor(ev.height, 2);
                 window.floating_rect.width = @intCast(ev.width);
                 window.floating_rect.height = @intCast(ev.height);
                 window.pending_render.position = .{
