@@ -243,9 +243,6 @@ fn windowListener(river_window_v1: *river.WindowV1, event: river.WindowV1.Event,
             // Nothing to do if ev.parent is null
             const parent = ev.parent orelse return;
             window.parent = parent;
-
-            // Make window floating
-            window.pending_manage.floating = true;
         },
         .fullscreen_requested => |ev| {
             window.pending_manage.fullscreen = true;
@@ -287,6 +284,10 @@ pub fn initialize(window: *Window) void {
 
     river_window_v1.setCapabilities(.{ .fullscreen = true, .maximize = true });
     river_window_v1.setTiled(.{ .top = true, .bottom = true, .left = true, .right = true });
+
+    if (window.parent != null) {
+        window.pending_manage.floating = true;
+    }
 
     const res = window.applyRules();
     if (res.tags) |tags| {
