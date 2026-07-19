@@ -424,7 +424,9 @@ const XkbBinding = struct {
         const window = focused.window orelse return;
         if (!window.floating) return;
 
-        window.pending_render.position = .{ .x = window.rect.x + dx, .y = window.rect.y + dy };
+        window.floating_rect.x += dx;
+        window.floating_rect.y += dy;
+        window.pending_render.position = .{ .x = window.floating_rect.x, .y = window.floating_rect.y };
         context.wm.river_window_manager_v1.manageDirty();
     }
 
@@ -434,13 +436,12 @@ const XkbBinding = struct {
         const window = focused.window orelse return;
         if (!window.floating) return;
 
-        const new_width: i32 = @max(50, @as(i32, window.rect.width) + dw);
-        const new_height: i32 = @max(50, @as(i32, window.rect.height) + dh);
+        const new_width: i32 = @as(i32, window.floating_rect.width) + dw;
+        const new_height: i32 = @as(i32, window.floating_rect.height) + dh;
+        window.floating_rect.width = @intCast(@max(50, new_width));
+        window.floating_rect.height = @intCast(@max(50, new_height));
 
-        window.pending_manage.dimensions = .{
-            .width = @intCast(new_width),
-            .height = @intCast(new_height),
-        };
+        window.pending_manage.dimensions = .{ .width = window.floating_rect.width, .height = window.floating_rect.height };
         context.wm.river_window_manager_v1.manageDirty();
     }
 
@@ -451,9 +452,9 @@ const XkbBinding = struct {
         if (!window.floating) return;
         const output = window.output orelse return;
 
-        const new_x = output.usable_geometry.x + @divFloor(output.usable_geometry.width, 2) - @divFloor(window.rect.width, 2);
-        const new_y = output.usable_geometry.y + @divFloor(output.usable_geometry.height, 2) - @divFloor(window.rect.height, 2);
-        window.pending_render.position = .{ .x = new_x, .y = new_y };
+        window.floating_rect.x = output.usable_geometry.x + @divFloor(output.usable_geometry.width, 2) - @divFloor(window.floating_rect.width, 2);
+        window.floating_rect.y = output.usable_geometry.y + @divFloor(output.usable_geometry.height, 2) - @divFloor(window.floating_rect.height, 2);
+        window.pending_render.position = .{ .x = window.floating_rect.x, .y = window.floating_rect.y };
         context.wm.river_window_manager_v1.manageDirty();
     }
 
