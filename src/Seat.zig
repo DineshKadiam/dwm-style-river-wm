@@ -259,8 +259,8 @@ pub fn manage(seat: *Seat) void {
             seat.pointer_op = .{
                 .move = .{
                     .window = window,
-                    .start_x = window.floating_rect.x,
-                    .start_y = window.floating_rect.y,
+                    .start_x = window.rect.x,
+                    .start_y = window.rect.y,
                 },
             };
             seat.river_seat_v1.opStartPointer();
@@ -273,10 +273,10 @@ pub fn manage(seat: *Seat) void {
             seat.pointer_op = .{
                 .resize = .{
                     .window = req.window,
-                    .start_width = req.window.floating_rect.width,
-                    .start_height = req.window.floating_rect.height,
-                    .start_x = req.window.floating_rect.x,
-                    .start_y = req.window.floating_rect.y,
+                    .start_width = req.window.rect.width,
+                    .start_height = req.window.rect.height,
+                    .start_x = req.window.rect.x,
+                    .start_y = req.window.rect.y,
                     .edges = req.edges,
                 },
             };
@@ -290,11 +290,9 @@ pub fn manage(seat: *Seat) void {
         switch (seat.pointer_op) {
             .none => {},
             .move => |op| {
-                op.window.floating_rect.x = op.start_x + delta.dx;
-                op.window.floating_rect.y = op.start_y + delta.dy;
                 op.window.pending_render.position = .{
-                    .x = op.window.floating_rect.x,
-                    .y = op.window.floating_rect.y,
+                    .x = op.start_x + delta.dx,
+                    .y = op.start_y + delta.dy,
                 };
             },
             .resize => |op| {
@@ -322,18 +320,13 @@ pub fn manage(seat: *Seat) void {
                 new_width = @max(new_width, min_size);
                 new_height = @max(new_height, min_size);
 
-                op.window.floating_rect.width = @intCast(new_width);
-                op.window.floating_rect.height = @intCast(new_height);
-                op.window.floating_rect.x = new_x;
-                op.window.floating_rect.y = new_y;
-
                 op.window.river_window_v1.proposeDimensions(
-                    op.window.floating_rect.width,
-                    op.window.floating_rect.height,
+                    @intCast(new_width),
+                    @intCast(new_height),
                 );
                 op.window.pending_render.position = .{
-                    .x = op.window.floating_rect.x,
-                    .y = op.window.floating_rect.y,
+                    .x = new_x,
+                    .y = new_y,
                 };
             },
         }

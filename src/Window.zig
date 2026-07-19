@@ -27,7 +27,7 @@ output: ?*Output,
 presentation_mode: PresentationMode = .vsync,
 
 floating: bool = false,
-floating_rect: utils.Rect = .{},
+saved_rect: utils.Rect = .{},
 dimensions_hint: DimensionsHint = .{},
 
 /// Whether or not the window needs its position set
@@ -172,28 +172,25 @@ fn windowListener(river_window_v1: *river.WindowV1, event: river.WindowV1.Event,
             window.destroy();
         },
         .dimensions => |ev| {
-            window.pending_manage.dimensions = .{ .width = @intCast(ev.width), .height = @intCast(ev.height) };
+            window.rect.width = @intCast(ev.width);
+            window.rect.height = @intCast(ev.height);
 
             if (!window.needs_position) return;
 
             if (window.output) |output| {
                 window.needs_position = false;
 
-                var x_offset: i32 = (output.geometry.x + output.geometry.width / 2);
-                var y_offset: i32 = (output.geometry.y + output.geometry.height / 2);
+                var x_offset: i32 = (output.usable_geometry.x + output.usable_geometry.width / 2);
+                var y_offset: i32 = (output.usable_geometry.y + output.usable_geometry.height / 2);
                 if (window.parent) |parent| {
                     const parent_window: *Window = @ptrCast(@alignCast(parent.getUserData() orelse return));
                     x_offset = parent_window.rect.x + (parent_window.rect.width / 2);
                     y_offset = parent_window.rect.y + (parent_window.rect.height / 2);
                 }
 
-                window.floating_rect.x = x_offset - @divFloor(ev.width, 2);
-                window.floating_rect.y = y_offset - @divFloor(ev.height, 2);
-                window.floating_rect.width = @intCast(ev.width);
-                window.floating_rect.height = @intCast(ev.height);
                 window.pending_render.position = .{
-                    .x = window.floating_rect.x,
-                    .y = window.floating_rect.y,
+                    .x = x_offset - @divFloor(ev.width, 2),
+                    .y = y_offset - @divFloor(ev.height, 2),
                 };
             }
         },
@@ -307,11 +304,10 @@ pub fn initialize(window: *Window) void {
 pub fn manage(window: *Window) void {
     // Updating state since the last manage event
     defer window.pending_manage = .{};
-    const pending_manage = window.pending_manage;
     const river_window_v1 = window.river_window_v1;
     // Floating status
     var became_floating = false;
-    if (pending_manage.floating) |floating| blk: {
+    if (window.pending_manage.floating) |floating| blk: {
         // This needs to be before proposing the new dimensions since we want to save the current ones!
         // Skip the rest of the block if floating matches what is already set
         if (floating == window.floating) break :blk;
@@ -322,61 +318,62 @@ pub fn manage(window: *Window) void {
             // Let the window know it isn't tiled
             river_window_v1.setTiled(.{});
 
-            if (window.floating_rect.width == 0) {
+            if (window.saved_rect.width == 0) {
                 // This window has never floated before, let's give it floating dimensions.
                 // Use 75% of the output's usable size, clamped to the window's dimension hints.
-                if (window.output) |output| {
-                    if (window.rect.width == 0) {
-                        if (window.pending_manage.dimensions) |dimensions| {
-                            // TODO: Is it even possible to make it in here?
-                            // We want to center the output; this works even if the proposed dimensions
-                            // are 0 since the dimensions are the numerator, the window just wouldn't
-                            // be centered.
-                            window.pending_render.position = .{
-                                .x = (output.geometry.width / 2) - (dimensions.width / 2),
-                                .y = (output.geometry.height / 2) - (dimensions.height / 2),
-                            };
-                        } else {
-                            // The window didn't even *exist* before, i.e. we only got here via a floating window rule,
-                            // so just let it choose its own dimensions.
-                            river_window_v1.proposeDimensions(0, 0);
-                            window.needs_position = true;
-                        }
-                        break :blk;
+                const output = window.output orelse unreachable;
+                if (window.rect.width == 0) {
+                    if (window.pending_manage.dimensions) |dimensions| {
+                        // TODO: Is it even possible to make it in here?
+                        // We want to center the output; this works even if the proposed dimensions
+                        // are 0 since the dimensions are the numerator, the window just wouldn't
+                        // be centered.
+                        window.pending_render.position = .{
+                            .x = (output.geometry.width / 2) - (dimensions.width / 2),
+                            .y = (output.geometry.height / 2) - (dimensions.height / 2),
+                        };
+                    } else {
+                        // The window didn't even *exist* before, i.e. we only got here via a floating window rule,
+                        // so just let it choose its own dimensions.
+                        river_window_v1.proposeDimensions(0, 0);
+                        window.needs_position = true;
                     }
-                    window.floating_rect.width = window.dimensions_hint.clampWidth(@divFloor(output.usable_geometry.width * 3, 4));
-                    window.floating_rect.height = window.dimensions_hint.clampHeight(@divFloor(output.usable_geometry.height * 3, 4));
-                    window.floating_rect.x = output.usable_geometry.x + @divFloor(output.usable_geometry.width, 2) - @divFloor(window.floating_rect.width, 2);
-                    window.floating_rect.y = output.usable_geometry.y + @divFloor(output.usable_geometry.height, 2) - @divFloor(window.floating_rect.height, 2);
-                } else {
-                    // This should not be reachable because focus is unset if there are no outputs
-                    unreachable;
+                    break :blk;
                 }
+                const width = window.dimensions_hint.clampWidth(@divFloor(output.usable_geometry.width * 3, 4));
+                const height = window.dimensions_hint.clampHeight(@divFloor(output.usable_geometry.height * 3, 4));
+                window.pending_manage.dimensions = .{
+                    .width = width,
+                    .height = height,
+                };
+                window.pending_render.position = .{
+                    .x = output.usable_geometry.x + @divFloor(output.usable_geometry.width, 2) - @divFloor(width, 2),
+                    .y = output.usable_geometry.y + @divFloor(output.usable_geometry.height, 2) - @divFloor(height, 2),
+                };
+            } else {
+                window.pending_manage.dimensions = .{
+                    .width = window.saved_rect.width,
+                    .height = window.saved_rect.height,
+                };
+                window.pending_render.position = .{
+                    .x = window.saved_rect.x,
+                    .y = window.saved_rect.y,
+                };
             }
-            river_window_v1.proposeDimensions(window.floating_rect.width, window.floating_rect.height);
-            window.pending_render.position = .{
-                .x = window.floating_rect.x,
-                .y = window.floating_rect.y,
-            };
         } else {
             river_window_v1.setTiled(.{ .top = true, .bottom = true, .left = true, .right = true });
             // Save floating dimensions in case the window gets floated again
-            window.floating_rect.width = window.rect.width;
-            window.floating_rect.height = window.rect.height;
-            window.floating_rect.x = window.rect.x;
-            window.floating_rect.y = window.rect.y;
+            window.saved_rect.width = window.rect.width;
+            window.saved_rect.height = window.rect.height;
+            window.saved_rect.x = window.rect.x;
+            window.saved_rect.y = window.rect.y;
         }
     }
-    if (pending_manage.dimensions) |dimensions| {
-        window.rect.width = dimensions.width;
-        window.rect.height = dimensions.height;
-        if (!became_floating) {
-            // We want to skip this if the floating block above already proposed dimensions
-            window.river_window_v1.proposeDimensions(dimensions.width, dimensions.height);
-        }
+    if (window.pending_manage.dimensions) |dimensions| {
+        window.river_window_v1.proposeDimensions(dimensions.width, dimensions.height);
     }
     // Fullscreen and maximize operations
-    if (pending_manage.fullscreen) |fullscreen| blk: {
+    if (window.pending_manage.fullscreen) |fullscreen| blk: {
         window.fullscreen = fullscreen;
         if (fullscreen) {
             // If the window isn't on an output, just skip fullscreening
@@ -386,15 +383,15 @@ pub fn manage(window: *Window) void {
             // We need to do this so the window appears on top of the bar
             window.pending_render.place_top = true;
             window.pending_render.position = .{
-                .x = output.usable_geometry.x,
-                .y = output.usable_geometry.y,
+                .x = output.geometry.x,
+                .y = output.geometry.y,
             };
         } else {
             window.river_window_v1.exitFullscreen();
             window.river_window_v1.informNotFullscreen();
         }
     }
-    if (pending_manage.maximized) |maximized| {
+    if (window.pending_manage.maximized) |maximized| {
         window.maximized = maximized;
         if (maximized) {
             window.river_window_v1.informMaximized();
@@ -402,7 +399,7 @@ pub fn manage(window: *Window) void {
             window.river_window_v1.informUnmaximized();
         }
     }
-    if (pending_manage.tags) |tags| {
+    if (window.pending_manage.tags) |tags| {
         window.tags = tags;
         if (window.output) |o| {
             if (o.tags & window.tags == 0) {
@@ -411,7 +408,7 @@ pub fn manage(window: *Window) void {
             }
         }
     }
-    if (pending_manage.pending_output) |pending_output| {
+    if (window.pending_manage.pending_output) |pending_output| {
         switch (pending_output) {
             .output => |output| {
                 window.output = output;
@@ -530,9 +527,11 @@ pub fn sendToOutput(window: *Window, output: *Output) void {
     if (window.floating) {
         // Make sure floating windows have their position properly set to be on
         // the new output to prevent focus desync.
+        const rel_x = window.rect.x - current_output.geometry.x;
+        const rel_y = window.rect.y - current_output.geometry.y;
         window.pending_render.position = .{
-            .x = output.geometry.x + window.floating_rect.x,
-            .y = output.geometry.y + window.floating_rect.y,
+            .x = output.geometry.x + rel_x,
+            .y = output.geometry.y + rel_y,
         };
     }
 
