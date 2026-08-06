@@ -310,8 +310,14 @@ fn windowManagerV1Listener(window_manager_v1: *river.WindowManagerV1, event: riv
                 .bottom => window_list.append(window),
             }
             if (seat) |s| if (focused_output) |output| {
-                s.pending_manage.focus = .{ .focus = .{ .output = output, .window = window } };
-                s.pending_manage.should_warp_pointer = true;
+                var cur_fullscreen = false;
+                if (s.focused) |focused| if (focused.window) |focused_window| {
+                    cur_fullscreen = focused_window.fullscreen;
+                };
+                if (!cur_fullscreen) {
+                    s.pending_manage.focus = .{ .focus = .{ .output = output, .window = window } };
+                    s.pending_manage.should_warp_pointer = true;
+                }
             };
         },
         .session_locked => wm.context.xkb_bindings.pending_manage.session_locked = true,
