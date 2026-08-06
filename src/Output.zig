@@ -442,7 +442,7 @@ pub fn manage(output: *Output) void {
 
     // Compute usable geometry starting from the non-exclusive area reported by the layer shell,
     // then additionally subtract space for beansprout's own bar (which uses river shell, not layer
-    // shell, so it's not included in the exclusive zone calculation).
+    // shell, so it's not included in the exclusive zone calculation) as well as user-specified margin.
     output.usable_geometry = output.non_exclusive_area;
     if (output.bar) |bar| {
         if (bar.geometry.height > 0) {
@@ -460,6 +460,11 @@ pub fn manage(output: *Output) void {
             }
         }
     }
+    const layout_margin = output.context.config.layout_margin;
+    output.usable_geometry.x += layout_margin;
+    output.usable_geometry.y += layout_margin;
+    output.usable_geometry.width -|= (layout_margin * 2);
+    output.usable_geometry.height -|= (layout_margin * 2);
 
     // Calculate layout before managing windows, but only if output dimensions are initialized
     if (output.usable_geometry.width > 0 and output.usable_geometry.height > 0) {
@@ -577,25 +582,26 @@ fn calculateLayout(output: *Output) void {
 
     if (active_count == 0) return;
 
-    // Use the usable area for layout so windows don't overlap the bar
+    // Use the usable area for layout factoring gaps and bar
     const output_x = output.usable_geometry.x;
     const output_y = output.usable_geometry.y;
     const output_width = output.usable_geometry.width;
     const output_height = output.usable_geometry.height;
     const border_width = output.context.config.border_width;
+    const window_padding = output.context.config.window_padding;
 
     // Single window: maximize and return early
     if (active_count == 1) {
         const window: *Window = @fieldParentPtr("active_list_node", active_list.popFirst().?);
 
         const width = @as(u31, @intFromFloat(@as(f32, @floatFromInt(output_width)) * output.single_window_ratio)) -|
-            2 * border_width;
+            2 * (border_width + window_padding);
         const x = output_x + @divFloor(output_width - width, 2);
 
-        window.pending_render.position = .{ .x = x, .y = output_y + border_width };
+        window.pending_render.position = .{ .x = x, .y = output_y + border_width + window_padding };
         window.pending_manage.dimensions = .{
             .width = width,
-            .height = output_height -| 2 * border_width,
+            .height = output_height -| 2 * (border_width + window_padding),
         };
         window.pending_manage.maximized = true;
         return;
@@ -667,16 +673,16 @@ fn calculateLayout(output: *Output) void {
         }
 
         // Make space for borders
-        if (window.pending_manage.dimensions.?.height > 2 * border_width and
-            window.pending_manage.dimensions.?.width > 2 * border_width)
+        if (window.pending_manage.dimensions.?.height > 2 * (border_width + window_padding) and
+            window.pending_manage.dimensions.?.width > 2 * (border_width + window_padding))
         {
-            window.pending_manage.dimensions.?.height -= 2 * border_width;
-            window.pending_manage.dimensions.?.width -= 2 * border_width;
+            window.pending_manage.dimensions.?.height -= 2 * (border_width + window_padding);
+            window.pending_manage.dimensions.?.width -= 2 * (border_width + window_padding);
         } else {
-            log.warn("Can't add borders to some window; {s}'s dimensions are too small.", .{output.name orelse "some output"});
+            log.warn("Can't add borders/gaps to some window; {s}'s dimensions are too small.", .{output.name orelse "some output"});
         }
-        window.pending_render.position.?.x += border_width;
-        window.pending_render.position.?.y += border_width;
+        window.pending_render.position.?.x += border_width + window_padding;
+        window.pending_render.position.?.y += border_width + window_padding;
     }
 
     // Make sure we went through the whole list

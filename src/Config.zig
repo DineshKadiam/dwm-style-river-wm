@@ -28,6 +28,11 @@ primary_ratio: f32 = 0.55,
 /// output_width * single_window_ratio and be centered on the output
 single_window_ratio: f32 = 1.0,
 
+/// Padding (gaps) between windows in pixels
+window_padding: u8 = 0,
+/// Margin between window layout and output edge in pixels
+layout_margin: u8 = 0,
+
 /// Side the primary should be on
 primary_side: PrimarySide = .left,
 
@@ -102,6 +107,8 @@ const NodeName = enum {
     primary_ratio,
     primary_side,
     single_window_ratio,
+    window_padding,
+    layout_margin,
     attach_mode,
     focus_follows_pointer,
     output_focus_follows_pointer,
@@ -184,6 +191,8 @@ pub fn init(environ: process.Environ.Map) !Config {
                             .primary_ratio,
                             .primary_side,
                             .single_window_ratio,
+                            .window_padding,
+                            .layout_margin,
                             .attach_mode,
                             .focus_follows_pointer,
                             .output_focus_follows_pointer,
@@ -272,6 +281,8 @@ pub fn init(environ: process.Environ.Map) !Config {
                 .primary_ratio,
                 .primary_side,
                 .single_window_ratio,
+                .window_padding,
+                .layout_margin,
                 .attach_mode,
                 .focus_follows_pointer,
                 .output_focus_follows_pointer,
@@ -410,6 +421,20 @@ pub fn flushTopLevelNode(
                 log.info("single_window_ratio outside of valid range ({d} to {d}); clamping it", .{ min_primary_ratio, 1.00 });
             }
             logDebugSettingNode(tag, arg_str);
+        },
+        .window_padding => |tag| {
+            const inner_str = utils.stripQuotes(arg_str);
+            config.window_padding = fmt.parseInt(u8, inner_str, 10) catch {
+                return errInvalidArg(tag, inner_str);
+            };
+            logDebugSettingNode(tag, inner_str);
+        },
+        .layout_margin => |tag| {
+            const outer_str = utils.stripQuotes(arg_str);
+            config.layout_margin = fmt.parseInt(u8, outer_str, 10) catch {
+                return errInvalidArg(tag, outer_str);
+            };
+            logDebugSettingNode(tag, outer_str);
         },
         .wallpaper_image_path => |tag| {
             const new_path = helpers.expandTilde(environ, arg_str) catch {

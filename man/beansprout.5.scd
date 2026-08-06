@@ -37,6 +37,15 @@ This is useful for sharing a config file across machines. Nodes without a
 	Must be between 0.10 and 1.00. When less than 1.0, the window is
 	centered. (Default: 1.00)
 
+*window_padding* _size_
+	Extra padding added to windows during layout calculation. Equivalent to
+	"inner gaps" in most other window managers (Default: 0)
+
+*layout_margin* _size_
+	Extra margin between the layout and screen edge added during layout
+	calculation. Equivalent to "outer gaps" in most other window managers.
+	(Default: 0)
+
 *focus_follows_pointer* _bool_
 	Whether mousing over a new window should move focus.
 	(Default: *true*)
