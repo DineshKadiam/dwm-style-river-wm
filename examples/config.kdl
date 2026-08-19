@@ -68,7 +68,7 @@ window_rules {
     tags 0x0004 app_id="Slack"
 }
 keybinds {
-    // Swap a window
+    // Swap a terminal
     spawn Mod4 T foot
     // Move focus up or down the windows stack
     focus_next_window Mod4 J
