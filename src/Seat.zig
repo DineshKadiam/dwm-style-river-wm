@@ -356,6 +356,7 @@ pub fn manage(seat: *Seat) void {
 
                         seat.pending_manage.focus = .{ .focus = .{ .output = output, .window = op.window } };
                         op.window.pending_manage.pending_output = .{ .output = output };
+                        op.window.pending_manage.tags = output.tags;
                         break;
                     }
                 }
