@@ -167,7 +167,7 @@ fn windowListener(river_window_v1: *river.WindowV1, event: river.WindowV1.Event,
                         seat.pending_manage.pointer_resize_request = null;
                 }
             }
-            window.removeFocus();
+            window.removeFocus(true);
 
             window.destroy();
         },
@@ -415,7 +415,7 @@ pub fn manage(window: *Window) void {
         if (window.output) |o| {
             if (o.tags & window.tags == 0) {
                 // This window isn't visible anymore, we need to move focus off it
-                window.removeFocus();
+                window.removeFocus(false);
             }
         }
     }
@@ -568,13 +568,15 @@ pub fn sendToOutput(window: *Window, output: *Output) void {
 
 /// Removes this window from all seat focus state. If a seat had this window focused
 /// or queued as pending focus, redirects it to the next window instead.
-fn removeFocus(window: *Window) void {
+fn removeFocus(window: *Window, destroying: bool) void {
     var it = window.context.wm.seats.iterator(.forward);
     while (it.next()) |seat| {
         const is_focused = if (seat.focused) |focused| focused.window == window else false;
         if (is_focused) {
-            // Need to clear focused.window to prevent the use-after-free seen in #20
-            seat.focused.?.window = null;
+            if (destroying) {
+                // Need to clear focused.window to prevent the use-after-free seen in #20
+                seat.focused.?.window = null;
+            }
             window.assignNextFocus(seat);
             seat.pending_manage.should_warp_pointer = true;
         } else if (seat.pending_manage.focus) |pending_focus| {
