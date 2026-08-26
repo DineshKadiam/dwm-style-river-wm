@@ -158,6 +158,9 @@ pub fn destroy(output: *Output) void {
     // Move windows focus history to the tail of their new output
     if (prev_output) |prev| {
         prev.focus_history.appendList(&output.focus_history);
+    } else {
+        // Remove focus_history head reference from other windows' links
+        output.focus_history.link.remove();
     }
 
     seat_blk: {
