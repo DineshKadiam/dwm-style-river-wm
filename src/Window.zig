@@ -402,6 +402,14 @@ pub fn manage(window: *Window) void {
             window.river_window_v1.informUnmaximized();
         }
     }
+    if (pending_manage.pending_output) |pending_output| {
+        switch (pending_output) {
+            .output => |output| {
+                window.output = output;
+            },
+            .clear_output => window.output = null,
+        }
+    }
     if (pending_manage.tags) |tags| {
         window.tags = tags;
         if (window.output) |o| {
@@ -409,14 +417,6 @@ pub fn manage(window: *Window) void {
                 // This window isn't visible anymore, we need to move focus off it
                 window.removeFocus();
             }
-        }
-    }
-    if (pending_manage.pending_output) |pending_output| {
-        switch (pending_output) {
-            .output => |output| {
-                window.output = output;
-            },
-            .clear_output => window.output = null,
         }
     }
 }

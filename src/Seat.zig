@@ -175,6 +175,36 @@ fn setWindowFocus(seat: *Seat, river_window_v1: ?*river.WindowV1) void {
 pub fn manage(seat: *Seat) void {
     defer seat.pending_manage = .{};
 
+    // Process pointer release (end of operation)
+    if (seat.pending_manage.op_released) {
+        switch (seat.pointer_op) {
+            .none => {},
+            .move => |op| {
+                seat.river_seat_v1.opEnd();
+                seat.pointer_op = .none;
+                // Iterate over every display and check if the curser is inside it
+                var it = seat.context.wm.outputs.iterator(.forward);
+                while (it.next()) |output| {
+                    if (utils.isPosInRect(seat.pointer_pos, output.geometry)) {
+                        // We have to remove window from current output's windows list first
+                        op.window.link.remove();
+                        output.windows.append(op.window);
+
+                        seat.pending_manage.focus = .{ .focus = .{ .output = output, .window = op.window } };
+                        op.window.pending_manage.pending_output = .{ .output = output };
+                        op.window.pending_manage.tags = output.tags;
+                        break;
+                    }
+                }
+            },
+            .resize => |op| {
+                op.window.river_window_v1.informResizeEnd();
+                seat.river_seat_v1.opEnd();
+                seat.pointer_op = .none;
+            },
+        }
+    }
+
     // Focus events are ignored by the compositor when a layer shell has exclusive focus.
     if (seat.layer_focus != .focus_exclusive) {
         if (seat.pending_manage.focus) |pending_focus| {
@@ -335,35 +365,6 @@ pub fn manage(seat: *Seat) void {
                     .x = op.window.floating_rect.x,
                     .y = op.window.floating_rect.y,
                 };
-            },
-        }
-    }
-
-    // Process pointer release (end of operation)
-    if (seat.pending_manage.op_released) {
-        switch (seat.pointer_op) {
-            .none => {},
-            .move => |op| {
-                seat.river_seat_v1.opEnd();
-                seat.pointer_op = .none;
-                // Iterate over every display and check if the curser is inside it
-                var it = seat.context.wm.outputs.iterator(.forward);
-                while (it.next()) |output| {
-                    if (utils.isPosInRect(seat.pointer_pos, output.geometry)) {
-                        // We have to remove window from current output's windows list first
-                        op.window.link.remove();
-                        output.windows.append(op.window);
-
-                        seat.pending_manage.focus = .{ .focus = .{ .output = output, .window = op.window } };
-                        op.window.pending_manage.pending_output = .{ .output = output };
-                        break;
-                    }
-                }
-            },
-            .resize => |op| {
-                op.window.river_window_v1.informResizeEnd();
-                seat.river_seat_v1.opEnd();
-                seat.pointer_op = .none;
             },
         }
     }
