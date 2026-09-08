@@ -517,7 +517,6 @@ pub fn destroy(xkb_bindings: *XkbBindings) void {
     var it = xkb_bindings.bindings.safeIterator(.forward);
     while (it.next()) |binding| {
         binding.link.remove();
-        binding.command.deinit();
         binding.xkb_binding_v1.destroy();
         utils.gpa.destroy(binding);
     }

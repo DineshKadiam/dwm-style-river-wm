@@ -158,22 +158,27 @@ pub fn destroy(output: *Output) void {
     // Move windows focus history to the tail of their new output
     if (prev_output) |prev| {
         prev.focus_history.appendList(&output.focus_history);
+    } else {
+        // Remove focus_history head reference from other windows' links
+        output.focus_history.link.remove();
     }
 
     seat_blk: {
         // If the output was focused, move focus to the output that took this one's windows
         // (and its first window, if any).
         const seat = wm.seats.first() orelse break :seat_blk;
+        const prev = prev_output orelse {
+            // No output left, clear pending focus
+            seat.pending_manage.focus = .clear;
+            break :seat_blk;
+        };
         const focused = seat.focused orelse break :seat_blk;
         if (focused.output != output) break :seat_blk;
 
-        seat.pending_manage.focus = if (prev_output) |prev|
-            .{ .focus = .{
-                .output = prev,
-                .window = if (prev.windows.first()) |window| window else null,
-            } }
-        else
-            .clear;
+        seat.pending_manage.focus = .{ .focus = .{
+            .output = prev,
+            .window = if (prev.windows.first()) |window| window else null,
+        } };
     }
 
     // Deinit optional surfaces
