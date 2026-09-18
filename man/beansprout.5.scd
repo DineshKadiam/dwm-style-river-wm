@@ -226,8 +226,12 @@ bar {
 	strftime format string for the clock display. Invalid format strings
 	are ignored and the default is used instead. (Default: "%Y-%m-%d %H:%M, %A")
 
-The bar also supports *margins* and *anchors* child blocks; see *TAG OVERLAY*
-for their format.
+## Margins
+
+The *margins* child block sets pixel offsets from the edges or to the layout
+respectively. All default to 0.
+
+	*top*, *right*, *bottom*, *left*
 
 An empty block can be used to enable the widget with all defaults.
 
@@ -272,20 +276,6 @@ tag_overlay {
 *square_inactive_occupied_color*
 	Color settings in 0xRRGGBB or 0xRRGGBBAA hex format. Defaults follow
 	the Catppuccin Mocha theme.
-
-## Anchors
-
-The *anchors* child block controls which edge(s) of the screen the overlay
-attaches to. Each direction is a boolean. Default: unanchored (centered).
-
-	*top*, *right*, *bottom*, *left*
-
-## Margins
-
-The *margins* child block sets pixel offsets from the anchored edge(s). All
-default to 0.
-
-	*top*, *right*, *bottom*, *left*
 
 # KEYBOARD LAYOUT
 
