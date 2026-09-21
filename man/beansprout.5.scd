@@ -132,6 +132,35 @@ borders {
 	Border color of unfocused windows in 0xRRGGBB or 0xRRGGBBAA hex
 	format. (Default: 0x1e1e2e)
 
+# ENVIRONMENT
+
+Environment variables that should be exported to each child process
+can be set inside an *env* block:
+
+```
+env {
+	set XDG_SESSION_DESKTOP "river"
+	set INTERP_EXAMPLE "interpolated: ${WAYLAND_DISPLAY}"
+}
+```
+
+*set* _name_ _value_
+	Set the environment variable with the specified name to the 
+	specified value, or create it if it does not exist.
+
+*unset* _name_
+	Remove the environment variable with the specified name.
+
+## Interpolation
+
+Both _name_ and _value_ strings can be interpolated with other 
+environment variables by using the `${_NAME_}` syntax, but *only*
+inside a quoted (`"..."`) string.
+
+It is recommended to always enclose the value in double quotes.
+
+To prevent interpolation or to insert a `$` char literal into a string, use `$$`.
+
 # WINDOW RULES
 
 Window rules let you set properties on windows when they first appear, based

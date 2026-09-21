@@ -40,7 +40,7 @@ pub fn parseButton(s: []const u8) ?u32 {
 
 /// Expand a tilde in a string to the user's $HOME directory
 /// Caller is responsible for freeing the returned pointer
-pub fn expandTilde(environ: std.process.Environ.Map, path: []const u8) ![:0]const u8 {
+pub fn expandTilde(environ: *const std.process.Environ.Map, path: []const u8) ![:0]const u8 {
     if (path.len > 0 and path[0] == '~') {
         const home = environ.get("HOME") orelse return error.HomeNotSet;
         return mem.concatWithSentinel(utils.gpa, u8, &.{ home, path[1..] }, 0);
@@ -144,7 +144,7 @@ test "expandTilde with tilde" {
     var env = std.process.Environ.Map.init(testing.allocator);
     defer env.deinit();
     try env.put("HOME", home);
-    const result = try expandTilde(env, "~/foo/bar");
+    const result = try expandTilde(&env, "~/foo/bar");
     defer utils.gpa.free(result);
     try testing.expect(mem.startsWith(u8, result, home));
     try testing.expect(mem.endsWith(u8, result, "/foo/bar"));
@@ -153,7 +153,7 @@ test "expandTilde with tilde" {
 test "expandTilde without tilde" {
     var env = std.process.Environ.Map.init(testing.allocator);
     defer env.deinit();
-    const result = try expandTilde(env, "/absolute/path");
+    const result = try expandTilde(&env, "/absolute/path");
     defer utils.gpa.free(result);
     try testing.expectEqualStrings("/absolute/path", result);
 }

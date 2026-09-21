@@ -119,6 +119,7 @@ const NodeName = enum {
     wallpaper_image_path,
     cursor_theme,
     // Sections with child blocks
+    env,
     bar,
     borders,
     input,
@@ -149,13 +150,13 @@ const ParseState = struct {
     arg_count: usize = 0,
 };
 
-pub fn init(environ: process.Environ.Map) !Config {
+pub fn init(environ: *process.Environ.Map) !Config {
     var config: Config = .{};
     errdefer config.deinit();
 
     init: {
         var path_buf: [fs.max_path_bytes]u8 = undefined;
-        const config_path = if (try known_folders.getPath(io, utils.gpa, environ, .local_configuration)) |config_dir| blk: {
+        const config_path = if (try known_folders.getPath(io, utils.gpa, environ.*, .local_configuration)) |config_dir| blk: {
             defer utils.gpa.free(config_dir);
             break :blk std.fmt.bufPrint(&path_buf, "{s}/{s}", .{ config_dir, config_file }) catch break :init;
         } else break :init;
@@ -243,6 +244,7 @@ pub fn init(environ: process.Environ.Map) !Config {
                         try helpers.skipChildBlock(&parser);
                     } else {
                         switch (cur_node) {
+                            .env => try env_block.load(&config, &parser, environ, hostname),
                             .bar => try BarConfig.load(&config, &parser, hostname),
                             .borders => try border.load(&config, &parser, hostname),
                             .keyboard_layout => try KeyboardLayoutConfig.load(&config, &parser, hostname),
@@ -371,7 +373,7 @@ pub fn deinit(config: *Config) void {
 /// This method only parses nodes with a single argument
 pub fn flushTopLevelNode(
     config: *Config,
-    environ: process.Environ.Map,
+    environ: *const process.Environ.Map,
     hostname: ?[:0]u8,
     state: ParseState,
 ) !void {
@@ -529,6 +531,7 @@ const RiverColor = utils.RiverColor;
 const XkbBindings = @import("XkbBindings.zig");
 
 const border = @import("config/border.zig");
+const env_block = @import("config/env_block.zig");
 const helpers = @import("config/helpers.zig");
 const KeyboardLayoutConfig = @import("config/KeyboardLayoutConfig.zig");
 const keybind = @import("config/keybind.zig");
@@ -542,4 +545,5 @@ const log = std.log.scoped(.Config);
 
 test {
     _ = helpers;
+    _ = env_block;
 }

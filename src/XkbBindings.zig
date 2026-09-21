@@ -222,7 +222,7 @@ const XkbBinding = struct {
             },
             .reload_config => {
                 // Try create new config
-                const new_config = Config.init(xkb_binding.context.environ.*) catch |e| {
+                const new_config = Config.init(xkb_binding.context.environ) catch |e| {
                     // We do this so that, if the Config fails to reload, the
                     // user still has *some* config.
                     log.err("Failed to reload Config: {}. Not deleting old one", .{e});

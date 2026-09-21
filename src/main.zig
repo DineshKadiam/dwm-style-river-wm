@@ -74,7 +74,7 @@ pub fn main(init: process.Init) !void {
     const river_xkb_bindings_v1 = globals.river_xkb_bindings_v1 orelse utils.interfaceNotAdvertised(river.XkbBindingsV1);
     const river_xkb_config_v1 = globals.river_xkb_config_v1 orelse utils.interfaceNotAdvertised(river.XkbConfigV1);
 
-    const config = Config.init(environ) catch |e| {
+    const config = Config.init(&environ) catch |e| {
         main_log.err("Failed to load config; fix the errors above and try again.", .{});
         return e;
     };
