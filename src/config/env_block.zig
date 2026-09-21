@@ -115,7 +115,6 @@ fn flushNode(config: *Config, environ: *Environ.Map, hostname: ?[]const u8, stat
     }
 }
 
-/// Parse the given string and interpolate all `${...}` captures.
 fn interpolateEnv(
     allocator: mem.Allocator,
     node_name: NodeName, 
@@ -143,7 +142,7 @@ fn interpolateEnv(
     return try string_builder.toOwnedSlice(allocator);
 }
 
-/// Parse an `${...}` block or `$$` directly, or report an invalid combination.
+/// Parse an `${...}` block or `$$` directly, or report an invalid combination
 fn readOpenedInterpolation(
     allocator: mem.Allocator,
     node_name: NodeName,
@@ -168,8 +167,7 @@ fn readOpenedInterpolation(
         return i;
     }
     if (str[i] != '{') {
-        // `$...` <- this is neither regular `$` (`$$`) nor interpolation `${...}`, 
-        // so this is an error.
+        // `$...` <- this is neither regular `$` (`$$`) nor interpolation `${...}`, so this is an error.
         // We shouldn't increment i, because str[i] will be added by interpolateEnv on the next iteration
         log.err(
             "env.{s}: invalid env interpolation (expected '{{', found '{c}')", 
@@ -213,7 +211,7 @@ fn readOpenedInterpolation(
             "env.{s}: unterminated env interpolation (missing closing '}}')", 
             .{@tagName(node_name)},
         );
-        // [start, i): [name_start..i] is valid slice
+        // [name_start..i] is valid slice
     }
 
     if (err_occured) {
