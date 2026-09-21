@@ -530,8 +530,8 @@ const utils = @import("utils.zig");
 const RiverColor = utils.RiverColor;
 const XkbBindings = @import("XkbBindings.zig");
 
-const env_block = @import("config/env_block.zig");
 const border = @import("config/border.zig");
+const env_block = @import("config/env_block.zig");
 const helpers = @import("config/helpers.zig");
 const KeyboardLayoutConfig = @import("config/KeyboardLayoutConfig.zig");
 const keybind = @import("config/keybind.zig");
