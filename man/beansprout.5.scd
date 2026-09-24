@@ -29,7 +29,7 @@ This is useful for sharing a config file across machines. Nodes without a
 	Proportion of output width taken by the primary stack. Must be between
 	0.10 and 0.90. (Default: 0.55)
 
-*primary_side* *left*|*right*
+*primary_side* *left*|*right*|*top*|*bottom*
 	Which side of the output the primary stack is on. (Default: *left*)
 
 *single_window_ratio* _ratio_
