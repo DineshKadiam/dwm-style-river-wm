@@ -40,6 +40,9 @@ primary_ratio: f32,
 /// Number of windows in the primary stack
 primary_count: u8,
 
+/// Currnt primary side
+primary_side: Config.PrimarySide,
+
 /// Proportion of output width taken by a window when it is the only visible tiled window
 single_window_ratio: f32,
 
@@ -80,6 +83,7 @@ const PendingManage = struct {
     tags: ?u32 = null,
     primary_ratio: ?f32 = null,
     primary_count: ?u8 = null,
+    primary_side: ?Config.PrimarySide = null,
     single_window_ratio: ?f32 = null,
 };
 
@@ -96,6 +100,7 @@ pub fn create(context: *Context, river_output_v1: *river.OutputV1) !*Output {
         .bar = null,
         .tag_overlay = null,
         .primary_count = context.config.primary_count,
+        .primary_side = context.config.primary_side,
         .primary_ratio = context.config.primary_ratio,
         .single_window_ratio = context.config.single_window_ratio,
         .windows = undefined, // we will initialize this shortly
@@ -374,6 +379,9 @@ pub fn manage(output: *Output) void {
             bar.pending_render.draw = true;
         }
     }
+    if (output.pending_manage.primary_side) |primary_side| {
+        output.primary_side = primary_side;
+    }
     if (output.pending_manage.single_window_ratio) |single_window_ratio| {
         output.single_window_ratio = std.math.clamp(
             single_window_ratio,
@@ -625,7 +633,7 @@ fn calculateLayout(output: *Output) void {
 
     const primary_area, const stack_area = splitArea(
         output.usable_geometry,
-        output.context.config.primary_side,
+        output.primary_side,
         if (stack_count == 0) 1.0 else output.primary_ratio,
     );
 
@@ -636,9 +644,9 @@ fn calculateLayout(output: *Output) void {
         window.pending_manage.maximized = false;
 
         const rect = if (i < primary_count)
-            tileArea(primary_area, output.context.config.primary_side, i, primary_count)
+            tileArea(primary_area, output.primary_side, i, primary_count)
         else
-            tileArea(stack_area, output.context.config.primary_side, i - primary_count, stack_count);
+            tileArea(stack_area, output.primary_side, i - primary_count, stack_count);
 
         window.pending_render.position = .{ .x = rect.x, .y = rect.y };
         window.pending_manage.dimensions = .{ .width = rect.width, .height = rect.height };

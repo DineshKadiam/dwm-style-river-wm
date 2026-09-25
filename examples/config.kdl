@@ -98,6 +98,9 @@ keybinds {
     // Change the number of windows in the primary side
     increment_primary_count Mod4 I
     decrement_primary_count Mod4 D
+    // Change primary side
+    next_primary_side Mod4 Space
+    prev_primary_side Mod4+Shift Space
     // Reload config file
     reload_config Mod4+Shift R
     // Toggle fullscreen on the currently-focused window

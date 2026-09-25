@@ -398,6 +398,12 @@ can typically be found at _/usr/include/xkbcommon/xkbcommon-keysyms.h_.
 *toggle_fullscreen*
 	Toggle fullscreen on the focused window.
 
+*next_primary_side*
+	Rotate the primary side clockwise.
+
+*prev_primary_side*
+	Rotate the primary side counter-clockwise.
+
 *close_window*
 	Close the focused window.
 

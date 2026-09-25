@@ -16,6 +16,9 @@ pub const Command = union(enum) {
     toggle_float,
     // Changes the ratio on the focused output only
     change_primary_ratio: f32,
+    // Rotate the primary side clockwise/counter-clockwise
+    next_primary_side,
+    prev_primary_side,
     // Changes the ratio on the focused output only
     change_single_window_ratio: f32,
     // Changes the primary count on the focus output only
@@ -65,6 +68,8 @@ pub const Command = union(enum) {
             .zoom,
             .toggle_float,
             .change_primary_ratio,
+            .next_primary_side,
+            .prev_primary_side,
             .change_single_window_ratio,
             .increment_primary_count,
             .decrement_primary_count,
@@ -218,6 +223,30 @@ const XkbBinding = struct {
                 const seat = first_seat orelse return;
                 const focused = seat.focused orelse return;
                 focused.output.pending_manage.primary_count = focused.output.primary_count - 1;
+                context.wm.river_window_manager_v1.manageDirty();
+            },
+            .next_primary_side => {
+                const seat = first_seat orelse return;
+                const focused = seat.focused orelse return;
+                focused.output.pending_manage.primary_side = switch (focused.output.primary_side) {
+                    .left => .top,
+                    .top => .right,
+                    .right => .bottom,
+                    .bottom => .left,
+                };
+                seat.pending_manage.should_warp_pointer = true;
+                context.wm.river_window_manager_v1.manageDirty();
+            },
+            .prev_primary_side => {
+                const seat = first_seat orelse return;
+                const focused = seat.focused orelse return;
+                focused.output.pending_manage.primary_side = switch (focused.output.primary_side) {
+                    .left => .bottom,
+                    .top => .left,
+                    .right => .top,
+                    .bottom => .right,
+                };
+                seat.pending_manage.should_warp_pointer = true;
                 context.wm.river_window_manager_v1.manageDirty();
             },
             .reload_config => {
