@@ -47,7 +47,7 @@ primary_side: Config.PrimarySide,
 single_window_ratio: f32,
 
 /// Per-tagmask layout overrides
-/// These only get added when the user modifies primary count or ratio
+/// These only get added when the user modifies primary count, ratio, or side
 /// Any tagmask NOT in this map keeps using the defaults from Config
 tag_layout_overrides: std.AutoHashMapUnmanaged(u32, TagLayoutOverride) = .{},
 
@@ -73,6 +73,7 @@ link: wl.list.Link,
 const TagLayoutOverride = struct {
     primary_count: u8,
     primary_ratio: f32,
+    primary_side: Config.PrimarySide,
 };
 
 const PendingManage = struct {
@@ -398,15 +399,18 @@ pub fn manage(output: *Output) void {
         output.tag_layout_overrides.put(utils.gpa, output.tags, .{
             .primary_count = output.primary_count,
             .primary_ratio = output.primary_ratio,
+            .primary_side = output.primary_side,
         }) catch @panic("Out of memory");
 
         // Restore layout for the new tagmask, or fall back to config defaults
         if (output.tag_layout_overrides.get(new_tags)) |tag_layout_override| {
             output.primary_count = tag_layout_override.primary_count;
             output.primary_ratio = tag_layout_override.primary_ratio;
+            output.primary_side = tag_layout_override.primary_side;
         } else {
             output.primary_count = output.context.config.primary_count;
             output.primary_ratio = output.context.config.primary_ratio;
+            output.primary_side = output.context.config.primary_side;
         }
 
         output.tags = new_tags;
