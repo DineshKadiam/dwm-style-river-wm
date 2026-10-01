@@ -232,7 +232,8 @@ const XkbBinding = struct {
                     .left => .top,
                     .top => .right,
                     .right => .bottom,
-                    .bottom => .left,
+                    .bottom => .center,
+                    .center => .left,
                 };
                 seat.pending_manage.should_warp_pointer = true;
                 context.wm.river_window_manager_v1.manageDirty();
@@ -241,10 +242,11 @@ const XkbBinding = struct {
                 const seat = first_seat orelse return;
                 const focused = seat.focused orelse return;
                 focused.output.pending_manage.primary_side = switch (focused.output.primary_side) {
-                    .left => .bottom,
-                    .top => .left,
-                    .right => .top,
+                    .left => .center,
+                    .center => .bottom,
                     .bottom => .right,
+                    .right => .top,
+                    .top => .left,
                 };
                 seat.pending_manage.should_warp_pointer = true;
                 context.wm.river_window_manager_v1.manageDirty();
