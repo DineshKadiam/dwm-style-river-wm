@@ -175,6 +175,7 @@ fn flushNode(config: *Config, hostname: ?[]const u8, state: ParseState) !void {
         .send_to_next_output,
         .send_to_prev_output,
         .toggle_float,
+        .toggle_alternate_split_direction,
         .zoom,
         .reload_config,
         .toggle_fullscreen,

@@ -395,6 +395,10 @@ can typically be found at _/usr/include/xkbcommon/xkbcommon-keysyms.h_.
 *toggle_float*
 	Float/unfloat the focused window.
 
+*toggle_alternate_split_direction*
+	Toggle window splitting inside an area between perpendicular and inline
+	with the main split between the primary and stack area.
+
 *toggle_fullscreen*
 	Toggle fullscreen on the focused window.
 

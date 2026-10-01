@@ -14,6 +14,7 @@ pub const Command = union(enum) {
     send_to_prev_output,
     zoom,
     toggle_float,
+    toggle_alternate_split_direction,
     // Changes the ratio on the focused output only
     change_primary_ratio: f32,
     // Rotate the primary side clockwise/counter-clockwise
@@ -67,6 +68,7 @@ pub const Command = union(enum) {
             .send_to_prev_output,
             .zoom,
             .toggle_float,
+            .toggle_alternate_split_direction,
             .change_primary_ratio,
             .next_primary_side,
             .prev_primary_side,
@@ -202,6 +204,12 @@ const XkbBinding = struct {
                 // Noop if the window is fullscreened
                 if (window.fullscreen) return;
                 window.pending_manage.floating = !window.floating;
+                context.wm.river_window_manager_v1.manageDirty();
+            },
+            .toggle_alternate_split_direction => {
+                const seat = first_seat orelse return;
+                const focused = seat.focused orelse return;
+                focused.output.pending_manage.alternate_split_direction = !focused.output.alternate_split_direction;
                 context.wm.river_window_manager_v1.manageDirty();
             },
             inline .change_primary_ratio, .change_single_window_ratio => |diff, cmd| {
