@@ -291,33 +291,71 @@ fn draw(bar: *Bar) !void {
         }
     }.f;
 
-    // Measure center first; needed to constrain left and right widths
+    const left_codepoints = componentSlice(options.left, clock_codepoints, title_codepoints, wm_info_codepoints);
     const center_codepoints = componentSlice(options.center, clock_codepoints, title_codepoints, wm_info_codepoints);
+    const right_codepoints = componentSlice(options.right, clock_codepoints, title_codepoints, wm_info_codepoints);
+
+    const left_width = try bar.textWidth(left_codepoints);
     const center_width = try bar.textWidth(center_codepoints);
-    var center_x: i32 = @divFloor(buffer.width - center_width, 2);
+    const right_width = try bar.textWidth(right_codepoints);
+
+    const truncate = struct {
+        fn f(text: i32, max: i32, fair: i32, neighbour: i32, neighbours_fair: i32) i32 {
+            return if (text <= fair) // not taking more space than what is fair
+                text
+            else if (neighbour > neighbours_fair) // we both compete
+                fair
+            else // i can stretch all the way, or at least pretty far
+                @min(text, max - neighbour);
+        }
+    }.f;
+
+    const available = buffer.width - 2*options.horizontal_padding;
+
+	// widths if each component is long
+    const fair_side: i32 = @divFloor(available, 3);
+    const halve: i32 = @divFloor(available, 2);
+    const fair_center: i32 = available - 2*fair_side;
+
+	const left_truncated = if (center_width == 0)
+		truncate(left_width, available, halve, right_width, halve) else
+		truncate(left_width, halve, fair_side, @divFloor(center_width, 2), @divFloor(fair_center, 2));
+
+	const center_truncated = truncate(center_width, available, fair_center,
+		2*@max(left_width, right_width), 2*fair_side);
+
+	const right_truncated = if (center_width == 0)
+		truncate(right_width, available, halve, left_width, halve) else
+		truncate(right_width, halve, fair_side, @divFloor(center_width, 2), @divFloor(fair_center, 2));
 
     // Render left slot
-    const left_codepoints = componentSlice(options.left, clock_codepoints, title_codepoints, wm_info_codepoints);
     if (left_codepoints.len > 0) {
-        const max_width = center_x - 2 * options.horizontal_padding;
-        const truncated = try bar.truncateToWidth(left_codepoints, max_width);
+        const truncated = if (left_truncated < left_width)
+            try bar.truncateToWidth(left_codepoints, left_truncated)
+        else
+            left_codepoints;
         var x: i32 = options.horizontal_padding;
-        try bar.renderChars(truncated, buffer, &x, y, text_color);
-    }
-
-    // Render right slot
-    const right_codepoints = componentSlice(options.right, clock_codepoints, title_codepoints, wm_info_codepoints);
-    if (right_codepoints.len > 0) {
-        const max_width = buffer.width - (center_x + center_width) - 2 * options.horizontal_padding;
-        const truncated = try bar.truncateToWidth(right_codepoints, max_width);
-        const text_width = try bar.textWidth(truncated);
-        var x: i32 = buffer.width - text_width - options.horizontal_padding;
         try bar.renderChars(truncated, buffer, &x, y, text_color);
     }
 
     // Render center slot
     if (center_codepoints.len > 0) {
-        try bar.renderChars(center_codepoints, buffer, &center_x, y, text_color);
+        const truncated = if (center_truncated < center_width)
+            try bar.truncateToWidth(center_codepoints, center_truncated)
+        else
+            center_codepoints;
+        var x: i32 = @divFloor(buffer.width - center_truncated, 2);
+        try bar.renderChars(truncated, buffer, &x, y, text_color);
+    }
+
+    // Render right slot
+    if (right_codepoints.len > 0) {
+        const truncated = if (right_truncated < right_width)
+            try bar.truncateToWidth(right_codepoints, right_truncated)
+        else
+            right_codepoints;
+        var x: i32 = buffer.width - right_truncated - options.horizontal_padding;
+        try bar.renderChars(truncated, buffer, &x, y, text_color);
     }
 
     // Attach the buffer to the surface
