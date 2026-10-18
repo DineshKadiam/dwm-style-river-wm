@@ -27,29 +27,29 @@ Requires [Zig](https://ziglang.org/) 0.16.0 or later.
 
 ### Dependencies
 
-To compile beansprout, you'll need the dependencies found below. I've listed the package names for Gentoo and
-Debian/Ubuntu, but they likely exist on all major distros.
+To compile beansprout, you'll need the dependencies found below. I've listed the package names for Gentoo,
+Debian/Ubuntu and Fedora, but they likely exist on all major distros.
 
 Needed at both build-time and runtime:
 
-| Dependency         | Gentoo Name                 | Debian/Ubuntu Name  |
-|--------------------|-----------------------------|---------------------|
-| wayland-client     | `dev-libs/wayland`          | `libwayland-dev`    |
-| pixman             | `x11-libs/pixman`           | `libpixman-1-dev`   |
-| xkbcommon          | `x11-libs/libxkbcommon`     | `libxkbcommon-dev`  |
-| fcft               | `media-libs/fcft`           | `libfcft-dev`       |
+| Dependency         | Gentoo Name                 | Debian/Ubuntu Name  | Fedora                     |
+|--------------------|-----------------------------|---------------------|----------------------------|
+| wayland-client     | `dev-libs/wayland`          | `libwayland-dev`    | `wayland-devel`            |
+| pixman             | `x11-libs/pixman`           | `libpixman-1-dev`   | `pixman-devel`             |
+| xkbcommon          | `x11-libs/libxkbcommon`     | `libxkbcommon-dev`  | `libxkbcommon-devel`       |
+| fcft               | `media-libs/fcft`           | `libfcft-dev`       | `fcft-devel`               |
 
 Only needed at build-time:
 
-| Dependency         | Gentoo Name                  | Debian/Ubuntu Name  |
-|--------------------|------------------------------|---------------------|
-| wayland-protocols  | `dev-libs/wayland-protocols` | `wayland-protocols` |
+| Dependency         | Gentoo Name                  | Debian/Ubuntu Name  | Fedora                    |
+|--------------------|------------------------------|---------------------|---------------------------|
+| wayland-protocols  | `dev-libs/wayland-protocols` | `wayland-protocols` | `wayland-protocols-devel` |
 
 Optional (for building man pages):
 
-| Dependency         | Gentoo Name                  | Debian/Ubuntu Name  |
-|--------------------|------------------------------|---------------------|
-| scdoc              | `app-text/scdoc`             | `scdoc`             |
+| Dependency         | Gentoo Name                  | Debian/Ubuntu Name  | Fedora                    |
+|--------------------|------------------------------|---------------------|---------------------------|
+| scdoc              | `app-text/scdoc`             | `scdoc`             | `scdoc`                   |
 
 #### Note for Gentoo Users
 
