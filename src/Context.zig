@@ -153,6 +153,7 @@ pub fn manage(context: *Context) void {
         while (out_it_cfg.next()) |output| {
             output.primary_ratio = new_config.primary_ratio;
             output.primary_count = new_config.primary_count;
+            output.primary_side = new_config.primary_side;
             output.single_window_ratio = new_config.single_window_ratio;
         }
 

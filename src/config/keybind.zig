@@ -178,6 +178,8 @@ fn flushNode(config: *Config, hostname: ?[]const u8, state: ParseState) !void {
         .zoom,
         .reload_config,
         .toggle_fullscreen,
+        .next_primary_side,
+        .prev_primary_side,
         .close_window,
         .exit_river,
         .increment_primary_count,
