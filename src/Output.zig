@@ -40,7 +40,7 @@ primary_ratio: f32,
 /// Number of windows in the primary stack
 primary_count: u8,
 
-/// Currnt primary side
+/// Current primary side
 primary_side: Config.PrimarySide,
 
 /// Proportion of output width taken by a window when it is the only visible tiled window
