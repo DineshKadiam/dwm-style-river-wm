@@ -710,23 +710,24 @@ fn splitArea(area: Rect, primary_side: Config.PrimarySide, primary_ratio: f32) s
 /// Windows are stacked vertically for left/right and side by side for top/bottom
 /// The last window gets the remaining space to avoid gaps from integer division
 fn tileArea(area: Rect, primary_side: Config.PrimarySide, index: u31, count: u31) Rect {
-    const is_last = index == count - 1;
     switch (primary_side) {
         .left, .right => {
-            const height = @divFloor(area.height, count);
+            const start: u31 = @intCast(@divFloor(@as(u64, area.height) * index, count));
+            const end: u31 = @intCast(@divFloor(@as(u64, area.height) * (index + 1), count));
             return .{
                 .x = area.x,
-                .y = area.y + @as(i32, index) * @as(i32, height),
+                .y = area.y + @as(i32, start),
                 .width = area.width,
-                .height = if (is_last) area.height - index * height else height,
+                .height = end - start,
             };
         },
         .top, .bottom => {
-            const width = @divFloor(area.width, count);
+            const start: u31 = @intCast(@divFloor(@as(u64, area.width) * index, count));
+            const end: u31 = @intCast(@divFloor(@as(u64, area.width) * (index + 1), count));
             return .{
-                .x = area.x + @as(i32, index) * @as(i32, width),
+                .x = area.x + @as(i32, start),
                 .y = area.y,
-                .width = if (is_last) area.width - index * width else width,
+                .width = end - start,
                 .height = area.height,
             };
         },
