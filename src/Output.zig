@@ -678,7 +678,14 @@ fn calculateLayout(output: *Output) void {
 fn splitArea(area: Rect, primary_side: Config.PrimarySide, primary_ratio: f32) struct { Rect, Rect } {
     switch (primary_side) {
         .left, .right => {
-            const primary_width: u31 = @intFromFloat(@as(f32, @floatFromInt(area.width)) * primary_ratio);
+            const left_width: u31 = switch (primary_side) {
+                .left => @intFromFloat(@as(f32, @floatFromInt(area.width)) * primary_ratio),
+                .right => @intFromFloat(@as(f32, @floatFromInt(area.width)) * (1 - primary_ratio)),
+                else => unreachable,
+            };
+            const primary_width = switch (primary_side) {
+                .left => left_width, .right => area.width - left_width, else => unreachable,
+            };
             const stack_width = area.width - primary_width;
             const primary_x, const stack_x = switch (primary_side) {
                 .left => .{ area.x, area.x + @as(i32, primary_width) },
@@ -691,7 +698,14 @@ fn splitArea(area: Rect, primary_side: Config.PrimarySide, primary_ratio: f32) s
             };
         },
         .top, .bottom => {
-            const primary_height: u31 = @intFromFloat(@as(f32, @floatFromInt(area.height)) * primary_ratio);
+            const top_height: u31 = switch (primary_side) {
+                .top => @intFromFloat(@as(f32, @floatFromInt(area.height)) * primary_ratio),
+                .bottom => @intFromFloat(@as(f32, @floatFromInt(area.height)) * (1 - primary_ratio)),
+                else => unreachable,
+            };
+            const primary_height = switch (primary_side) {
+                .top => top_height, .bottom => area.width - top_height, else => unreachable,
+            };
             const stack_height = area.height - primary_height;
             const primary_y, const stack_y = switch (primary_side) {
                 .top => .{ area.y, area.y + @as(i32, primary_height) },
