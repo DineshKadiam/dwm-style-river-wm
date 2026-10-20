@@ -704,7 +704,7 @@ fn splitArea(area: Rect, primary_side: Config.PrimarySide, primary_ratio: f32) s
                 else => unreachable,
             };
             const primary_height = switch (primary_side) {
-                .top => top_height, .bottom => area.width - top_height, else => unreachable,
+                .top => top_height, .bottom => area.height - top_height, else => unreachable,
             };
             const stack_height = area.height - primary_height;
             const primary_y, const stack_y = switch (primary_side) {
