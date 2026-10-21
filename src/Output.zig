@@ -539,6 +539,11 @@ pub fn render(output: *Output) void {
     }
 }
 
+/// Scale len according to ratio
+fn scale_len(len: u31, ratio: f32) u31 {
+    return @intFromFloat(@as(f32, @floatFromInt(len)) * ratio);
+}
+
 /// Calculate primary/stack layout positions for all windows
 /// - Single window: window is told it's maximized and takes up usable_width * single_window_ratio width
 /// - Multiple windows: two stacks, primary and secondary. By default, the stack is on the left and takes
@@ -611,7 +616,7 @@ fn calculateLayout(output: *Output) void {
     if (active_count == 1) {
         const window: *Window = @fieldParentPtr("active_list_node", active_list.popFirst().?);
 
-        const width = @as(u31, @intFromFloat(@as(f32, @floatFromInt(output_width)) * output.single_window_ratio)) -|
+        const width = scale_len(output_width, output.single_window_ratio) -|
             2 * (border_width + window_padding);
         const x = output_x + @divFloor(output_width - width, 2);
 
@@ -629,17 +634,24 @@ fn calculateLayout(output: *Output) void {
     const stack_count = active_count - primary_count;
 
     // PrimarySide:
-    //      left          top          right         bottom
-    // ┌─────┬─────┐ ┌───────────┐ ┌─────┬─────┐ ┌───┬───┬───┐
-    // │     ├─────┤ │           │ ├─────┤     │ ├───┴───┴───┤
-    // │     ├─────┤ ├───┬───┬───┤ ├─────┤     │ │           │
-    // └─────┴─────┘ └───┴───┴───┘ └─────┴─────┘ └───────────┘
+    //      left          top          right         bottom        center
+    // ┌───────┬───┐ ┌───────────┐ ┌───┬───────┐ ┌───┬───┬───┐ ┌──┬─────┬──┐
+    // │       ├───┤ │           │ ├───┤       │ ├───┴───┴───┤ ├──┤     ├──┤
+    // │       ├───┤ ├───┬───┬───┤ ├───┤       │ │           │ ├──┤     ├──┤
+    // └───────┴───┘ └───┴───┴───┘ └───┴───────┘ └───────────┘ └──┴─────┴──┘
 
-    const primary_area, const stack_area = splitArea(
+    const primary_area, const stack_area, const second_stack_area = splitArea(
         output.usable_geometry,
         output.primary_side,
         if (stack_count == 0) 1.0 else output.primary_ratio,
+        output.single_window_ratio,
+        stack_count == 1,
     );
+
+    const split_area_vertical = switch (output.primary_side) {
+        .left, .right, .center => true,
+        .top, .bottom => false,
+    };
 
     // Iterate through the active windows and apply positions
     var i: u31 = 0;
@@ -648,9 +660,13 @@ fn calculateLayout(output: *Output) void {
         window.pending_manage.maximized = false;
 
         const rect = if (i < primary_count)
-            tileArea(primary_area, output.primary_side, i, primary_count)
-        else
-            tileArea(stack_area, output.primary_side, i - primary_count, stack_count);
+            tileArea(primary_area, split_area_vertical, i, primary_count)
+        else if (second_stack_area) |second_stack| block: {
+            const stack_index = (i - primary_count);
+            const area = if (stack_index % 2 == 0) stack_area else second_stack;
+            const cnt = if (stack_index % 2 == 0) (stack_count + (stack_count % 2)) / 2 else (stack_count) / 2;
+            break :block tileArea(area, split_area_vertical, stack_index / 2, cnt);
+        } else tileArea(stack_area, split_area_vertical, i - primary_count, stack_count);
 
         window.pending_render.position = .{ .x = rect.x, .y = rect.y };
         window.pending_manage.dimensions = .{ .width = rect.width, .height = rect.height };
@@ -673,78 +689,82 @@ fn calculateLayout(output: *Output) void {
 }
 
 /// Calculate split between primary and stack area
-/// Primary area gets `primary_ratio` of the width (left/right) or height (top/bottom) and is placed on `primary_side`
-/// Stack area gets the rest
-fn splitArea(area: Rect, primary_side: Config.PrimarySide, primary_ratio: f32) struct { Rect, Rect } {
+/// Primary area gets `primary_ratio` of the width (left/right/center) or height (top/bottom)
+/// Stack area gets the rest (divided into 2 for center layout)
+fn splitArea(
+    area: Rect,
+    primary_side: Config.PrimarySide,
+    primary_ratio: f32,
+    single_window_ratio: f32,
+    second_stack_empty: bool,
+) struct { Rect, Rect, ?Rect } {
+    var primary: Rect = undefined;
+    var stack: Rect = undefined;
     switch (primary_side) {
-        .left, .right => {
-            const left_width: u31 = switch (primary_side) {
-                .left => @intFromFloat(@as(f32, @floatFromInt(area.width)) * primary_ratio),
-                .right => @intFromFloat(@as(f32, @floatFromInt(area.width)) * (1 - primary_ratio)),
-                else => unreachable,
-            };
-            const primary_width = switch (primary_side) {
-                .left => left_width, .right => area.width - left_width, else => unreachable,
-            };
-            const stack_width = area.width - primary_width;
-            const primary_x, const stack_x = switch (primary_side) {
-                .left => .{ area.x, area.x + @as(i32, primary_width) },
-                .right => .{ area.x + @as(i32, stack_width), area.x },
-                else => unreachable,
-            };
+        .left, .top => {
+            if (primary_side == .left) {
+                primary = .{ .x = area.x, .y = area.y, .width = scale_len(area.width, primary_ratio), .height = area.height };
+                stack = .{ .x = area.x + primary.width, .y = area.y, .width = area.width - primary.width, .height = area.height };
+            } else { // .top
+                primary = .{ .x = area.x, .y = area.y, .width = area.width, .height = scale_len(area.height, primary_ratio) };
+                stack = .{ .x = area.x, .y = area.y + primary.height, .width = area.width, .height = area.height - primary.height };
+            }
+            return .{ primary, stack, null };
+        },
+        .right, .bottom => {
+            if (primary_side == .right) {
+                stack = .{ .x = area.x, .y = area.y, .width = scale_len(area.width, 1 - primary_ratio), .height = area.height };
+                primary = .{ .x = area.x + stack.width, .y = area.y, .width = area.width - stack.width, .height = area.height };
+            } else { // .bottom
+                stack = .{ .x = area.x, .y = area.y, .width = area.width, .height = scale_len(area.height, 1 - primary_ratio) };
+                primary = .{ .x = area.x, .y = area.y + stack.height, .width = area.width, .height = area.height - stack.height };
+            }
+            return .{ primary, stack, null };
+        },
+        .center => {
+            var primary_width = scale_len(area.width, primary_ratio);
+            const stack1_width = (area.width - primary_width) / 2;
+            if (second_stack_empty) {
+                // Special case handling
+                const single_width = scale_len(area.width, single_window_ratio);
+                const single_end = (area.width -| single_width) / 2 + single_width;
+                primary_width = single_end -| stack1_width;
+            }
+            const stack2_width = area.width - primary_width - stack1_width;
+            const stack1_x = area.x;
+            const primary_x = area.x + @as(i32, stack1_width);
+            const stack2_x = area.x + @as(i32, stack1_width) + @as(i32, primary_width);
             return .{
                 .{ .x = primary_x, .y = area.y, .width = primary_width, .height = area.height },
-                .{ .x = stack_x, .y = area.y, .width = stack_width, .height = area.height },
-            };
-        },
-        .top, .bottom => {
-            const top_height: u31 = switch (primary_side) {
-                .top => @intFromFloat(@as(f32, @floatFromInt(area.height)) * primary_ratio),
-                .bottom => @intFromFloat(@as(f32, @floatFromInt(area.height)) * (1 - primary_ratio)),
-                else => unreachable,
-            };
-            const primary_height = switch (primary_side) {
-                .top => top_height, .bottom => area.height - top_height, else => unreachable,
-            };
-            const stack_height = area.height - primary_height;
-            const primary_y, const stack_y = switch (primary_side) {
-                .top => .{ area.y, area.y + @as(i32, primary_height) },
-                .bottom => .{ area.y + @as(i32, stack_height), area.y },
-                else => unreachable,
-            };
-            return .{
-                .{ .x = area.x, .y = primary_y, .width = area.width, .height = primary_height },
-                .{ .x = area.x, .y = stack_y, .width = area.width, .height = stack_height },
+                .{ .x = stack1_x, .y = area.y, .width = stack1_width, .height = area.height },
+                .{ .x = stack2_x, .y = area.y, .width = stack2_width, .height = area.height },
             };
         },
     }
 }
 
 /// Calculate the window position and size inside area based on it's index and the total window count
-/// Windows are stacked vertically for left/right and side by side for top/bottom
+/// Windows are stacked according to the value of split_vertically
 /// The last window gets the remaining space to avoid gaps from integer division
-fn tileArea(area: Rect, primary_side: Config.PrimarySide, index: u31, count: u31) Rect {
-    switch (primary_side) {
-        .left, .right => {
-            const start: u31 = @intCast(@divFloor(@as(u64, area.height) * index, count));
-            const end: u31 = @intCast(@divFloor(@as(u64, area.height) * (index + 1), count));
-            return .{
-                .x = area.x,
-                .y = area.y + @as(i32, start),
-                .width = area.width,
-                .height = end - start,
-            };
-        },
-        .top, .bottom => {
-            const start: u31 = @intCast(@divFloor(@as(u64, area.width) * index, count));
-            const end: u31 = @intCast(@divFloor(@as(u64, area.width) * (index + 1), count));
-            return .{
-                .x = area.x + @as(i32, start),
-                .y = area.y,
-                .width = end - start,
-                .height = area.height,
-            };
-        },
+fn tileArea(area: Rect, split_vertically: bool, index: u31, count: u31) Rect {
+    if (split_vertically) {
+        const start: u31 = @intCast(@divFloor(@as(u64, area.height) * index, count));
+        const end: u31 = @intCast(@divFloor(@as(u64, area.height) * (index + 1), count));
+        return .{
+            .x = area.x,
+            .y = area.y + @as(i32, start),
+            .width = area.width,
+            .height = end - start,
+        };
+    } else {
+        const start: u31 = @intCast(@divFloor(@as(u64, area.width) * index, count));
+        const end: u31 = @intCast(@divFloor(@as(u64, area.width) * (index + 1), count));
+        return .{
+            .x = area.x + @as(i32, start),
+            .y = area.y,
+            .width = end - start,
+            .height = area.height,
+        };
     }
 }
 

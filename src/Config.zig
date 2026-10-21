@@ -83,7 +83,7 @@ pub const PointerBind = pointer_bind.PointerBind;
 pub const WindowRule = window_rule.Rule;
 pub const WindowRuleAction = window_rule.Action;
 
-pub const PrimarySide = enum { left, right, top, bottom };
+pub const PrimarySide = enum { left, right, top, bottom, center };
 
 pub const AttachMode = enum { top, bottom };
 
