@@ -56,8 +56,8 @@ pointer_warp_on_focus_change: bool = true,
 /// Should restore focus to the last focused visible window when switching tags or outputs
 restore_focus: bool = false,
 
-/// Path to the wallpaper image
-wallpaper_image_path: ?[:0]const u8 = null,
+/// Path to the wallpaper image with metadata
+wallpaper_image: ?WallpaperMeta = null,
 
 cursor: ?struct {
     /// Name of the XCursor theme to use, e.g. "Adwaita" or "Bibata-Modern-Classic"
@@ -154,6 +154,21 @@ const ParseState = struct {
     args: [2][]const u8 = .{ "", "" },
     /// The number of arguments parsed so far on this node
     arg_count: usize = 0,
+};
+
+pub const WallpaperMeta = struct {
+    const Self = @This();
+
+    path: [:0]const u8,
+    stat: std.Io.File.Stat,
+
+    fn create(path: [:0]const u8) !Self {
+        const stat = try Io.Dir.cwd().statFile(io, path, .{ .follow_symlinks = true });
+        return .{
+            .path = path,
+            .stat = stat,
+        };
+    }
 };
 
 pub fn init(environ: *process.Environ.Map) !Config {
@@ -369,8 +384,8 @@ pub fn deinit(config: *Config) void {
     if (config.keyboard_layout.options) |options| {
         utils.gpa.free(options);
     }
-    if (config.wallpaper_image_path) |wallpaper_image_path| {
-        utils.gpa.free(wallpaper_image_path);
+    if (config.wallpaper_image) |wallpaper_image| {
+        utils.gpa.free(wallpaper_image.path);
     }
     if (config.cursor) |cursor| {
         utils.gpa.free(cursor.theme);
@@ -450,9 +465,14 @@ pub fn flushTopLevelNode(
             const new_path = helpers.expandTilde(environ, arg_str) catch {
                 return errInvalidArg(tag, arg_str);
             };
-            if (config.wallpaper_image_path) |old| utils.gpa.free(old);
-            config.wallpaper_image_path = new_path;
-            logDebugSettingNode(tag, arg_str);
+            if (config.wallpaper_image) |old| utils.gpa.free(old.path);
+            if (WallpaperMeta.create(new_path)) |meta| {
+                config.wallpaper_image = meta;
+                logDebugSettingNode(tag, arg_str);
+            } else |err| {
+                log.warn("Unable to read wallpaper metadata for \"{s}\": {s}", .{ new_path, @errorName(err) });
+                config.wallpaper_image = null;
+            }
         },
         .cursor_theme => |tag| {
             const theme = try utils.gpa.dupeZ(u8, arg_str);

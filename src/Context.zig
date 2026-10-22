@@ -138,10 +138,10 @@ pub fn manage(context: *Context) void {
         const had_overlay = context.config.tag_overlay_config != null;
         const had_bar = context.config.bar_config != null;
 
-        // Check if wallpaper path changed before destroying old config
-        const wallpaper_changed = !pathsEqual(
-            context.config.wallpaper_image_path,
-            new_config.wallpaper_image_path,
+        // Check if wallpaper changed before destroying old config
+        const wallpaper_changed = wallpaperChanged(
+            new_config.wallpaper_image,
+            context.config.wallpaper_image,
         );
 
         context.config.deinit();
@@ -273,7 +273,7 @@ fn updateCursorInEnv(context: *Context, config: Config) void {
 }
 
 fn loadWallpaperImage(config: Config) ?*Wallpaper.Image {
-    const image_path = config.wallpaper_image_path orelse return null;
+    const image_path = (config.wallpaper_image orelse return null).path;
     if (image_path.len == 0) {
         return null;
     }
@@ -283,10 +283,13 @@ fn loadWallpaperImage(config: Config) ?*Wallpaper.Image {
     };
 }
 
-fn pathsEqual(a: ?[]const u8, b: ?[]const u8) bool {
-    const a_val = a orelse return b == null;
-    const b_val = b orelse return false;
-    return mem.eql(u8, a_val, b_val);
+fn wallpaperChanged(new: ?WallpaperMeta, old: ?WallpaperMeta) bool {
+    const old_val = old orelse return new != null;
+    const new_val = new orelse return true;
+    if (!std.mem.eql(u8, new_val.path, old_val.path)) return true;
+    if (new_val.stat.inode != old_val.stat.inode) return true;
+    if (new_val.stat.mtime.nanoseconds > old_val.stat.mtime.nanoseconds) return true;
+    return false;
 }
 
 const std = @import("std");
@@ -306,6 +309,7 @@ const InputManager = @import("InputManager.zig");
 const Output = @import("Output.zig");
 const TagOverlay = @import("TagOverlay.zig");
 const Wallpaper = @import("Wallpaper.zig");
+const WallpaperMeta = Config.WallpaperMeta;
 const WindowManager = @import("WindowManager.zig");
 const XkbBindings = @import("XkbBindings.zig");
 const XkbConfig = @import("XkbConfig.zig");
