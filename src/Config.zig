@@ -35,6 +35,11 @@ layout_margin: u8 = 0,
 
 /// Side the primary should be on
 primary_side: PrimarySide = .left,
+/// Normally the primary and stack area will split perpendicular to the main
+/// split between primary and stack. With alternate_split_direction set to
+/// true, windows inside the primary and stack area will split in the same
+/// direction as the main split between the primary and stack area.
+alternate_split_direction: bool = false,
 
 /// Where a new window should attach, top or bottom of the stack
 attach_mode: AttachMode = .top,
@@ -106,6 +111,7 @@ const NodeName = enum {
     primary_count,
     primary_ratio,
     primary_side,
+    alternate_split_direction,
     single_window_ratio,
     window_padding,
     layout_margin,
@@ -191,6 +197,7 @@ pub fn init(environ: *process.Environ.Map) !Config {
                             .primary_count,
                             .primary_ratio,
                             .primary_side,
+                            .alternate_split_direction,
                             .single_window_ratio,
                             .window_padding,
                             .layout_margin,
@@ -282,6 +289,7 @@ pub fn init(environ: *process.Environ.Map) !Config {
                 .primary_count,
                 .primary_ratio,
                 .primary_side,
+                .alternate_split_direction,
                 .single_window_ratio,
                 .window_padding,
                 .layout_margin,
@@ -466,6 +474,7 @@ pub fn flushTopLevelNode(
         inline .focus_follows_pointer,
         .output_focus_follows_pointer,
         .pointer_warp_on_focus_change,
+        .alternate_split_direction,
         .restore_focus,
         => |tag| {
             if (helpers.boolFromKdlStr(arg_str)) |v| {

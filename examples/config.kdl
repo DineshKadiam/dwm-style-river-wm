@@ -12,6 +12,11 @@ single_window_ratio 0.70
 // Side the primary should be on
 // Possible values: left, right, top, bottom, center
 primary_side left
+// Normally the primary and stack area will split perpendicular to the main
+// split between primary and stack. With alternate_split_direction set to
+// true, windows inside the primary and stack area will split in the same
+// direction as the main split between the primay and stack area.
+alternate_split_direction #false
 // Whether mousing over a new window should move focus
 focus_follows_pointer #true
 // Whether mousing over a new output should move output focus (i.e. the output new windows spawn on)
@@ -102,6 +107,8 @@ keybinds {
     // Change primary side
     next_primary_side Mod4 Space
     prev_primary_side Mod4+Shift Space
+    // Toggle split direction
+    toggle_alternate_split_direction Mod4+Shift+Ctrl S
     // Reload config file
     reload_config Mod4+Shift R
     // Toggle fullscreen on the currently-focused window

@@ -43,6 +43,9 @@ primary_count: u8,
 /// Current primary side
 primary_side: Config.PrimarySide,
 
+/// Split direction
+alternate_split_direction: bool,
+
 /// Proportion of output width taken by a window when it is the only visible tiled window
 single_window_ratio: f32,
 
@@ -85,6 +88,7 @@ const PendingManage = struct {
     primary_ratio: ?f32 = null,
     primary_count: ?u8 = null,
     primary_side: ?Config.PrimarySide = null,
+    alternate_split_direction: ?bool = null,
     single_window_ratio: ?f32 = null,
 };
 
@@ -102,6 +106,7 @@ pub fn create(context: *Context, river_output_v1: *river.OutputV1) !*Output {
         .tag_overlay = null,
         .primary_count = context.config.primary_count,
         .primary_side = context.config.primary_side,
+        .alternate_split_direction = context.config.alternate_split_direction,
         .primary_ratio = context.config.primary_ratio,
         .single_window_ratio = context.config.single_window_ratio,
         .windows = undefined, // we will initialize this shortly
@@ -383,6 +388,9 @@ pub fn manage(output: *Output) void {
     if (output.pending_manage.primary_side) |primary_side| {
         output.primary_side = primary_side;
     }
+    if (output.pending_manage.alternate_split_direction) |split_direction| {
+        output.alternate_split_direction = split_direction;
+    }
     if (output.pending_manage.single_window_ratio) |single_window_ratio| {
         output.single_window_ratio = std.math.clamp(
             single_window_ratio,
@@ -649,8 +657,8 @@ fn calculateLayout(output: *Output) void {
     );
 
     const split_area_vertical = switch (output.primary_side) {
-        .left, .right, .center => true,
-        .top, .bottom => false,
+        .left, .right, .center => if (output.alternate_split_direction) false else true,
+        .top, .bottom => if (output.alternate_split_direction) true else false,
     };
 
     // Iterate through the active windows and apply positions
