@@ -1,3 +1,5 @@
+> Originally developed at [codeberg.org/beansprout/beansprout](https://codeberg.org/beansprout/beansprout) · GPL-3.0
+
 # beansprout
 
 ![Single window with gaps](docs/screenshots/single-window.jpeg)
